@@ -474,7 +474,6 @@ def harness_settings(language, template_dir, out_dir, lengths):
         length = lengths.get(model["ollama"]) or OLLAMA_CONTEXT
         entry = {"id": model["ollama"], "contextWindow": length,
                  "maxTokens": int(model["max tokens"] or 8192),
-                 "samplingParams": {"temperature": 1.0, "top_p": 0.95},
                  "compat": {"supportsStore": False, "supportsDeveloperRole": False,
                             "supportsReasoningEffort": thinks, "maxTokensField": "max_tokens"}}
         if thinks:

@@ -49,6 +49,13 @@ harnesses are set for 65536 (see
 [When the harness summarises](harness.md#when-the-harness-summarises)). A model
 with none gets Ollama's default, 4096, and its note says so.
 
+Sampling is the recipe's too: its `PARAMETER temperature`, `top_k`, `top_p`,
+`min_p` and `repeat_penalty` lines, or, where it has none, those of the model it
+is made `FROM`. Every job that uses the model goes by them, agents, chats and
+games alike. The one exception is visor's own yes-or-no questions to a vision
+model (`vision.py`), asked at temperature 0 so that the same picture gets the
+same answer.
+
 An empty folder gets the starter notes in `examples/models/`, and a folder with
 no model of some kind (no edit model, say) gets that kind's starter, once: one
 you delete is not offered again. One small model of each kind, enough for every
