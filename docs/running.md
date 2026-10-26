@@ -66,7 +66,7 @@ systemctl --user disable --now visor-dispatch visor-vpn godot-update.timer
 Restarting or switching off the server needs no preparation beyond that:
 everything stops with it and comes back as described above.
 
-# Running one task by hand
+## Running one task by hand
 
 ```bash
 nohup ./visor-run.sh /path/to/project /path/to/task.md small pi > ~/visor.log 2>&1 & disown

@@ -18,8 +18,10 @@ three files, and the first run failed for that reason.
   summary, and an agent that had lost its test command went looking for Godot
   across the system.
 - **Only the task in the prompt.**
-- **Six tools:** read, write, edit, search, find files, shell. Each harness's
-  list is in `harness/`. A guard checks the first request of every run and
+- **Three or four tools:** a build, writing or chat round has bash, read, edit
+  and write; a plan or analysis round bash, read and ls. pi's own grep and find
+  are left out: they need ripgrep and fd, which are not installed, and the
+  shell's grep and find do the same work. The list is in `harness/pi.sh`. A guard checks the first request of every run and
   stops the run if the harness offered anything else, which a harness update
   could cause.
 - **Nothing discovered from the project.** pi runs with its extensions, skills
@@ -41,7 +43,7 @@ A harness summarises the conversation when it nears the end of the context
 window, and on this hardware one summary costs 25 to 40 minutes.
 
 In pi the point is a setting: it summarises when the context passes the window
-less `compaction.reserveTokens`, which is 49,152 tokens as set here. So the
-context window, a model's `num_ctx`, stays at 65,536: a window much under
-49,152 would summarise at once, and the agent would do little else. Read the
-setting again after a harness upgrade.
+less `compaction.reserveTokens`, 16,384 as set here (`pi/settings.json`). With a
+window, a model's `num_ctx`, of 65,536, that is at 49,152 tokens. A window not
+much over 16,384 would summarise almost at once, and the agent would do little
+else. Read the setting again after a harness upgrade.

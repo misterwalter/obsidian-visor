@@ -2,9 +2,13 @@
 """game.py's parts with no side effects: the note's turns and the player's part, the
 narrator's prompt and answer, and the memory."""
 
+import os
+import sys
 import unittest
 
-import game
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+import game  # noqa: E402
 
 NOTE = """Game:
 Characters: Mara

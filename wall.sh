@@ -12,7 +12,7 @@
 #
 # What is visible inside, and how:
 #   read-only   /usr and /etc, the harnesses, their settings from this repo, inside/
-#               (the harnesses and visor/inside at /opt/visor, not where they really are)
+#               (the harnesses and inside/ at /opt/visor, not where they really are)
 #   writable    the workspace (its .git read-only), the log dir, an empty home, /tmp,
 #               and /run/show when VISOR_SHOW_DIR names a folder: what `show` copies
 #               out for the owner; /run/tell when VISOR_TELL_DIR names one: the messages

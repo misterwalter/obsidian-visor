@@ -15,6 +15,7 @@
 | `sources.py` | Browse's sources: what each holds, said in VISOR.md, and the copy a run is given to read. Tests: `test_browse.py`. |
 | `opera.py` | Opera: what a note asks for, what happens next in a game, and what each character is told. Tests: `test_opera.py`, `test_opera_games.py`. |
 | `opera_engine.py` | Opera's board and rules, the `diplomacy` package, run in its own Python and asked one thing at a time. |
+| `media/trace_pose.py` | Traces the people in a photograph, or in each frame of a video, into OpenPose skeletons: RTMPose through onnxruntime, walled in with no network. |
 | `folders.py` | Folder projects: keeps a plain folder's history, and delivers a run's writing back as drafts. Tests: `test_folders.py`. |
 | `examples/visor.conf` | The dispatcher's settings, to copy to `~/.config/visor/visor.conf`. |
 | `schedule.py` | When a repeating job runs: a `Repeat:` line (or a character's `Board time:`) read once for every kind of job, days, times, `hourly`, `idle`, and whether one is due or when it next is. Tests: `test_schedule.py`. |

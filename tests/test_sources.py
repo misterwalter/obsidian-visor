@@ -6,11 +6,14 @@
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 
-import server_note
-import sources
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+import server_note  # noqa: E402
+import sources  # noqa: E402
 
 
 class SourcesTest(unittest.TestCase):

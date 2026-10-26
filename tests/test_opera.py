@@ -5,10 +5,14 @@ a game, and its page. No engine and no model: a game's view is made up here.
     python3 tests/test_opera.py
 """
 
+import os
 import random
+import sys
 import unittest
 
-import opera
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+import opera  # noqa: E402
 
 NAMES = {"VIE": "Vienna", "BUD": "Budapest", "TRI": "Trieste", "GAL": "Galicia", "BOH": "Bohemia",
          "TYR": "Tyrolia", "SER": "Serbia", "RUM": "Rumania", "ALB": "Albania", "ADR": "Adriatic Sea",

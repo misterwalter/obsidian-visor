@@ -774,36 +774,41 @@ class Rounds:
                     result[key] = f.read().strip()
             except FileNotFoundError:
                 pass
-        report = result["report"]
-        pr = re.search(r"## Pull request\s+(\S.*)", report)
-        result["pull_request"] = pr.group(1).strip() if pr else "none"
-        result["pushed"] = bool(re.search(r"^- pushed: yes", report, re.MULTILINE))
-        result["paused"] = bool(re.search(r"^- paused: yes", report, re.MULTILINE))
-        why = re.search(r"^Stopped: (.*?)\. What follows is as far as it got\.", report, re.MULTILINE)
+        # The report ends with the agent's closing message, which says whatever the agent likes, and then the
+        # pull request, which the runner adds last. Only the runner's part is read, and what it is made of is read
+        # from its top, above its first section and outside its code blocks (the end of the agent's error output).
+        report, _, closing = result["report"].partition("\n## The agent's closing message")
+        result["report"] = report
+        head = re.sub(r"^```.*?^```", "", report.split("\n## ", 1)[0], flags=re.MULTILINE | re.DOTALL)
+        tail = (closing or report).rsplit("\n## Pull request", 1)
+        result["pull_request"] = (tail[1].strip() if len(tail) == 2 else "") or "none"
+        result["pushed"] = bool(re.search(r"^- pushed: yes", head, re.MULTILINE))
+        result["paused"] = bool(re.search(r"^- paused: yes", head, re.MULTILINE))
+        why = re.search(r"^Stopped: (.*?)\. What follows is as far as it got\.", head, re.MULTILINE)
         result["stopped"] = why.group(1) if why else None
-        calls = re.search(r"^- model calls: (\d+)", report, re.MULTILINE)
+        calls = re.search(r"^- model calls: (\d+)", head, re.MULTILINE)
         result["calls"] = int(calls.group(1)) if calls else None
-        tests = re.search(r"tests before: exit (\S+)\s+tests after: exit (\S+)", report)
+        tests = re.search(r"tests before: exit (\S+)\s+tests after: exit (\S+)", head)
         result["tests_before"], result["tests_after"] = tests.groups() if tests else ("n/a", "n/a")
         result["untested"] = result["tests_after"] == "none"
         facts = []
         for label, pattern in (("minutes", r"agent minutes: (\d+)"), ("agent exit", r"agent exit: (\d+)"),
                                ("tests after", r"tests after: exit (\S+)")):
-            m = re.search(pattern, report)
+            m = re.search(pattern, head)
             if m and not (label == "tests after" and m.group(1) in ("n/a", "none")):
                 facts.append(f"{label} {m.group(1)}")
-        work = re.search(r"^- model work: (\d+) tokens read, (\d+) written, (\d+) minutes", report, re.MULTILINE)
+        work = re.search(r"^- model work: (\d+) tokens read, (\d+) written, (\d+) minutes", head, re.MULTILINE)
         if work:
             read, written, minutes = (int(n) for n in work.groups())
             facts.append(f"the model read {read:,} tokens and wrote {written:,} in {minutes} minutes")
-        # Where a run given the web went. From the report's own list, not the agent's message below it.
-        web = re.search(r"^- web: (.+)$", report.split("\n## ", 1)[0], re.MULTILINE)
+        # Where a run given the web went, what it posted, and what it could read.
+        web = re.search(r"^- web: (.+)$", head, re.MULTILINE)
         if web:
             facts.append(f"web: {web.group(1)}")
-        board = re.search(r"^- board: (.+)$", report.split("\n## ", 1)[0], re.MULTILINE)
+        board = re.search(r"^- board: (.+)$", head, re.MULTILINE)
         if board:
             facts.append(f"board: {board.group(1)}")
-        reading = re.search(r"^- browse: (.+)$", report.split("\n## ", 1)[0], re.MULTILINE)
+        reading = re.search(r"^- browse: (.+)$", head, re.MULTILINE)
         if reading:
             facts.append(f"browse: {reading.group(1)}")
         result["summary"] = " · ".join(facts)

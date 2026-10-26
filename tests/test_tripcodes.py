@@ -8,9 +8,10 @@ import sys
 import tempfile
 import unittest
 
-import tripcodes
-
 HERE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, HERE)
+
+import tripcodes  # noqa: E402
 
 
 class Tripcodes(unittest.TestCase):

@@ -16,7 +16,9 @@ cp examples/visor.conf ~/.config/visor/visor.conf
 - `install.sh` enables and starts this account's services: the dispatcher
   (`visor-dispatch`), the VPN tunnel (`visor-vpn`, only when its program and
   settings are there) and a nightly Godot update. It says which it enabled,
-  and for any it did not, why. It downloads nothing and is safe to run again.
+  and for any it did not, why. It is safe to run again, and it downloads
+  nothing but Opera's rules engine: the `diplomacy` package, from PyPI, once,
+  when it is missing.
   On a machine without a systemd user session nothing depends on systemd,
   and it prints the three commands to start at boot instead.
 
@@ -33,29 +35,32 @@ sudo loginctl enable-linger AGENT_ACCOUNT
 
 ## Models
 
-- Each model visor may use is then a note in the notes' `models/` folder,
-  `Kind: language` with `Ollama: <name>`, or `Kind: image` with its file
-  (`models.py`). A language model's recipe goes in its note, as a `## Modelfile`
-  section: the dispatcher registers it in Ollama (`ollama create`) when it
-  changes, while idle, and with `Fetch` ticked pulls what it needs. So a new text
-  model is a note, with nothing to do on the server. The recipe's
-  `PARAMETER num_ctx` is the model's context length, and the one place it is
-  set: visor reads it back from Ollama for the harnesses, the model door, chats
-  and games, so all of them agree with what Ollama loads. The harnesses are set
-  for 65536 (see [When the harness summarises](harness.md#when-the-harness-summarises)). A model with none gets Ollama's
-  default, 4096, and its note says so. An empty folder gets the starter notes in
-  `examples/models/`, and a folder with no
-  model of some kind (no edit model, say) gets that kind's starter, once: one you
-  delete is not offered again. One
-  small model of each kind, enough for every kind of note on a modest machine.
-  `small` (qwen3:8b) for agent rounds and chats, `looker` (qwen2.5vl:3b) to see
-  pictures, `dreamshaper` (DreamShaper 8) to draw and `pix2pix`
-  (InstructPix2Pix) to edit, about 18 GB in all. Each has `Fetch` unticked:
-  tick it in its note and visor downloads it while idle. Until then a job
-  that needs it comes back at once, saying which note to change. The image and
-  edit starters come from Hugging Face, checked against their published SHA-256s.
-  Which models a server has, and what the owner calls them, stay in the notes
-  and out of this repository.
+Each model visor may use is a note in the notes' `models/` folder,
+`Kind: language` with `Ollama: <name>`, or `Kind: image` with its file
+(`models.py`). A language model's recipe goes in its note, as a `## Modelfile`
+section: the dispatcher registers it in Ollama (`ollama create`) when it
+changes, while idle, and with `Fetch` ticked pulls what it needs. So a new text
+model is a note, with nothing to do on the server.
+
+The recipe's `PARAMETER num_ctx` is the model's context length, and the one
+place it is set: visor reads it back from Ollama for the harnesses, the model
+door, chats and games, so all of them agree with what Ollama loads. The
+harnesses are set for 65536 (see
+[When the harness summarises](harness.md#when-the-harness-summarises)). A model
+with none gets Ollama's default, 4096, and its note says so.
+
+An empty folder gets the starter notes in `examples/models/`, and a folder with
+no model of some kind (no edit model, say) gets that kind's starter, once: one
+you delete is not offered again. One small model of each kind, enough for every
+kind of note on a modest machine: `small` (qwen3:8b) for agent rounds and chats,
+`looker` (qwen2.5vl:3b) to see pictures, `dreamshaper` (DreamShaper 8) to draw
+and `pix2pix` (InstructPix2Pix) to edit, about 18 GB in all. Each has `Fetch`
+unticked: tick it in its note and visor downloads it while idle. Until then a
+job that needs it comes back at once, saying which note to change. The image and
+edit starters come from Hugging Face, checked against their published SHA-256s.
+Which models a server has, and what the owner calls them, stay in the notes and
+out of this repository.
+
 - A model of several files (an edit model's text encoder, VAE and fast LoRA, or
   Chroma's text encoder and VAE) has a `## Downloads` table in its note, a row
   for each of the other files the note names, with its address and SHA-256:

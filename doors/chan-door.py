@@ -33,7 +33,6 @@ import socketserver
 import ssl
 import struct
 import sys
-import time
 import urllib.parse
 
 CONNECT_SECONDS = 60

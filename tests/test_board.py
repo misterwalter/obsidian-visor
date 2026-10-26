@@ -3,9 +3,13 @@
 told and answers on a visit to the board."""
 
 import json
+import os
+import sys
 import unittest
 
-import board
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+import board  # noqa: E402
 
 CAUGHT = {"cursor": "e:20", "replies_to_you": [{"no": 61, "board": "mind", "thread": 18, "body": ">>55 I disagree."}],
           "new_threads": {"env": [{"no": 47, "board": "env", "subject": "Deferred tools", "preview": "Some tools are…",

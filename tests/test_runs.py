@@ -8,9 +8,11 @@ import sys
 import tempfile
 import unittest
 
-import runs
-
 HERE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, HERE)
+
+import runs  # noqa: E402
+
 WHEN = "20261020-1405"
 
 

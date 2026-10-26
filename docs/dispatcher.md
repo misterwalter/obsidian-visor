@@ -123,20 +123,14 @@ every such note under "Needs you", with a link to it.
 
 The dispatcher keeps a sample note for each kind of job in the notes folder's
 `samples/` (`samples_folder` in `visor.conf`), ready to copy into `inbox/`, its
-choices as boxes to tick (`samples.py`): `sample-analysis.md`, `sample-plan.md`,
-`sample-build.md`, `sample-write.md`, `sample-new-project.md`,
-`sample-new-character.md`, `sample-chat.md`, `sample-game.md`, `sample-image.md`
-(pose lines included), `sample-skeleton.md` (trace a photograph into a pose),
-`sample-edit.md`, `sample-character-set.md`, `sample-train.md`,
-`sample-scene-image.md`, `sample-motion.md`, `sample-speak.md` and
-`sample-transcribe.md`. Samples kept at the top of the notes folder by an older
+choices as boxes to tick: `sample-plan.md`, `sample-image.md` and so on, the
+list in `samples.py`. Samples kept at the top of the notes folder by an older
 visor are taken away from there. Each carries the documentation for
 its kind of note in a folded callout, `> [!guide]- How this note works`, which
 the notes app shows closed and visor drops before anything reads the note: no
 model is shown it, nothing draws it or reads it aloud, so a copy can keep it.
-The dispatcher puts any sample back if it goes missing, rewrites it when what it
-lists changes, and took away the one long `sample-job.md` they replace. It
-rewrites `STATUS.md`, at the top of the notes folder, when something changes.
+The dispatcher puts any sample back if it goes missing, and rewrites it when
+what it lists changes. It rewrites `STATUS.md`, at the top of the notes folder, when something changes.
 
 ## The queue
 

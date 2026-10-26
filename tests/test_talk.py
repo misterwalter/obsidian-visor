@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """talk.py: the note's side of talking with an agent while it works."""
 
+import os
+import sys
 import unittest
 
-import talk
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+import talk  # noqa: E402
 
 NOTE = "Project: game\nPlan:\nMake the save system.\n"
 

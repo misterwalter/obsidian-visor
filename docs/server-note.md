@@ -1,4 +1,4 @@
-## `VISOR.md`: the server's own note
+# `VISOR.md`: the server's own note
 
 Beside `STATUS.md`, visor keeps `VISOR.md`. `STATUS.md` says what is running;
 `VISOR.md` says how the server is, and lets you steer it from the notes:
@@ -6,6 +6,7 @@ Beside `STATUS.md`, visor keeps `VISOR.md`. `STATUS.md` says what is running;
 - **Version:** the three newest commits it runs, the new ones waiting upstream
   (it looks every `Update check every:` seconds, auto-update on or off) and how
   the last update went.
+
 Each on/off setting is a single box: ticked is on, unticked is off.
 
 - **Auto-update** (ticked to begin with) and **Update now**, which pulls what

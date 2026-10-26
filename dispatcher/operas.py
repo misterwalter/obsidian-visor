@@ -15,7 +15,6 @@ their own conversations and the table's, and the rest once the game is over.
 import json
 import os
 import re
-import shutil
 import subprocess
 import time
 
@@ -26,7 +25,7 @@ import media
 import models
 import opera
 
-from dispatcher.notes import _changed, _stamp, copy_in, HERE, IDLE, move, slug, split_note, unflagged, write_file
+from dispatcher.notes import copy_in, HERE, IDLE, move, slug, split_note, unflagged, write_file
 
 ENGINE = os.path.join(HERE, "opera_engine.py")
 MAPS, TALK, NOTEBOOKS, HISTORY = "maps", "talk", "memory", "history.md"

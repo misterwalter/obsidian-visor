@@ -7,10 +7,13 @@
 import datetime
 import json
 import os
+import sys
 import tempfile
 import unittest
 
-import sources
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+import sources  # noqa: E402
 
 browse = sources.browse
 TEMPLATE = "## Morning\n\n{morning}\n\n## Gratitude\n\n{gratitude}\n\nMood:\n\n## Notes\n\n- \n"
