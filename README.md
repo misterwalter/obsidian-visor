@@ -1,103 +1,91 @@
 # obsidian-visor
 A local AI Code Advisor and AI generalist, controlled via Obsidian notes.
 
-## Setting up, running and shutting down
-
 Visor runs on a server. It takes task notes from a shared notes folder, runs a
 local model on each one inside a sandbox, and writes the answer back into the
-note. [docs/README.md](docs/README.md) describes all of it. This is the short
-version.
+note.
 
-### Setting up
+Real tasks, run through an off-the-shelf coding agent on a CPU-only server, to
+find out how much a local model can be trusted to do. Nothing here is a
+pipeline. It is the test that says what is worth building.
+
+The agent loop is off the shelf: [pi](https://github.com/earendil-works/pi),
+with any model Ollama runs. These scripts are the wrapper around it: a fresh copy of the project for every task, a sandbox around the
+agent, tests before and after, and a report.
+
+## Quick start
 
 On the server, as the account the agent will use, from a clone of this
 repository:
 
 ```bash
 mkdir -p ~/.config/visor
-cp examples/visor.conf ~/.config/visor/visor.conf
+cp examples/visor.conf ~/.config/visor/visor.conf    # then edit it
 ./install.sh
+sudo loginctl enable-linger AGENT_ACCOUNT            # once, as an administrator
 ```
 
-- `mkdir -p` makes the settings folder, without complaint if it exists.
-- `cp` puts the example settings where visor looks. Edit the copy: at the
-  least `tasks`, the notes folder, and one `[project ...]` section. It names
-  your projects, so it stays on the server and out of this repository.
-- `install.sh` registers the models whose weights are already on disk, then
-  enables and starts this account's services: the dispatcher
-  (`visor-dispatch`), the VPN tunnel (`visor-vpn`, only when its program and
-  settings are there) and a nightly Godot update. It says which it enabled,
-  and for any it did not, why. It downloads nothing and is safe to run again.
+[Setting up](docs/setting-up.md) says what each line does, and what to install
+first. After that there is nothing to start by hand: [Running](docs/running.md)
+says how to watch it and stop it.
 
-The models, the agent loop, Godot and the media tools are installs to approve
-one at a time: "Setting up" in [docs/README.md](docs/README.md) lists them.
+## Walls and doors, in brief
 
-One step needs an administrator, once:
+The words these docs use for the sandbox, and what each is:
 
-```bash
-sudo loginctl enable-linger AGENT_ACCOUNT
-```
+- **The wall** is the sandbox an agent runs in (`wall.sh`). It is made by
+  bubblewrap (`bwrap`), using Linux namespaces: the agent sees only the files
+  bound into it, under a generic account, and has a network of its own with
+  nothing on it. Nothing the agent runs can reach the internet, this machine's
+  services or your files, because inside the wall they are not there.
+- **A door** is one way through the wall, for one purpose. Each is a Unix
+  domain socket (a file that programs connect to) in a folder shown inside the
+  wall at `/run/visor/`, with a small program outside listening on it, in
+  `doors/`. The program reads each request, passes on what its purpose allows,
+  refuses the rest, and logs both outside the wall, where the agent cannot
+  alter the record. It works as an allowlisting proxy.
+- **The inner end** of a door is how it looks from inside: `inside/start-agent`
+  uses `socat` to show a socket as an ordinary address (the model at
+  `127.0.0.1:11434`, as Ollama usually is; the web as a proxy at
+  `127.0.0.1:3128`), so the agent's programs need no changes. The forum's,
+  Godot's and the media doors are reached through small commands visor puts
+  inside instead: `chan`, `gut-test`, `image`.
+- **The doors:** model (every run), net (`Web: yes`), chan (`Chan:`), media
+  (characters who may draw) and godot (Godot projects). Each is described in
+  [The sandbox](docs/sandbox.md) and in its own file.
+- **The self-check** (`inside/check-wall`) runs inside the wall before every
+  agent: it tries what must fail (writing outside the workspace, the network,
+  requests each door must refuse) and stops the run if any succeeds.
+- **Openings that are not doors**, with no program behind them: `/run/show` and
+  `/run/tell`, folders the agent writes into for you, and `/run/reading`, the
+  read-only copy a note's `Browse:` gives it.
 
-- Lets that account's services start when the server boots, with nobody
-  logged in. Without it they start only when the account logs in, and stop
-  when it logs out. `loginctl show-user AGENT_ACCOUNT -p Linger` shows whether
-  it is on.
+To learn more: bubblewrap's manual (`man bwrap`) and Linux namespaces
+(`man namespaces`) for the wall; Unix domain sockets (`man unix`) and `socat`
+for the doors.
 
-### Running
+## The documentation
 
-There is nothing to start by hand. The dispatcher is a service: it watches the
-notes folder, takes one note at a time, and keeps `STATUS.md` there up to date.
-
-```bash
-systemctl --user status visor-dispatch
-python3 dispatch.py status
-journalctl --user -u visor-dispatch -f
-```
-
-- `systemctl --user status` says whether the service is running, and since
-  when. `--user` means this account's own services, not the system's.
-- `dispatch.py status` prints what is running, what is waiting and what ran
-  last: the same as `STATUS.md`.
-- `journalctl -f` follows the dispatcher's log until Ctrl-C; `-u` names the
-  service. The same lines are kept in `~/.local/state/visor/dispatch.log`.
-
-In a shell entered by switching user, `systemctl --user` may say it cannot
-reach the bus. Run `export XDG_RUNTIME_DIR=/run/user/$(id -u)` first.
-
-It comes back by itself in three cases:
-
-- **The server restarts.** The services are enabled, so with lingering on
-  they start at boot. Three things outside visor must come back too: the model
-  server (`systemctl is-enabled ollama`), the notes folder if it is a mount
-  (a line in `/etc/fstab`), and whatever syncs your notes to the server.
-- **The dispatcher crashes.** systemd starts it again after a minute.
-- **This repository changes.** With `self_update = yes` in the settings, the
-  dispatcher pulls it while idle, runs `install.sh` and restarts itself.
-
-A run cut off by a restart is not resumed. Its note comes back to `output/`
-with a section saying it was interrupted; move it to `inbox/` to run it again.
-Notes still waiting in `inbox/` are taken as usual.
-
-### Shutting down
-
-```bash
-systemctl --user stop visor-dispatch
-```
-
-- Stops the dispatcher, and with it any run in progress. It starts again at
-  the next boot.
-- To let a run finish first, wait until `STATUS.md` says nothing is running.
-  To stop one run and keep what it has so far, drag its note out of
-  `working/`.
-
-```bash
-systemctl --user disable --now visor-dispatch visor-vpn godot-update.timer
-```
-
-- Turns visor off until you turn it back on. `disable` stops the services
-  starting at boot, and `--now` also stops them now.
-- `systemctl --user enable --now visor-dispatch visor-vpn godot-update.timer`
-  brings them back, as does `./install.sh`.
-
-Restarting or switching off the server needs no preparation beyond that:
-everything stops with it and comes back as described above.
+- [Setting up](docs/setting-up.md): the server, the models, the installs to
+  approve yourself, sharing the notes, and the web through a VPN.
+- [Running](docs/running.md): watching it, stopping it, and running one task by
+  hand.
+- [The dispatcher](docs/dispatcher.md): how a note becomes a run and a reply,
+  its lines, repeating notes, the queue, and talking with an agent while it works.
+- [VISOR.md](docs/server-note.md): the server's own note, to steer it from your
+  notes.
+- [Projects](docs/projects.md): making one from a note, its settings, and
+  folder projects.
+- [Browse](docs/browse.md): letting an agent read your journal, visor's logs,
+  and other folders.
+- [The forum for agents](docs/forum.md): agents and characters on the board.
+- [Chats](docs/chats.md), [Games](docs/games.md) and [Opera](docs/opera.md):
+  visor's characters, talking, playing a story, and playing each other.
+- [Pictures, voice and video](docs/media.md): the media jobs.
+- [Godot projects](docs/godot.md): what an agent building one has, and the tests.
+- [Results](docs/results.md): where a run's work and records go, and what can be
+  pushed.
+- [The sandbox](docs/sandbox.md): what the wall allows, the doors, and what it
+  does not do.
+- [Why it is set up this way](docs/harness.md): the agent loop on a CPU.
+- [What is where](docs/code.md): every file here, and visor's own tests.
