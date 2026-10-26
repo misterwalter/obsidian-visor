@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# The Godot class reference for the Godot installed here, short: signatures, properties, signals and
+# constants, exact for this version (godot/godot_doc.py says what each form prints).
+# Usage: godot-doc CLASS | godot-doc CLASS WORD | godot-doc WORD
+#
+# The reference is dumped by Godot itself (--doctool) once for each version, into
+# $VISOR_STATE/godot-doc/<version>, and read from there after.
+set -u
+here="$(dirname "$(realpath "$0")")"
+[ $# -ge 1 ] && [ $# -le 2 ] || { echo "usage: godot-doc CLASS | godot-doc CLASS WORD | godot-doc WORD" >&2; exit 2; }
+for word in "$@"; do
+  [[ "$word" =~ ^[A-Za-z0-9_@]+$ ]] || { echo "godot-doc: not a name: $word" >&2; exit 2; }
+done
+version="$(flatpak info --user org.godotengine.Godot 2> /dev/null | awk '$1 == "Version:" {print $2}')"
+[ -n "$version" ] || { echo "godot-doc: the Flatpak Godot (org.godotengine.Godot) is not installed for this account" >&2; exit 1; }
+docs="${VISOR_STATE:-$HOME/.local/state/visor}/godot-doc/$version"
+if [ ! -f "$docs/done" ]; then
+  rm -rf "$docs"; mkdir -p "$docs"
+  flatpak run --user --sandbox --filesystem="$docs" org.godotengine.Godot --headless --doctool "$docs" > "$docs/doctool.log" 2>&1
+  [ -n "$(find "$docs" -name 'Node.xml' -print -quit)" ] \
+    || { echo "godot-doc: Godot $version did not dump its class reference: $(tail -n 2 "$docs/doctool.log" | paste -sd' ' -)"; exit 1; }
+  touch "$docs/done"
+fi
+exec python3 "$here/../godot/godot_doc.py" "$docs" "$@"

@@ -1,0 +1,3 @@
+# Every text file is checked out with LF line ends, on every system. A script with a
+# CRLF line end, `#!/usr/bin/env bash\r`, fails on the server with "bad interpreter".
+* text=auto eol=lf

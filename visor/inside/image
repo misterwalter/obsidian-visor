@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Draw a picture, from inside the wall, through the media door. The answer gives its name
+# in a character's library at once; embed it in the reply as ![[name]]. It is drawn after
+# this turn, and appears where it is embedded when it is done.
+#
+#   image "PROMPT" [--as NAME] [--model NAME] [--size WxH] [--seed N] [--count N]
+#                  [--negative "WORDS"] [--quality fast|full] [--pose FILE] [--pose-strength 0.8]
+#   image --list [--as NAME]     the pictures already in the library
+#   image --models               the models there are, and who draws with what
+#
+# --count draws up to 8, each from the next seed. --pose names
+# a skeleton image in the library. --as says whose picture it is, when one writer plays
+# several characters; without it the picture is the speaker's own.
+set -u
+DOOR=/run/visor/media.sock
+[ -S "$DOOR" ] || { echo "image: nobody here may draw" >&2; exit 2; }
+request="$(python3 - "$@" <<'PY'
+import json, sys
+args = sys.argv[1:]
+keys = {"--as": "as", "--model": "model", "--size": "size", "--seed": "seed", "--count": "count",
+        "--negative": "negative", "--quality": "quality", "--pose": "pose", "--pose-strength": "pose strength",
+        "--steps": "steps"}
+req = {"kind": "image"}
+if not args:
+    sys.exit('image: say what to draw: image "a prompt" [--as NAME] [--model NAME] [--size WxH] [--seed N] '
+             '[--count N] [--negative "WORDS"] [--quality fast|full] [--pose FILE]; image --list; image --models')
+while args:
+    word = args.pop(0)
+    if word == "--list":
+        req["kind"] = "list"
+    elif word == "--models":
+        req["kind"] = "models"
+    elif word in keys:
+        if not args:
+            sys.exit("image: {} needs a value".format(word))
+        req[keys[word]] = args.pop(0)
+    elif word.startswith("--"):
+        sys.exit("image: unknown option: {}".format(word))
+    elif "prompt" not in req:
+        req["prompt"] = word
+    else:
+        sys.exit("image: one prompt, in quotes; this is a second: {}".format(word[:60]))
+if req["kind"] == "image" and not req.get("prompt"):
+    sys.exit("image: a prompt, in quotes")
+print(json.dumps(req))
+PY
+)" || exit 2
+case "$request" in *'"kind": "list"'*) kind=list ;; *) kind=other ;; esac
+printf '%s\n' "$request" | socat -t 7200 - UNIX-CONNECT:"$DOOR" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+if "models" in d:
+    print("\n".join(d["models"]))
+for m in d.get("images") or []:
+    if isinstance(m, str):
+        print(m)
+    else:
+        print("to be drawn: {}  embed it as ![[{}]]".format(m["image"], m["image"]))
+if d.get("error"):
+    print("image:", d["error"], file=sys.stderr); sys.exit(1)
+if sys.argv[1] == "list" and not d.get("images"):
+    print("(no pictures yet)")
+' "$kind"

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Check every script of the project (not addons/) in one start of Godot, and say each error once, a line
+# each: "res://scripts/x.gd:3: Parse Error: ...". The last line says how many were checked. Exit status
+# 0 when every one compiled.
+# Usage: godot-check-all <project_dir>
+#
+# The model door runs this whenever a script has changed since it last looked (model-door.py), and tells
+# the agent what no longer compiles.
+set -u
+here="$(dirname "$(realpath "$0")")"
+proj="$(realpath "${1:?project dir required}")"
+checker="$(realpath "$here/../godot/check_all.gd")"
+output="$(flatpak run --user --sandbox --filesystem="$proj" --filesystem="$checker:ro" \
+  org.godotengine.Godot --headless --path "$proj" -s "$checker" 2>&1)"
+status=$?
+# Godot says an error on one line and where it was on the next: one line for both, each said once.
+awk '
+  /^SCRIPT ERROR: / { error = substr($0, 15); next }
+  error != "" && /^ *at: .*\(res:\/\/[^)]*\)/ {
+    where = $0; sub(/.*\(/, "", where); sub(/\).*/, "", where)
+    if (where !~ /check_all\.gd/) { line = where ": " error; if (!seen[line]++) print line }
+    error = ""; next
+  }
+  /^CHECKED [0-9]+ scripts/ { verdict = $0 }
+  END { if (verdict != "") print verdict }
+' <<< "$output"
+if ! grep -qaE '^CHECKED [0-9]+ scripts' <<< "$output"; then
+  echo "godot-check-all: FAILED: Godot gave no verdict: $(tail -n 2 <<< "$output" | paste -sd' ' -)"
+  exit 1
+fi
+exit "$status"

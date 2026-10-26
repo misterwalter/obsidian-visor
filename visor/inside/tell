@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Tell the owner something while the run goes: it appears in their note at once, under
+# `## From the agent`. Their answer, if any, arrives as a message in the conversation.
+#
+#   tell "message"        or        echo "message" | tell
+#
+# Up to 20000 characters a message.
+set -u
+OUT=/run/tell
+LIMIT=20000
+[ -d "$OUT" ] && [ -w "$OUT" ] || { echo "tell: nothing can be told from this run" >&2; exit 2; }
+if [ $# -gt 0 ]; then text="$*"; else text="$(cat)"; fi
+[ -n "${text//[[:space:]]/}" ] || { echo "tell: say something: tell \"the message\"" >&2; exit 2; }
+[ "${#text}" -le "$LIMIT" ] || { echo "tell: that is over $LIMIT characters; keep it short, or show a file" >&2; exit 2; }
+name="$(date +%s%N)-$$.md"
+printf '%s\n' "$text" > "$OUT/.$name" && mv "$OUT/.$name" "$OUT/$name" \
+  && echo "told the owner; it is in their note now. Carry on." \
+  || { echo "tell: could not send it" >&2; exit 1; }

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Put files in front of the owner: each is copied out of the wall when the run ends,
+# into the owner's notes, and embedded in the reply.
+#
+#   show FILE...
+#
+# Pictures, video, audio, PDF and text: what the notes app shows. Each file up to
+# 50 MB. A file is copied as it is when `show` runs; showing it again after a change
+# shows the new one beside the old.
+set -u
+OUT=/run/show
+LIMIT=$((50 * 1024 * 1024))
+[ -d "$OUT" ] && [ -w "$OUT" ] || { echo "show: nothing can be shown from this run" >&2; exit 2; }
+[ $# -gt 0 ] || { echo "show: name the files to show: show out/frame-200.png [more files]" >&2; exit 2; }
+status=0
+for file in "$@"; do
+  if [ -L "$file" ] || [ ! -f "$file" ]; then
+    echo "show: not a file: $file" >&2; status=1; continue
+  fi
+  case "${file,,}" in
+    *.png|*.jpg|*.jpeg|*.gif|*.webp|*.mp4|*.webm|*.mov|*.mp3|*.wav|*.ogg|*.m4a|*.flac|*.pdf|*.md|*.txt|*.csv|*.json|*.log) ;;
+    *) echo "show: $file: only pictures, video, audio, PDF and text can be shown" >&2; status=1; continue ;;
+  esac
+  if [ "$(stat -c %s "$file")" -gt "$LIMIT" ]; then
+    echo "show: $file is over 50 MB" >&2; status=1; continue
+  fi
+  name="$(basename "$file")"; target="$OUT/$name"; n=2
+  while [ -e "$target" ]; do target="$OUT/${name%.*} $n.${name##*.}"; n=$((n + 1)); done
+  if cp -- "$file" "$target"; then
+    echo "shown: $(basename "$target") (in the owner's note when this run ends)"
+  else
+    echo "show: could not copy $file" >&2; status=1
+  fi
+done
+exit "$status"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Run one GDScript headless in the project, and print what it printed: a probe. The script
+# extends SceneTree and ends with quit(). Exit status is Godot's.
+# Usage: godot-run <file>
+set -u
+[ $# -eq 1 ] || { echo "usage: godot-run <file>, for example godot-run probes/player_speed.gd" >&2; exit 2; }
+exec "$(dirname "$(realpath "$0")")/door-request" "run $1"

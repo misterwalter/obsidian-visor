@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Run one GDScript headless in the project and print what it printed: a probe, to see how
+# something behaves instead of guessing. The script extends SceneTree (or MainLoop), as
+# Godot's -s wants, and ends with quit(). Exit status is Godot's.
+# Usage: godot-run <project_dir> <file>
+#
+# <file> may be given as res://probes/x.gd, as probes/x.gd, or as the full path of a file
+# inside the project. It runs in the same sandbox as the tests (godot-headless), for at most
+# VISOR_RUN_TIME seconds (120), and what it prints is cut to its first and last lines.
+set -u
+here="$(dirname "$(realpath "$0")")"
+proj="$(realpath "${1:?project dir required}")"; script="${2:?script required}"
+[ $# -eq 2 ] || { echo "usage: godot-run <project_dir> <file>" >&2; exit 2; }
+LIMIT="${VISOR_RUN_TIME:-120}"
+HEAD=80; TAIL=120
+
+# The path arrives from the agent. Reduce it to one relative to the project, then accept only
+# a plain path to a .gd file that stays inside.
+script="${script#res://}"; script="${script#"$proj"/}"
+[[ "$script" =~ ^[A-Za-z0-9_./-]+\.gd$ ]] && [[ "$script" != /* ]] && [[ "/$script/" != *"/../"* ]] \
+  || { echo "godot-run: not a .gd script inside the project: $2" >&2; exit 2; }
+[ -f "$proj/$script" ] || { echo "godot-run: there is no $script in the project" >&2; exit 2; }
+
+output="$(timeout --kill-after=10 "$LIMIT" "$here/godot-headless" "$proj" -s "res://$script" 2>&1)"
+status=$?
+lines="$(wc -l <<< "$output")"
+if [ "$lines" -gt $((HEAD + TAIL)) ]; then
+  head -n "$HEAD" <<< "$output"
+  echo "... ($((lines - HEAD - TAIL)) lines left out: print less, or only what you need to know) ..."
+  tail -n "$TAIL" <<< "$output"
+else
+  printf '%s\n' "$output"
+fi
+if [ "$status" = 124 ] || [ "$status" = 137 ]; then
+  echo "godot-run: STOPPED after ${LIMIT} seconds. A probe must end itself: call quit() when it has printed what"
+  echo "godot-run: it needs, for example at the end of _initialize()."
+fi
+exit "$status"

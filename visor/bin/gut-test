@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Run the project's GUT suite headless, using its own .gutconfig.json.
+# Exit status 0 means tests ran and every one passed.
+# Usage: gut-test <project_dir> [--only FILE | --test NAME]
+#
+# --only FILE   run only the test files whose name contains FILE
+# --test NAME   run only the test functions whose name contains NAME
+set -u
+here="$(dirname "$(realpath "$0")")"
+proj="${1:?project dir required}"; shift
+select=()
+if [ $# -gt 0 ]; then
+  case "$1" in
+    --only) flag="-gselect" ;;
+    --test) flag="-gunit_test_name" ;;
+    *) echo "gut-test: unknown option: $1" >&2; exit 2 ;;
+  esac
+  name="${2:?$1 needs a name}"
+  # The name arrives from the agent. Letters, digits, dot, dash and underscore only.
+  [[ "$name" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "gut-test: not a name: $name" >&2; exit 2; }
+  select=("$flag=$name")
+fi
+
+# What GUT needs, said plainly before Godot is started: its own errors about a missing script say little.
+if [ ! -f "$proj/addons/gut/gut_cmdln.gd" ]; then
+  echo "gut-test: FAILED: GUT is not in this project's addons/gut/. Put GUT 9.x, the release for Godot 4"
+  echo "gut-test: (github.com/bitwes/Gut), in addons/gut/ and commit it."
+  exit 1
+fi
+if [ ! -f "$proj/.gutconfig.json" ]; then
+  echo "gut-test: FAILED: the project has no .gutconfig.json, so GUT has no folders to look for tests in."
+  echo 'gut-test: Add one at its top, such as {"dirs": ["res://test/"], "include_subdirs": true}.'
+  exit 1
+fi
+if ! flatpak info --user org.godotengine.Godot > /dev/null 2>&1; then
+  echo "gut-test: FAILED: the Flatpak Godot (org.godotengine.Godot) is not installed for this account on the server:"
+  echo "gut-test: flatpak install --user flathub org.godotengine.Godot"
+  exit 1
+fi
+
+output="$("$here/godot-headless" "$proj" -s res://addons/gut/gut_cmdln.gd -gexit "${select[@]}" 2>&1)"
+status=$?
+printf '%s\n' "$output"
+# GUT exits 0 when a name matches no test file, which would read as a pass.
+if [ "$status" = 0 ] && ! grep -qaE '^Tests +[1-9]' <<< "$output"; then
+  echo "gut-test: FAILED: no tests ran. --only takes part of a test FILE's name;"
+  echo "gut-test: --test takes part of a test FUNCTION's name."
+  exit 1
+fi
+exit "$status"

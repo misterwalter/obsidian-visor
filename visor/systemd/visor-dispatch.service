@@ -1,0 +1,12 @@
+[Unit]
+Description=Visor: turn task notes into runs, and runs into replies
+
+[Service]
+# install.sh writes the real path in place of @VISOR@.
+ExecStart=/usr/bin/python3 @VISOR@/dispatch.py serve
+Environment=PATH=%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=default.target

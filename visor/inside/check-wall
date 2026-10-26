@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Prove the wall from the inside, before the agent is let in. Prints one line per
+# check and exits 1 if any failed.
+#
+#   check-wall <rw|ro> <yes|no> <workspace> <path that must be hidden>...
+#
+# yes | no   whether the run was given the web, and so a net door
+set -u
+ACCESS="${1:?rw or ro required}"; WEB="${2:?yes or no required: whether the run has the web}"
+WORK="${3:?workspace required}"; shift 3
+failed=0
+ok()   { echo "ok    $1"; }
+fail() { echo "FAIL  $1"; failed=1; }
+
+can_write() { local probe="$1/.wall-probe-$$"; touch "$probe" 2>/dev/null && rm -f "$probe"; }
+
+# Status of one HTTP request to the model's address, or "none" if nothing answered.
+http_status() {
+  python3 - "$1" "$2" <<'EOF' 2>/dev/null || echo none
+import http.client, sys
+method, path = sys.argv[1], sys.argv[2]
+connection = http.client.HTTPConnection("127.0.0.1", 11434, timeout=30)
+connection.request(method, path, body="{}" if method == "POST" else None,
+                   headers={"Content-Type": "application/json"})
+print(connection.getresponse().status)
+EOF
+}
+
+# Status of one request to the net door, asked as a web proxy is asked, or "none"
+# if nothing answered.
+proxy_status() {
+  python3 - "$1" "$2" <<'EOF' 2>/dev/null || echo none
+import socket, sys
+method, target = sys.argv[1], sys.argv[2]
+with socket.create_connection(("127.0.0.1", 3128), timeout=90) as door:
+    door.sendall(f"{method} {target} HTTP/1.1\r\nHost: {target}\r\n\r\n".encode())
+    print(door.recv(64).split()[1].decode())
+EOF
+}
+
+for path in "$@"; do
+  if [ -e "$path" ]; then fail "visible, must be hidden: $path"; else ok "hidden: $path"; fi
+done
+
+if [ "$ACCESS" = rw ]; then
+  if can_write "$WORK"; then ok "workspace is writable"; else fail "workspace is not writable"; fi
+else
+  if can_write "$WORK"; then fail "workspace is writable in a plan-only round"; else ok "workspace is read-only"; fi
+fi
+if can_write "$WORK/.git"; then fail ".git is writable"; else ok ".git is read-only"; fi
+if can_write /usr; then fail "/usr is writable"; else ok "/usr is read-only"; fi
+if can_write /etc; then fail "/etc is writable"; else ok "/etc is read-only"; fi
+
+accounts="$(wc -l < /etc/passwd)"
+if [ "$accounts" -le 3 ]; then ok "account list holds $accounts entries"; else fail "account list holds $accounts entries"; fi
+
+if timeout 5 bash -c 'echo > /dev/tcp/1.1.1.1/443' 2>/dev/null; then fail "the network is open"; else ok "the network is closed"; fi
+
+if [ "$WEB" = yes ]; then
+  # Connecting sends nothing. It shows that the tunnel carries a connection out.
+  status="$(proxy_status CONNECT 1.1.1.1:443)"
+  if [ "$status" = 200 ]; then ok "net door reaches the internet through the tunnel"; else fail "net door: no way out through the VPN tunnel (got $status, expected 200)"; fi
+  status="$(proxy_status CONNECT 127.0.0.1:11434)"
+  if [ "$status" = 403 ]; then ok "net door refuses this machine"; else fail "net door: a request for this machine got $status, expected 403"; fi
+elif [ -e /run/visor/net.sock ]; then
+  fail "there is a net door, and this run was not given the web"
+else
+  ok "no net door"
+fi
+# The chan door, when there is one, refuses what is not the forum's own API, and a
+# reading run's door refuses a post. It is not knocked on for a real read: that would
+# reach the forum before the agent has started.
+if [ -e /run/visor/chan.sock ]; then
+  status="$(curl -s -o /dev/null -w '%{http_code}' --unix-socket /run/visor/chan.sock http://chan/api/mod/queue 2>/dev/null || echo none)"
+  if [ "$status" = 403 ]; then ok "chan door refuses moderation calls"; else fail "chan door: a moderation call got $status, expected 403"; fi
+  status="$(curl -s -o /dev/null -w '%{http_code}' --unix-socket /run/visor/chan.sock -X DELETE http://chan/api/posts/1 2>/dev/null || echo none)"
+  if [ "$status" = 403 ]; then ok "chan door refuses deleting"; else fail "chan door: a delete got $status, expected 403"; fi
+else
+  ok "no chan door"
+fi
+
+# What the owner lets the run read is a copy, and the agent can change nothing in it: not a folder, not a file.
+if [ -e /run/reading ]; then
+  writable=""
+  for folder in /run/reading /run/reading/*/; do
+    can_write "$folder" && writable="$writable $folder"
+  done
+  some="$(find /run/reading -type f -print -quit 2>/dev/null)"
+  if [ -n "$some" ] && { : >> "$some"; } 2>/dev/null; then writable="$writable $some"; fi
+  if [ -n "$some" ] && rm -f "$some" 2>/dev/null && [ ! -e "$some" ]; then writable="$writable (deleted) $some"; fi
+  if [ -z "$writable" ]; then ok "what the run may read is read-only"; else fail "what the run may read can be changed:$writable"; fi
+fi
+
+# An empty chat request is one the model server rejects without loading a model.
+status="$(http_status POST /v1/chat/completions)"
+if [ "$status" = 400 ]; then ok "model door passes chat requests"; else fail "model door: chat request got $status, expected 400"; fi
+status="$(http_status GET /api/tags)"
+if [ "$status" = 403 ]; then ok "model door refuses everything else"; else fail "model door: GET /api/tags got $status, expected 403"; fi
+
+answer="$("$(dirname "$(realpath "$0")")/door-request" bogus 2>&1)"; status=$?
+if [ "$status" = 2 ] && [[ "$answer" == *"accepts only"* ]]; then
+  ok "test door refuses unknown requests"
+else
+  fail "test door: unknown request got status $status: $answer"
+fi
+
+[ "$failed" = 0 ] && echo "WALL_OK"
+exit "$failed"

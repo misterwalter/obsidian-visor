@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# The Godot class reference for the Godot this project runs on, short: one line a member.
+#   godot-doc Node2D            its own methods, properties, signals and constants, and what it inherits
+#   godot-doc Node2D look       the members whose name holds "look", in Node2D and what it inherits
+#   godot-doc look_at           the classes that have a member called look_at
+set -u
+[ $# -ge 1 ] && [ $# -le 2 ] || { echo "usage: godot-doc CLASS | godot-doc CLASS WORD | godot-doc WORD" >&2; exit 2; }
+exec "$(dirname "$(realpath "$0")")/door-request" "doc $*"

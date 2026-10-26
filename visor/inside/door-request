@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Send one request through the test door and relay the answer.
+# Exit status is the one the door reports; 3 if the door gave none.
+# Usage: door-request <request>
+#
+# -t is how long socat waits for the answer after sending the request. The
+# listening end in visor-run.sh needs the same allowance.
+set -u
+printf '%s\n' "${1:?request required}" \
+  | socat -t 3600 - UNIX-CONNECT:/run/visor/godot.sock \
+  | awk '
+      /^VISOR_EXIT [0-9]+$/ { status = $2; next }
+      { print }
+      END {
+        if (status == "") { print "the test door gave no result" > "/dev/stderr"; exit 3 }
+        exit status
+      }'
