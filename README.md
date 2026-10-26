@@ -3,10 +3,10 @@ A local AI Code Advisor and AI generalist, controlled via Obsidian notes.
 
 ## Setting up, running and shutting down
 
-`visor/` is the part that runs on a server. It takes task notes from a shared
-notes folder, runs a local model on each one inside a sandbox, and writes the
-answer back into the note. [visor/README.md](visor/README.md) describes all of
-it. This is the short version.
+Visor runs on a server. It takes task notes from a shared notes folder, runs a
+local model on each one inside a sandbox, and writes the answer back into the
+note. [docs/README.md](docs/README.md) describes all of it. This is the short
+version.
 
 ### Setting up
 
@@ -15,8 +15,8 @@ repository:
 
 ```bash
 mkdir -p ~/.config/visor
-cp visor/visor.conf.example ~/.config/visor/visor.conf
-./visor/install.sh
+cp examples/visor.conf ~/.config/visor/visor.conf
+./install.sh
 ```
 
 - `mkdir -p` makes the settings folder, without complaint if it exists.
@@ -30,7 +30,7 @@ cp visor/visor.conf.example ~/.config/visor/visor.conf
   and for any it did not, why. It downloads nothing and is safe to run again.
 
 The models, the agent loop, Godot and the media tools are installs to approve
-one at a time: "Setting up" in [visor/README.md](visor/README.md) lists them.
+one at a time: "Setting up" in [docs/README.md](docs/README.md) lists them.
 
 One step needs an administrator, once:
 
@@ -50,7 +50,7 @@ notes folder, takes one note at a time, and keeps `STATUS.md` there up to date.
 
 ```bash
 systemctl --user status visor-dispatch
-python3 visor/dispatch.py status
+python3 dispatch.py status
 journalctl --user -u visor-dispatch -f
 ```
 
@@ -97,7 +97,7 @@ systemctl --user disable --now visor-dispatch visor-vpn godot-update.timer
 - Turns visor off until you turn it back on. `disable` stops the services
   starting at boot, and `--now` also stops them now.
 - `systemctl --user enable --now visor-dispatch visor-vpn godot-update.timer`
-  brings them back, as does `./visor/install.sh`.
+  brings them back, as does `./install.sh`.
 
 Restarting or switching off the server needs no preparation beyond that:
 everything stops with it and comes back as described above.

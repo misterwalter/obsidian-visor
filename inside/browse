@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+"""browse: read what the owner lets this run read, a day at a time.
+
+    browse                                   what this run may read, and what each source is
+    browse SOURCE                            the months it has entries in
+    browse SOURCE 2024-03-05                 one day
+    browse SOURCE 2024-03                    a month (2024: a year)
+    browse SOURCE 2024-03-01 to 2024-03-14   from one to the other
+    browse SOURCE last 7 days                (or weeks, months; today, yesterday)
+    browse SOURCE 2024-03-05 part 2          the rest of a day too long for one reply
+    browse SOURCE list [when]                which days have entries, and how much is in each
+    browse SOURCE search WORDS [when]        lines holding all the words, each with its date
+
+Each source is a folder under /run/reading, copied there for this run and read-only. A file's
+date is the date in its name (2024-03-05.md); else each line starting with a date begins that
+day, and the lines after it belong to it (a log); else the day the file last changed.
+
+What a reply leaves out, it says. Headings and fields with nothing under them (a template's
+unfilled parts) are left out of a day. In a source of dated notes, a line found in most of them
+is the template's: search passes over it, and the words counted are the owner's own. A reply
+holds about a quarter of the model's context; a longer one stops at the end of a day and says
+the command for the rest.
+
+sources.py loads this file too, for the same reading of dates outside the wall.
+"""
+
+import calendar
+import datetime
+import json
+import os
+import re
+import sys
+
+ROOT = os.environ.get("VISOR_READING", "/run/reading")
+WINDOW = os.environ.get("VISOR_WINDOW", "/run/visor/window")
+NAMED = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
+LINE_DATE = re.compile(r"^[\s#>*_\[(-]*(\d{4})-(\d{2})-(\d{2})(?!\d)")
+HEADING = re.compile(r"^(#{1,6})\s+\S")
+# A field with nothing after it: `Mood:`, `- Mood:`, `mood::`.
+LABEL = re.compile(r"^\s*(?:[-*+]\s+)?[^\s:#>`|][^:]{0,60}::?\s*$")
+# A list item or a box with nothing in it.
+EMPTY_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]?\])?\s*$")
+FENCE = re.compile(r"^\s*(```|~~~)")
+WIDTH = 240        # a search result's line, at most
+TEMPLATE_FROM = 8  # dated notes a source needs before a line in most of them counts as the template's
+BY_DAY_UP_TO = 92  # a list over more days than this is by month
+
+
+def date_in(text, pattern=NAMED):
+    found = pattern.search(text) if pattern is NAMED else pattern.match(text)
+    if not found:
+        return None
+    try:
+        return datetime.date(*(int(g) for g in found.groups()))
+    except ValueError:
+        return None
+
+
+def changed_on(path):
+    return datetime.date.fromtimestamp(os.path.getmtime(path))
+
+
+def read_text(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def pieces(path, rel):
+    """A file as (date, rel, text, by name): one piece for a file with a date in its name, one a day
+    for a log, or one on the day it changed."""
+    named = date_in(os.path.basename(rel))
+    text = read_text(path)
+    if named:
+        return [(named, rel, text, True)]
+    days, order, day = {}, [], None
+    for line in text.splitlines(keepends=True):
+        day = date_in(line, LINE_DATE) or day
+        key = day or "before"
+        if key not in days:
+            days[key] = []
+            order.append(key)
+        days[key].append(line)
+    if order == ["before"]:
+        return [(changed_on(path), rel, text, False)]
+    if "before" in days:
+        # Lines before the first date belong to it.
+        first = next(k for k in order if k != "before")
+        days[first] = days.pop("before") + days[first]
+        order.remove("before")
+    return [(d, rel, "".join(days[d]), False) for d in order]
+
+
+def files(folder):
+    """Every file under a folder, as (path, path from the folder), in order; hidden ones passed over."""
+    found = []
+    for top, dirs, names in os.walk(folder):
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        for name in sorted(names):
+            if not name.startswith("."):
+                path = os.path.join(top, name)
+                found.append((path, os.path.relpath(path, folder)))
+    return found
+
+
+def without_empty_parts(text):
+    """The text without headings and fields that have nothing under them, nor empty list items and
+    boxes: what a template leaves where nothing was written. Returns (text, lines left out)."""
+    lines = text.split("\n")
+    fenced, keep = False, []
+    for line in lines:
+        if FENCE.match(line):
+            fenced = not fenced
+        keep.append((line, fenced or FENCE.match(line) is not None))
+    dropped = 0
+    out = []
+    for line, code in keep:
+        if not code and EMPTY_ITEM.match(line):
+            dropped += 1
+            continue
+        out.append((line, code))
+
+    def level(line, code):
+        if code:
+            return None
+        heading = HEADING.match(line)
+        if heading:
+            return len(heading.group(1))
+        return 7 if LABEL.match(line) else None
+
+    changed = True
+    while changed:
+        changed = False
+        for i, (line, code) in enumerate(out):
+            mine = level(line, code)
+            if mine is None:
+                continue
+            j = i + 1
+            while j < len(out) and not out[j][0].strip():
+                j += 1
+            following = level(*out[j]) if j < len(out) else 0
+            if j == len(out) or (following is not None and (following <= mine or mine == 7)):
+                del out[i]
+                dropped += 1
+                changed = True
+                break
+    text = "\n".join(line for line, _ in out)
+    text = re.sub(r"\A---\s*\n---\s*\n", "", text)  # frontmatter with nothing left in it
+    return re.sub(r"\n{3,}", "\n\n", text).strip("\n"), dropped
+
+
+def words(text, template=frozenset()):
+    return sum(len(line.split()) for line in text.splitlines() if line.strip() not in template)
+
+
+class Source:
+    def __init__(self, name, folder, description):
+        self.name, self.folder, self.description = name, folder, description
+        self.days = {}
+        named = []
+        for path, rel in files(folder):
+            for day, rel_, text, by_name in pieces(path, rel):
+                if by_name:
+                    named.append(text)  # as written, empty parts and all: the template shows whole
+                if rel_.lower().endswith(".md"):
+                    text, dropped = without_empty_parts(text)
+                else:
+                    dropped = 0
+                self.days.setdefault(day, []).append((rel_, text, dropped))
+        # The template: a line in most of the dated notes, once there are enough to tell.
+        self.template = frozenset()
+        if len(named) >= TEMPLATE_FROM:
+            counts = {}
+            for text in named:
+                for line in {line.strip() for line in text.splitlines() if len(line.strip()) >= 3}:
+                    counts[line] = counts.get(line, 0) + 1
+            self.template = frozenset(line for line, n in counts.items() if n > len(named) / 2)
+
+    def label(self, what):
+        return f"== {self.name}: {self.description} · {what} =="
+
+    def words_on(self, day):
+        return sum(words(text, self.template) for _, text, _ in self.days.get(day, []))
+
+    def span(self):
+        days = sorted(self.days)
+        return (days[0], days[-1]) if days else (None, None)
+
+
+# ── When: a day, a month, a year, a range, or the last few days ─────────────────────────────
+
+def span_of(word, today):
+    word = word.lower()
+    if word == "today":
+        return today, today
+    if word == "yesterday":
+        day = today - datetime.timedelta(days=1)
+        return day, day
+    found = re.fullmatch(r"(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?", word)
+    if not found:
+        return None
+    year, month, day = (int(g) if g else None for g in found.groups())
+    try:
+        if day:
+            one = datetime.date(year, month, day)
+            return one, one
+        if month:
+            return datetime.date(year, month, 1), datetime.date(year, month, calendar.monthrange(year, month)[1])
+        return datetime.date(year, 1, 1), datetime.date(year, 12, 31)
+    except ValueError:
+        return None
+
+
+def when(words_, today):
+    """The days words name, as (first, last); (None, None) for no words, all of them; None if the
+    words name no days."""
+    said = " ".join(words_).strip().lower().replace("..", " to ")
+    if said in ("", "all"):
+        return None, None
+    last = re.fullmatch(r"(?:the\s+)?(?:last|past)\s+(\d+)\s+(day|week|month|year)s?", said)
+    if last:
+        n, unit = int(last.group(1)), last.group(2)
+        days = {"day": n, "week": 7 * n, "month": 31 * n, "year": 366 * n}[unit]
+        return today - datetime.timedelta(days=max(days, 1) - 1), today
+    between = re.fullmatch(r"(?:from\s+)?(\S+)\s+(?:to|until|through|-)\s+(\S+)", said)
+    if between:
+        start, end = span_of(between.group(1), today), span_of(between.group(2), today)
+        if not (start and end) or start[0] > end[1]:
+            return None
+        return start[0], end[1]
+    if " " in said:
+        return None
+    return span_of(said, today)
+
+
+def said_of(first, last):
+    if first is None:
+        return "everything"
+    return first.isoformat() if first == last else f"{first.isoformat()} to {last.isoformat()}"
+
+
+WHEN_HELP = ("Say when as a day (2024-03-05), a month (2024-03), a year (2024), a range (2024-03-01 to "
+             "2024-03-14), or the last few days (last 7 days; also weeks, months; today, yesterday).")
+
+
+# ── What a reply holds ──────────────────────────────────────────────────────────────────────
+
+def budget():
+    """Characters a reply may hold: about a quarter of the model's context, at four characters a token."""
+    try:
+        with open(WINDOW) as f:
+            tokens = int(f.read().strip())
+    except (OSError, ValueError):
+        tokens = 16384
+    return max(4000, tokens)
+
+
+def weekday(day):
+    return day.strftime("%A")
+
+
+def a_day(source, day):
+    """One day of a source, whole, as the reply shows it."""
+    entries = source.days[day]
+    dropped = sum(n for _, _, n in entries)
+    head = source.label(f"{day.isoformat()}, {weekday(day)} · {source.words_on(day):,} words")
+    blocks = [head]
+    if dropped:
+        blocks.append(f"({dropped} empty heading{'s' if dropped != 1 else ''} and fields left out: a template's "
+                      "unfilled parts.)")
+    for rel, text, _ in entries:
+        blocks.append(f"-- {rel} --\n{text.strip() or '(empty)'}")
+    return "\n\n".join(blocks) + "\n"
+
+
+def parts_of(text, size):
+    """A text in parts of about size characters, split between lines."""
+    parts, current = [], ""
+    for line in text.splitlines(keepends=True):
+        while len(line) > size:
+            if current:
+                parts.append(current)
+                current = ""
+            parts.append(line[:size])
+            line = line[size:]
+        if len(current) + len(line) > size and current:
+            parts.append(current)
+            current = ""
+        current += line
+    if current or not parts:
+        parts.append(current)
+    return parts
+
+
+def show_days(source, first, last, part=None):
+    days = [d for d in sorted(source.days) if (first is None or d >= first) and (last is None or d <= last)]
+    if not days:
+        start, end = source.span()
+        has = f"It has entries from {start} to {end}." if start else "It has nothing in it."
+        return f"Nothing in {source.name} for {said_of(first, last)}. {has}\n"
+    room = budget()
+    if part is not None:
+        if len(days) != 1:
+            return "A part is of one day: browse SOURCE 2024-03-05 part 2.\n"
+        pieces_ = parts_of(a_day(source, days[0]), room)
+        if not 1 <= part <= len(pieces_):
+            return f"{days[0]} has {len(pieces_)} part{'s' if len(pieces_) != 1 else ''}.\n"
+        return (pieces_[part - 1] + "\n" + (f"Part {part} of {len(pieces_)}." + (
+            f" Next: browse {source.name} {days[0]} part {part + 1}" if part < len(pieces_) else " That is the end of the day.")) + "\n")
+    out, used = [], 0
+    for i, day in enumerate(days):
+        text = a_day(source, day)
+        if used + len(text) > room:
+            if not out:
+                pieces_ = parts_of(text, room)
+                return (pieces_[0] + f"\nThis day is long: part 1 of {len(pieces_)}. Next: browse {source.name} "
+                        f"{day} part 2" + (f"\nThe days after it: browse {source.name} {days[i + 1]} to {days[-1]}"
+                                          if i + 1 < len(days) else "") + "\n")
+            out.append(f"Cut off after {days[i - 1]}, to keep this reply to about {room:,} characters. For the rest: "
+                       f"browse {source.name} {day}" + (f" to {days[-1]}" if day != days[-1] else ""))
+            break
+        out.append(text)
+        used += len(text)
+    return "\n".join(out) + ("\n" if not out[-1].endswith("\n") else "")
+
+
+def show_list(source, first, last):
+    days = [d for d in sorted(source.days) if (first is None or d >= first) and (last is None or d <= last)]
+    if not days:
+        start, end = source.span()
+        return f"Nothing in {source.name} for {said_of(first, last)}." + (
+            f" It has entries from {start} to {end}." if start else "") + "\n"
+    head = source.label(f"{len(days):,} day{'s' if len(days) != 1 else ''} with entries, {days[0]} to {days[-1]}")
+    lines = [head]
+    if source.template:
+        lines.append("(Words counted are what was written, not the template's.)")
+    if (days[-1] - days[0]).days < BY_DAY_UP_TO:
+        lines += [f"{d}  {d.strftime('%a')}  {source.words_on(d):>7,} words" for d in days]
+        lines.append(f"Read a day: browse {source.name} {days[-1]}")
+    else:
+        months = {}
+        for d in days:
+            n, w = months.get((d.year, d.month), (0, 0))
+            months[(d.year, d.month)] = (n + 1, w + source.words_on(d))
+        lines += [f"{y}-{m:02d}  {n:>3} day{'s' if n != 1 else ' '}  {w:>9,} words" for (y, m), (n, w) in months.items()]
+        y, m = max(months)
+        lines.append(f"The days of a month: browse {source.name} list {y}-{m:02d}. Read a month: browse {source.name} {y}-{m:02d}")
+    return "\n".join(lines) + "\n"
+
+
+def show_search(source, wanted, first, last):
+    terms = [w.lower() for w in wanted]
+    found, in_template = [], 0
+    for day in sorted(source.days):
+        if (first and day < first) or (last and day > last):
+            continue
+        for rel, text, _ in source.days[day]:
+            lines = text.splitlines()
+            for i, line in enumerate(lines):
+                if not all(t in line.lower() for t in terms):
+                    continue
+                if line.strip() in source.template:
+                    in_template += 1
+                    continue
+                shown = line.strip()
+                if HEADING.match(line):
+                    # A heading brings the first lines under it.
+                    under = [l.strip() for l in lines[i + 1:i + 6] if l.strip()][:3]
+                    shown += "".join(f"\n            {l[:WIDTH]}" for l in under)
+                found.append((day, rel, shown if len(shown) <= WIDTH or "\n" in shown else shown[:WIDTH] + " …"))
+    quoted = '"' + " ".join(wanted) + '"'
+    where = "" if first is None else f", {said_of(first, last)}"
+    if not found:
+        return (f"{quoted} is not in {source.name}{where}." + (
+            f" It is in {in_template} line{'s' if in_template != 1 else ''} of the template, found on most days, "
+            "which search passes over." if in_template else "") + "\n")
+    days = len({d for d, _, _ in found})
+    head = source.label(f"{quoted} found on {days:,} day{'s' if days != 1 else ''}, {len(found):,} line{'s' if len(found) != 1 else ''}{where}")
+    room, shown, used = budget(), [], 0
+    for day, rel, line in reversed(found):  # the newest first, while they fit
+        text = f"{day}  {line}"
+        if used + len(text) > room and shown:
+            break
+        shown.append(text)
+        used += len(text) + 1
+    lines = [head]
+    if in_template:
+        lines.append(f"({in_template} line{'s' if in_template != 1 else ''} of the template, found on most days, passed over.)")
+    lines += list(reversed(shown))
+    if len(shown) < len(found):
+        lines.append(f"Showing the newest {len(shown)} of {len(found)}. For older ones, narrow it: browse {source.name} "
+                     f"search {' '.join(wanted)} {found[0][0].year}")
+    lines.append(f"Read a whole day: browse {source.name} {found[-1][0]}")
+    return "\n".join(lines) + "\n"
+
+
+# ── The command ─────────────────────────────────────────────────────────────────────────────
+
+def described():
+    try:
+        with open(os.path.join(ROOT, ".sources.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def sources_said(told):
+    lines = ["What this run may read. Nothing in it can be changed.", ""]
+    for name, description in told.items():
+        lines.append(f"- {name}: {description}")
+    lines += ["", "Start with: browse SOURCE (its months), browse SOURCE list 2024-03 (its days), "
+              "browse SOURCE search WORDS, browse SOURCE 2024-03-05 (a day)."]
+    return "\n".join(lines) + "\n"
+
+
+def main(argv, today=None):
+    today = today or datetime.date.today()
+    told = described()
+    if not told:
+        return "browse: this run was given nothing to read.\n", 2
+    if not argv or argv[0].lower() in ("sources", "help", "--help", "-h"):
+        return sources_said(told), 0
+    name = argv[0].lower()
+    if name not in told or not os.path.isdir(os.path.join(ROOT, name)):
+        return f"browse: there is no source called {argv[0]}.\n\n" + sources_said(told), 2
+    source = Source(name, os.path.join(ROOT, name), told[name])
+    rest = argv[1:]
+    if not rest:
+        return show_list(source, None, None), 0
+    command = rest[0].lower()
+    if command == "list":
+        span = when(rest[1:], today)
+        if span is None:
+            return f"browse: {' '.join(rest[1:])} names no days. {WHEN_HELP}\n", 2
+        return show_list(source, *span), 0
+    if command == "search":
+        wanted, span = rest[1:], (None, None)
+        for cut in range(1, len(wanted)):
+            tail = when(wanted[cut:], today)
+            if tail is not None and tail != (None, None):
+                wanted, span = wanted[:cut], tail
+                break
+        wanted = [w for w in " ".join(wanted).split() if w]
+        if not wanted:
+            return f"browse: say what to look for: browse {name} search lisbon 2023\n", 2
+        return show_search(source, wanted, *span), 0
+    part = None
+    if len(rest) >= 3 and rest[-2].lower() == "part" and rest[-1].isdigit():
+        part, rest = int(rest[-1]), rest[:-2]
+    span = when(rest, today)
+    if span is None or span == (None, None):
+        return f"browse: {' '.join(rest)} names no days. {WHEN_HELP}\n", 2
+    return show_days(source, *span, part=part), 0
+
+
+if __name__ == "__main__":
+    said, status = main(sys.argv[1:])
+    (sys.stdout if status == 0 else sys.stderr).write(said)
+    sys.exit(status)
