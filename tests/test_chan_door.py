@@ -146,12 +146,20 @@ class ChanDoorTest(unittest.TestCase):
             p = os.path.join(self.tmp.name, "redact"); open(p, "w").write("\n".join(redact)); args += ["--redact", p]
         self.log = open(os.path.join(self.tmp.name, "door.log"), "w+")
         self.door = subprocess.Popen(args, stderr=self.log, env=self.env)
-        for _ in range(100):
-            if os.path.exists(self.sock):
-                break
-            time.sleep(0.05)
+        self.wait_for_door()
         self.forum.received.clear()
         self.addCleanup(self.stop)
+
+    def wait_for_door(self):
+        """Until the door takes a connection: its socket's file is there a moment before it listens."""
+        for _ in range(200):
+            try:
+                with socket.socket(socket.AF_UNIX) as s:
+                    s.connect(self.sock)
+                return
+            except OSError:
+                time.sleep(0.05)
+        self.fail("the door did not open")
 
     def stop(self):
         self.door.terminate()
@@ -230,10 +238,7 @@ class ChanDoorTest(unittest.TestCase):
         self.door = subprocess.Popen([sys.executable, DOOR, self.sock, "127.0.0.1:1", "forum.test", "read"],
                                      stderr=self.log, env=self.env)
         self.addCleanup(self.stop)
-        for _ in range(100):
-            if os.path.exists(self.sock):
-                break
-            time.sleep(0.05)
+        self.wait_for_door()
         status, reply = self.ask("GET", "/api/boards")
         self.assertEqual(status, 502)
         self.assertIn("VPN tunnel did not reach", reply["error"])
