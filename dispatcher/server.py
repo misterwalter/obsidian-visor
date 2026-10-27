@@ -443,13 +443,18 @@ class Server:
         lines = [f"Checked {_stamp()}.", ""]
         lines.append(f"- Ollama, at {self.ollama}: " + ("answering" if self._in_ollama() is not None else
                                                        "**not answering**. Start it: `systemctl start ollama`"))
+        # What uses the card, tool by tool, and for a tool that does not, why.
         drawn = media.card(self.media)
-        if drawn and drawn[0] == "card":
-            lines.append(f"- Graphics card: {drawn[1]}. Ollama puts language models on it by itself, and the image "
-                         "tools draw on it")
-        elif media.has_card():
-            lines.append("- Graphics card: Ollama puts language models on it by itself" +
-                         (f"; images are drawn on the processor: {drawn[1]}" if drawn else ""))
+        if media.has_card():
+            uses = ["Ollama puts language models on it by itself"]
+            if drawn:
+                uses.append("the image tools draw on it" if drawn[0] == "card" else
+                            f"images are drawn on the processor: {drawn[1]}")
+            if os.path.exists(self.media.whisper):
+                uses.append("whisper.cpp transcribes on it" if media.whisper_on_card(self.media) else
+                            "whisper.cpp transcribes on the processor, as it was built")
+            lines.append("- Graphics card: " + (f"{drawn[1]}. " if drawn and drawn[0] == "card" else "") +
+                         "; ".join(uses))
         else:
             lines.append("- Graphics card: none visor can use, so everything runs on the processor")
         for what, folder in (("results", self.results), ("image models", self.media.comfy_models)):

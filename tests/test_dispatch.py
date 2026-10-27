@@ -3700,8 +3700,17 @@ class DispatchTest(unittest.TestCase):
                 self.d.health_at = None
                 self.d.sync_server_note()
             return self.server_note()
-        self.assertIn("- Graphics card: Test Card, 8 GB. Ollama puts language models on it by itself, and the image "
+        self.assertIn("- Graphics card: Test Card, 8 GB. Ollama puts language models on it by itself; the image "
                       "tools draw on it\n", health(True, ("card", "Test Card, 8 GB")))
+        # whisper.cpp, once installed: on the card when built with CUDA, its library beside the program.
+        whisper = os.path.join(self.tmp.name, "whisper", "bin", "whisper-cli")
+        os.makedirs(os.path.dirname(whisper))
+        open(whisper, "w").close()
+        self.d.media.whisper = whisper
+        self.assertIn("; whisper.cpp transcribes on the processor, as it was built\n", health(True, ("card", "Test Card, 8 GB")))
+        open(os.path.join(os.path.dirname(whisper), "libggml-cuda.so"), "w").close()
+        self.assertIn("; the image tools draw on it; whisper.cpp transcribes on it\n", health(True, ("card", "Test Card, 8 GB")))
+        self.d.media.whisper = os.path.join(self.tmp.name, "absent", "whisper-cli")
         self.assertIn("- Graphics card: Ollama puts language models on it by itself; images are drawn on the "
                       "processor: `gpu = no` in visor.conf\n", health(True, ("processor", "`gpu = no` in visor.conf")))
         self.assertIn("- Graphics card: Ollama puts language models on it by itself\n", health(True, None),

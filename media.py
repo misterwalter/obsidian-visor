@@ -202,6 +202,13 @@ def starts(settings, readable, command):
     return _starts[key]
 
 
+def whisper_on_card(settings):
+    """Whether whisper.cpp transcribes on the graphics card: built with CUDA (its CUDA library is
+    beside the program), with a card for the wall to pass on."""
+    return (settings.gpu != "no" and has_card()
+            and bool(glob.glob(os.path.join(os.path.dirname(settings.whisper), "libggml-cuda.so*"))))
+
+
 def has_card():
     """Whether this machine has a graphics card's devices for the wall to pass on: NVIDIA's, WSL's, AMD's."""
     return any(os.path.exists(device) for device in ("/dev/nvidia0", "/dev/dxg", "/dev/kfd"))
