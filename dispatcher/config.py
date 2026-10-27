@@ -291,7 +291,6 @@ class Config:
                              f"Notes for it start with `Project: {name}`. Its settings are in `{where}`: "
                              f"tick boxes there to change them.\n\n{REPLY_HEADING}\n")
         move(path, self.out("new project"))
-        self.log(f"{name_of_note}: created project {name}")
         return f"{name_of_note}: created project {name}"
 
     def _make_project(self, header):
