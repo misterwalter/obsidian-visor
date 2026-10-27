@@ -37,7 +37,10 @@ done
 [ $# -gt 0 ] || { echo "media_wall: command required" >&2; exit 2; }
 
 # The account list, cut down to this account. The real one names everybody.
-accounts="$(mktemp -d)"
+# A TMPDIR naming a folder that is not there (one deleted after an install) is passed over for the
+# system's own: built on nothing, the wall would show no account list.
+[ -d "${TMPDIR:-/tmp}" ] || unset TMPDIR
+accounts="$(mktemp -d)" || { echo "media_wall: could not make a temporary folder" >&2; exit 1; }
 trap 'rm -rf "$accounts"' EXIT
 printf 'root:x:0:0:root:/root:/usr/sbin/nologin\nnobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\nmedia:x:%s:%s::/home/media:/bin/sh\n' \
   "$(id -u)" "$(id -g)" > "$accounts/passwd"

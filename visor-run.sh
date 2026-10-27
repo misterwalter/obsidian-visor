@@ -489,6 +489,7 @@ if [ -n "$CHAN" ]; then
   # the forum shows a hash of it as a handle, so their posts are recognisably their own across
   # runs, and the agent never sees it. A character's is the same one their board time uses
   # (tripcodes.py, which both use).
+  [ -d "${TMPDIR:-/tmp}" ] || unset TMPDIR   # one naming a folder deleted since is passed over
   TRIP_FILE="$(mktemp)"; chmod 600 "$TRIP_FILE"
   TRIP_KEY="$MODEL"; [ -n "$CHAN_AS" ] && TRIP_KEY="character:$CHAN_AS"
   python3 "$HERE/tripcodes.py" "$CHAN_TRIPCODES" "$TRIP_KEY" > "$TRIP_FILE" \

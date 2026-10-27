@@ -470,6 +470,13 @@ class MediaTest(unittest.TestCase):
         self.assertIsNone(media._interpreter_of(self.tmp.name), "not an environment")
 
     @unittest.skipUnless(shutil.which("bwrap"), "needs bubblewrap")
+    def test_a_temporary_folder_deleted_since_is_passed_over(self):
+        # As after an install that set TMPDIR for pip and then deleted the folder, in the same shell.
+        with mock.patch.dict(os.environ, {"TMPDIR": os.path.join(self.tmp.name, "deleted")}):
+            done = media.walled(self.settings, self.job, [], ["sh", "-c", "grep -c . /etc/passwd"])
+        self.assertEqual(done.stdout.strip(), "3", "the wall's own account list")
+
+    @unittest.skipUnless(shutil.which("bwrap"), "needs bubblewrap")
     def test_the_wall_shows_this_machine_s_graphics_card_only_when_asked(self):
         def devices(*gpu):
             listed = subprocess.run([os.path.join(HERE, "media_wall.sh"), self.job, *gpu, "--", "ls", "/dev"],
