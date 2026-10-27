@@ -17,6 +17,7 @@ import time
 import unittest
 import wave
 import zlib
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 HERE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -388,20 +389,26 @@ class MediaTest(unittest.TestCase):
         self.assertEqual(graph["latent"]["inputs"]["width"], 1024)
 
     def test_a_picture_cut_off_part_way_is_given_as_far_as_it_got(self):
-        # The first picture is drawn whole; the second stalls part way, and the job is stopped while it does.
+        # The first picture is drawn whole; the second stalls part way, and the job is stopped once its
+        # preview (the only one the stand-in sends) has been heard and its progress passed on: however long
+        # that takes on a busy machine.
+        made, cut, ready, steps = [], [], [], []
+        heard = threading.Event()
+        class Previews(media._Previews):
+            def __setattr__(self, name, value):
+                super().__setattr__(name, value)
+                if name == "preview" and value:
+                    heard.set()
         def stop_at_the_second():
-            graphs = os.path.join(self.job, "graphs.jsonl")
             for _ in range(600):
-                if os.path.exists(graphs) and len(open(graphs).read().splitlines()) >= 2:
-                    time.sleep(1)  # the preview arrives with the stalled picture
+                if heard.is_set() and steps:
                     return media.stop(self.job)
                 time.sleep(0.1)
         threading.Thread(target=stop_at_the_second, daemon=True).start()
-        made, cut, ready, steps = [], [], [], []
         def unfinished(path, seed, n, step, steps):
             with open(path, "rb") as f:
                 cut.append((f.read(8), os.path.splitext(path)[1], seed, n, step, steps))
-        with self.assertRaises(media.Stopped):
+        with self.assertRaises(media.Stopped), mock.patch.object(media, "_Previews", Previews):
             media.generate(self.settings, {"prompt": "a boat STALL", "model": "photo-xl", "count": "3", "seed": "7"},
                            self.job, on_image=lambda path, seed, n: made.append((seed, n)), on_unfinished=unfinished,
                            on_ready=ready.append, on_progress=lambda n, step, of: steps.append((n, step, of)))
