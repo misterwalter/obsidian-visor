@@ -6,6 +6,7 @@ Kind: vision
 Ollama: qwen2.5vl:3b
 
 - [x] Default (a note that names no model of this kind gets this one)
+- [ ] Fetch (visor downloads what is missing, when it is next idle)
 
 On this server:
 

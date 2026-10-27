@@ -63,7 +63,7 @@ LINES = {
               ("Scheduler", ""), ("Clip skip", ""), ("Prefix", ""), ("Prompt guide", ""), ("Negative", ""), ("Size", ""),
               ("V-pred", "no"), ("Text encoder", ""), ("VAE", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no")],
     "lora": [("File", ""), ("Family", "sdxl"), ("Trigger", ""), ("Strength", "1.0"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no")],
-    "vision": [("Ollama", ""), ("Default", "no")],
+    "vision": [("Ollama", ""), ("Default", "no"), ("Fetch", "no")],
     "edit": [("File", ""), ("Family", "qwen-image-edit"), ("Text encoder", ""), ("VAE", ""), ("Fast LoRA", ""),
              ("Fast steps", "4"), ("Steps", "20"), ("CFG", "2.5"), ("Shift", "3"), ("Sampler", "euler"),
              ("Scheduler", "simple"), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no")],
@@ -200,7 +200,7 @@ def problems_of(model):
         number("steps", 1, 150), number("fast steps", 1, 50), number("cfg", 0, 30, whole=False)
         number("shift", 0, 20, whole=False), yes_no("default"), yes_no("fetch")
     if kind == "vision":
-        yes_no("default")
+        yes_no("default"), yes_no("fetch")
     if kind == "video":
         if not model["file"]:
             problems.append("`File:` is empty: say the model's file, as it is in the models folder's checkpoints/.")

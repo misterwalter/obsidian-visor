@@ -217,7 +217,8 @@ class ModelNotes:
         if recipe:
             return (f"no: its Modelfile is made `FROM {models.recipe_from(model)}`, which is not on this server; "
                     "tick `Fetch` to have it downloaded")
-        return f"no: not in Ollama. Tick `Fetch` to have visor run `ollama pull {tag}`, or add its recipe"
+        return (f"no: not in Ollama. Tick `Fetch` to have visor run `ollama pull {tag}`" +
+                (", or add its recipe" if model["kind"] == "language" else ""))
 
     def fetch_models(self, idle):
         """Look in on a download, and start the next one when visor is idle: a model whose note
@@ -250,10 +251,10 @@ class ModelNotes:
             return
         if not idle:
             return
-        # Language models: registered from their recipe, or pulled. Ollama downloads directly,
+        # Language and vision models: registered from their recipe, or pulled. Ollama downloads directly,
         # not through the VPN: it is a service of its own, and cannot be led through the tunnel.
         tags = None
-        for name, model in sorted(self.language.items()):
+        for name, model in sorted({**self.language, **models.usable(self.model_notes, "vision")}.items()):
             tags = self._in_ollama() if tags is None else tags
             if tags is None:
                 break

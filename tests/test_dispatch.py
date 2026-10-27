@@ -4216,6 +4216,34 @@ class DispatchTest(unittest.TestCase):
         finally:
             os.environ["PATH"] = os.environ["PATH"].split(os.pathsep, 1)[1]
 
+    def test_a_vision_model_s_note_says_what_ollama_has_and_with_fetch_ticked_is_pulled(self):
+        bin_dir = os.path.join(self.tmp.name, "bin")
+        os.makedirs(bin_dir)
+        record = os.path.join(self.tmp.name, "ollama-args.jsonl")
+        with open(os.path.join(bin_dir, "ollama"), "w") as f:
+            f.write(f"#!/usr/bin/env python3\nimport json, sys\nopen({record!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n")
+        os.chmod(os.path.join(bin_dir, "ollama"), 0o755)
+        os.environ["PATH"] = bin_dir + os.pathsep + os.environ["PATH"]
+        try:
+            self.more_models(seers=["looker"])
+            self.d._in_ollama = lambda: {"coder-official:latest"}
+            path = os.path.join(self.tasks, "models", "looker.md")
+            self.d.once()
+            self.assertIn("\nOn this server: no: not in Ollama. Tick `Fetch` to have visor run `ollama pull looker:7b`\n",
+                          open(path).read())
+            self.assertIn("\nOn this server: yes, with a context length", self.read("models", "official.md"),
+                          "the other notes are told what Ollama has, too")
+            with open(path) as f:
+                text = f.read().replace("- [ ] Fetch", "- [x] Fetch")
+            with open(path, "w") as f:
+                f.write(text)
+            self.d.once()
+            self.d.fetching["process"].wait()
+            self.d.once()
+            self.assertIn(["pull", "looker:7b"], [json.loads(line) for line in open(record)])
+        finally:
+            os.environ["PATH"] = os.environ["PATH"].split(os.pathsep, 1)[1]
+
     def test_an_ollama_that_cannot_be_started_is_said_in_the_note_and_stops_nothing(self):
         path = os.path.join(self.tasks, "models", "writer.md")
         with open(path) as f:
