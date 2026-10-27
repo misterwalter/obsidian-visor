@@ -280,6 +280,7 @@ class Chats:
             own = {key: said.get(key) or people[who].get(key) for key in ("model", "thinking", "web", "chan", "quality", "speak")}
             # What else their turns may reach: the chat's line, else their own; nothing, else.
             own.update({key: (said.get(key) or people[who].get(key) or "").strip() for key in network.LINES})
+            own["safe search"] = self.safe_search_of(people[who])
             # Image: is one line for two things: whether they may draw, and with what.
             image = (said.get("image") or people[who].get("image") or "no").lower()
             own["image"] = people[who].get("image", "no") if image in ("yes", "on") else image
@@ -440,7 +441,7 @@ class Chats:
         if thinking:
             flags += ["--thinking", thinking]
         if WEB[own["web"].lower()]:
-            flags += ["--web"]
+            flags += ["--web", "--safe-search", own.get("safe search") or self.safe_search]
         for reach in network.LINES:
             if network.given(own.get(reach)):
                 flags += [f"--{reach}", own[reach]]

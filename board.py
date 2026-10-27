@@ -46,6 +46,11 @@ THREAD_WORDS, PAGE_WORDS, NEWS_WORDS, NOTES_WORDS = 2500, 1200, 1500, 700
 # How many earlier steps of a visit stay in front of them whole; older ones by a line each.
 WHOLE_STEPS = 3
 SEARCH_URL = "https://html.duckduckgo.com/html/?q="
+# DuckDuckGo's safe search, by the names visor's settings give its levels: its `kp` parameter, and what
+# each does, as VISOR.md and a character's config.md say it.
+SAFE_SEARCH = {"off": "-2", "moderate": "-1", "strict": "1"}
+SAFE_SEARCH_SAYS = {"off": "nothing held back", "moderate": "DuckDuckGo's own default: explicit results held back",
+                    "strict": "anything adult held back"}
 BROWSER = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
 
 
@@ -179,9 +184,10 @@ def numbers_in(thread_text, board, thread):
 
 # ── The web ───────────────────────────────────────────────────────────────────
 
-def search(fetch, words):
-    """DuckDuckGo's plain results page for some words: [(title, address, snippet)], at most five."""
-    page = fetch(SEARCH_URL + urllib.parse.quote_plus(words))
+def search(fetch, words, safe="moderate"):
+    """DuckDuckGo's plain results page for some words, at a level of safe search (SAFE_SEARCH):
+    [(title, address, snippet)], at most five."""
+    page = fetch(SEARCH_URL + urllib.parse.quote_plus(words) + "&kp=" + SAFE_SEARCH[safe])
     found = []
     for match in re.finditer(r'class="result__a" href="([^"]+)"[^>]*>(.*?)</a>', page, re.DOTALL):
         address = html.unescape(match.group(1))

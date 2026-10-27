@@ -845,7 +845,7 @@ class DispatchTest(unittest.TestCase):
     def test_a_character_with_board_time_visits_reads_posts_searches_and_keeps_notes(self):
         home = self.board_goer()
         forum = self.forum()
-        pages = {"https://html.duckduckgo.com/html/?q=garden+gnomes":
+        pages = {"https://html.duckduckgo.com/html/?q=garden+gnomes&kp=-1":  # moderate, DuckDuckGo's own default
                  '<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fg&amp;r=1">Gnomes</a>'
                  '<a class="result__snippet" href="x">About gnomes.</a>',
                  "https://example.org/g": "<p>Gnomes came from Germany.</p>"}
@@ -878,6 +878,33 @@ class DispatchTest(unittest.TestCase):
         self.narrator("DONE", "## What I know\n- Still gnomes.")
         self.d.once()
         self.assertEqual(forum.asked[-1][:3], ("catch_up", ["env"], "e:20"))
+
+    def test_safe_search_is_visor_md_s_and_a_character_s_own_over_it(self):
+        self.d.once()
+        self.assertIn("Safe search\n- [ ] off (nothing held back)\n- [x] moderate", self.server_note())
+        self.edit_server_note("- [ ] strict (anything adult", "- [x] strict (anything adult")
+        self.d.sync_server_note()
+        self.assertEqual(self.d.safe_search, "strict")
+        self.assertEqual(self.fresh().safe_search, "strict", "kept over a restart")
+        home = self.board_goer()
+        self.assertIn("Safe search\n- [x] default (as `VISOR.md` says, for everyone)",
+                      open(os.path.join(home, "config.md")).read())
+        self.assertEqual(self.d.safe_search_of(dispatch.characters.read(
+            open(os.path.join(home, "config.md")).read(), dispatch.characters.blank("official"),
+            sorted(self.d.models), [])[0]), "strict")
+        self.tick_in(os.path.join(home, "config.md"), "Safe search", "off")
+        self.clock += 1000
+        mara = self.d.sync_character("Mara", settled_only=False)[0]
+        self.assertEqual(self.d.safe_search_of(mara), "off", "hers, over VISOR.md's")
+        fetched = []
+        self.d._fetch_web = lambda address: fetched.append(address) or ""
+        self.d._board_search(home, "", "garden gnomes", "now", "coder-official", None, None, self.d.safe_search_of(mara))
+        self.assertTrue(fetched[0].endswith("?q=garden+gnomes&kp=-2"))
+        # A run given the web is told the server's.
+        self.note("inbox", "a.md", "Project: game\nModel: official\nWeb: yes\nPlan:\n")
+        self.d.once()
+        call = self.calls_made()[-1]
+        self.assertEqual(call[call.index("--safe-search") + 1], "strict")
 
     def test_a_character_with_a_space_in_their_name_keeps_one_handle(self):
         self.board_goer(name="Mara Lee")

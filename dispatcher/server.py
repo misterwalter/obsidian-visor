@@ -338,7 +338,8 @@ class Server:
     def _server_said(self):
         """The settings VISOR.md shows and steers, as they stand."""
         said = {"auto": self.self_update, "paused": self.paused, "default_model": self.default_model,
-                "review": self.review, "reviewer": self.reviewer, "direct": self.allow_direct}
+                "review": self.review, "reviewer": self.reviewer, "direct": self.allow_direct,
+                "safe_search": self.safe_search}
         said.update({setting: self.wait(setting) for setting in server_note.DEFAULTS})
         return said
 
@@ -357,6 +358,7 @@ class Server:
         self.review = said.get("review", self.review)
         self.chosen_reviewer = said.get("reviewer", self.chosen_reviewer)
         self.allow_direct = said.get("direct", self.allow_direct)
+        self.safe_search = said.get("safe_search", self.safe_search)
         if "live_log_every" in said:
             self.live_log_every = str(said["live_log_every"])
         self.timing.update({setting: said[setting] for setting in server_note.DEFAULTS

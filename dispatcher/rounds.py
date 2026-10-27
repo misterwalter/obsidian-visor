@@ -348,7 +348,7 @@ class Rounds:
             if thinking:
                 flags += ["--thinking", thinking]
             if web:
-                flags += ["--web"]
+                flags += ["--web", "--safe-search", self.safe_search]
             if network.given(lan):
                 flags += ["--lan", lan]
             if network.given(loopback):

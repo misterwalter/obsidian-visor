@@ -19,6 +19,7 @@ the owner's to make where they read what it means, and nothing at all where ther
 
 import re
 
+import board
 import settings
 import sources
 
@@ -60,8 +61,10 @@ TIMING = (
 )
 DEFAULTS = {setting: recommended for _, setting, recommended, _, _, _ in TIMING}
 DIRECT = "Allow non-VPN web traffic"
-KEYS = ("auto-update", "update now", "pause", "restart", "default model", "review", "reviewer",
+KEYS = ("auto-update", "update now", "pause", "restart", "default model", "review", "reviewer", "safe search",
         DIRECT.lower()) + tuple(line.lower() for line, *_ in TIMING)
+# DuckDuckGo's levels of safe search, and what each does.
+SAFE_SEARCH = board.SAFE_SEARCH_SAYS
 # A server's on/off settings: (the box, the setting it is).
 SWITCHES = (("auto-update", "auto"), ("pause", "paused"), ("review", "review"), (DIRECT.lower(), "direct"))
 
@@ -144,6 +147,9 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
               ""]
     lines += settings.group("Default model", list(models), said["default_model"]) + [""]
     lines += settings.group("Reviewer", list(models), said["reviewer"]) + [""]
+    lines += ["How what searches the web here searches: a character on the board, and a run given the web, "
+              "which is told to search with it. A character's `config.md` can say otherwise for them.", ""]
+    lines += settings.group("Safe search", list(SAFE_SEARCH), said.get("safe_search", "moderate"), SAFE_SEARCH) + [""]
     lines += ["## Timing", "", "Each in seconds. Change the number after the colon; a number out of its range "
               "is not taken, and what was set before stays.", ""]
     for line, setting, recommended, low, high, what in TIMING:
@@ -160,9 +166,10 @@ def read(text, said, models):
     timing = {line.lower(): (line, setting, low, high) for line, setting, _, low, high, _ in TIMING}
     # A source in `## Browse` is not a setting, whatever it is called (sources.py).
     text = sources.without_section(text)
-    choices = {"default model": tuple(models), "reviewer": tuple(models)}
+    choices = {"default model": tuple(models), "reviewer": tuple(models), "safe search": tuple(SAFE_SEARCH)}
     choices.update({key: ("yes", "no") for key, _ in SWITCHES})
-    standing = {"default model": said["default_model"], "reviewer": said["reviewer"]}
+    standing = {"default model": said["default_model"], "reviewer": said["reviewer"],
+                "safe search": said.get("safe_search", "moderate")}
     standing.update({key: "yes" if said.get(setting) else "no" for key, setting in SWITCHES})
     # The on/off settings are single boxes; an older note's groups of yes and no are read below.
     switched = settings.toggles(text, ("Auto-update", "Update now", "Pause", "Restart", "Review", DIRECT))
@@ -205,6 +212,8 @@ def read(text, said, models):
             found["default_model"] = value
         elif key == "reviewer":
             found["reviewer"] = value
+        elif key == "safe search":
+            found["safe_search"] = value
     return found, actions, problems
 
 

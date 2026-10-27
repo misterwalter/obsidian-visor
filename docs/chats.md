@@ -11,7 +11,7 @@ folder made by hand is given whatever of those it lacks.
 
 **Characters.** Each is a folder under `tasks/characters/`. Its `config.md` is
 visor's note for it, kept the way a project's is: settings as groups of tick
-boxes (`Model`, `Thinking`, `Image`, `Quality`, `Web`, `Chan`), the typed lines
+boxes (`Model`, `Thinking`, `Image`, `Quality`, `Web`, `Safe search`, `Chan`), the typed lines
 `Speak:`, `LAN:` and `Loopback:`, then who they are and how they look, in the
 owner's words. Its
 `memory.md` and the pages in `memory/` are the character's own. A character is

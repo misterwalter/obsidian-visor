@@ -19,6 +19,7 @@ wrote under the headings is theirs, and is written back as it was.
 
 import re
 
+import board
 import network
 import schedule
 import settings
@@ -33,12 +34,14 @@ CHOICES = {
     "quality": ("fast", "full"),
     "web": ("no", "yes"),
     "chan": ("none", "read", "all"),
+    "safe search": ("default",) + tuple(board.SAFE_SEARCH),
 }
 NOTES = {
     "thinking": {"no": "answers straight away"},
     "quality": {"fast": "a picture in a few minutes", "full": "more steps: sharper, and several times slower"},
     "web": {"yes": "the internet, through the VPN and nothing else"},
     "chan": {"read": "read and search the forum", "all": "read, and post"},
+    "safe search": dict(board.SAFE_SEARCH_SAYS, default="as `VISOR.md` says, for everyone"),
 }
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._'-]{0,40}")
 
@@ -72,7 +75,7 @@ def render(name, character, models, image_models, problems=()):
     lines += settings.group("Thinking", CHOICES["thinking"], character["thinking"], NOTES["thinking"]) + [""]
     lines += settings.group("Image", ["no"] + list(image_models), character["image"],
                             dict(image_models, no="may not draw")) + [""]
-    for key in ("quality", "web", "chan"):
+    for key in ("quality", "web", "safe search", "chan"):
         if key == "web":
             # On or off: one box; then what else their turns may reach, as lines.
             lines += [settings.toggle("Web", character.get(key) == "yes", NOTES[key]["yes"]), ""]

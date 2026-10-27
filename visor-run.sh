@@ -45,6 +45,8 @@
 #               leads into the VPN tunnel, or directly where the dispatcher says there is no VPN
 #               and the owner allowed that (VISOR_NET_ROUTE). Without it, or --lan or --loopback,
 #               there is no network
+# --safe-search off|moderate|strict  the level of DuckDuckGo's safe search the agent is told to
+#               search with, when it has the web (default moderate)
 # --lan HOSTS   the agent may reach the local network through the net door, directly: yes for
 #               all of it, or a list of names, addresses and networks, each with a port if only that
 # --loopback PORTS  the agent may reach this machine's services through the net door, as
@@ -62,7 +64,7 @@ umask 002
 
 REPO_SRC="$(realpath "${1:?repo required}")"; TASK="$(realpath "${2:?task file required}")"
 MODEL="${3:?model required}"; HARNESS="${4:?harness required: pi}"; shift 4
-ROUND="build"; NOTES=""; CONTINUE=""; BRANCH=""; FORK=""; TESTS=""; LIVE_LOG=""; FOLDER=no; CANON=no; SETTING=""; THINKING=""; WEB=no; LAN=""; LOOPBACK=""; CHAN=""; CHAN_AS=""; PERSONA=""; DRAW=""; NARRATOR=no; READING=""; SELF=no
+ROUND="build"; NOTES=""; CONTINUE=""; BRANCH=""; FORK=""; TESTS=""; LIVE_LOG=""; FOLDER=no; CANON=no; SETTING=""; THINKING=""; WEB=no; SAFE_SEARCH=moderate; LAN=""; LOOPBACK=""; CHAN=""; CHAN_AS=""; PERSONA=""; DRAW=""; NARRATOR=no; READING=""; SELF=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --plan-only) ROUND="plan" ;;
@@ -78,6 +80,7 @@ while [ $# -gt 0 ]; do
     --live-log) LIVE_LOG="$2"; shift ;;
     --thinking) THINKING="$2"; shift ;;
     --web) WEB=yes ;;
+    --safe-search) SAFE_SEARCH="$2"; shift ;;
     --lan) LAN="$2"; shift ;;
     --loopback) LOOPBACK="$2"; shift ;;
     --self-directed) SELF=yes ;;
@@ -138,6 +141,9 @@ case "$NET_ROUTE" in tunnel|direct|none) ;; *) echo "VISOR_NET_ROUTE is tunnel, 
 # What the run may reach through the net door, as the wall's check is told it: web, lan, loopback, or none.
 NET_GIVEN="$( { [ "$WEB" = yes ] && echo web; [ -n "$LAN" ] && echo lan; [ -n "$LOOPBACK" ] && echo loopback; } | paste -sd, -)"
 NET_GIVEN="${NET_GIVEN:-none}"
+# DuckDuckGo's safe search, as the run's instructions give its search address (board.SAFE_SEARCH).
+case "$SAFE_SEARCH" in off) SAFE_KP=-2 ;; moderate) SAFE_KP=-1 ;; strict) SAFE_KP=1 ;;
+  *) echo "--safe-search takes off, moderate or strict, not $SAFE_SEARCH" >&2; exit 2 ;; esac
 CHAN_HOST="${VISOR_CHAN_HOST:-}"
 CHAN_TRIPCODES="${VISOR_CHAN_TRIPCODES:-$HOME/.config/visor/chan-tripcodes}"
 CHAN_REDACT="${VISOR_CHAN_REDACT:-$HOME/.config/visor/chan-redact}"
@@ -352,7 +358,7 @@ if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
       echo "Read the first failure before changing anything."
     fi
   fi
-  if [ "$WEB" = yes ]; then echo; cat "$HERE/prompts/web.md"; fi
+  if [ "$WEB" = yes ]; then echo; sed "s/KP/$SAFE_KP/g; s/LEVEL/$SAFE_SEARCH/g" "$HERE/prompts/web.md"; fi
   # What the local network and this machine offer the run, said as the owner gave it (sed-escaped).
   said_as() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
   if [ -n "$LAN" ]; then

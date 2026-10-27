@@ -121,6 +121,9 @@ class Config:
                           os.path.join(os.path.dirname(os.path.abspath(path)), "wireproxy.conf"))
         # With no VPN installed, whether what needs the internet may go without one: VISOR.md's to say.
         self.allow_direct = False
+        # DuckDuckGo's safe search for what searches the web (board.SAFE_SEARCH): VISOR.md's to say,
+        # and each character's to say otherwise.
+        self.safe_search = "moderate"
         self.opera_rng = random.Random()
         # How a game's narrator is asked, a model kept loaded and its context found; the tests stand in.
         self.narrate, self.keep_warm, self.context_of = game.ask, game.keep, game.loaded_context

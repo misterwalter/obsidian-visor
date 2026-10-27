@@ -198,7 +198,8 @@ class BoardTime:
                     steps.append(("You started a thread", f"/{argument[0]}/ >>{made.get('no')} \"{subject}\":\n\n{text}",
                                   f"you started /{argument[0]}/ >>{made.get('no')}"))
                 elif verb == "SEARCH" and may_search and argument:
-                    names, said = self._board_search(home, rules, argument, started, ollama, think, stop)
+                    names, said = self._board_search(home, rules, argument, started, ollama, think, stop,
+                                                     self.safe_search_of(character))
                     searched.append((argument, names))
                     steps.append((f"You searched the web for: {argument}", said, f"you searched for {argument}"))
                 else:
@@ -245,11 +246,16 @@ class BoardTime:
             raise board.BoardError(f"there is no post >>{number}")
         return post["board"], post.get("thread") or number
 
-    def _board_search(self, home, rules, words, started, ollama, think, stop):
-        """A search on the web, the top pages fetched, and the character's notes on those they keep, in
-        finds/. Returns (the finds' names, what to show them of it)."""
+    def safe_search_of(self, character):
+        """A character's safe search: their own level, or with `default`, VISOR.md's."""
+        level = (character.get("safe search") or "default").lower()
+        return level if level in board.SAFE_SEARCH else self.safe_search
+
+    def _board_search(self, home, rules, words, started, ollama, think, stop, safe="moderate"):
+        """A search on the web, at a level of safe search, the top pages fetched, and the character's notes
+        on those they keep, in finds/. Returns (the finds' names, what to show them of it)."""
         try:
-            results = board.search(self._fetch_web, words)
+            results = board.search(self._fetch_web, words, safe)
         except board.BoardError as error:
             return [], f"The search did not work: {error}"
         results = [r for r in results if not self._is_forum(r[1])]
