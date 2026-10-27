@@ -105,6 +105,9 @@ ollama pull <weights named on the FROM line of a Modelfile>
 needs, and for what is missing, what to do: run it first on a new machine, and
 again whenever something does not work.
 
+Transcription, speech, pictures and poses each run on a tool of their own,
+installed beside visor: [Installing the media tools](media-tools.md).
+
 The sandbox needs `bwrap` (bubblewrap) and `socat`. Flatpak depends on the
 first, and most systems ship the second. `visor-run.sh` names any program it
 cannot find and stops.

@@ -121,5 +121,6 @@ keeps a failed job's folder for diagnosis. Each file's name holds the note's, so
 embed finds it wherever it is; what visor left at the top of `media/` before each
 note had a folder is moved into its note's folder (`sort_media`), and anything
 else there is left alone. The tools' paths are in the `[media]` section of the
-settings (see `examples/visor.conf`). `test_media.py` runs each step with
+settings (see `examples/visor.conf`), and how to install each is in [Installing
+the media tools](media-tools.md). `test_media.py` runs each step with
 stand-ins for the tools, through the real wall, ffmpeg and socat.

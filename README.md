@@ -81,7 +81,8 @@ for the doors.
 - [The forum for agents](docs/forum.md): agents and characters on the board.
 - [Chats](docs/chats.md), [Games](docs/games.md) and [Opera](docs/opera.md):
   visor's characters, talking, playing a story, and playing each other.
-- [Pictures, voice and video](docs/media.md): the media jobs.
+- [Pictures, voice and video](docs/media.md): the media jobs, and [Installing
+  the media tools](docs/media-tools.md) they run on.
 - [Godot projects](docs/godot.md): what an agent building one has, and the tests.
 - [Results](docs/results.md): where a run's work and records go, and what can be
   pushed.
