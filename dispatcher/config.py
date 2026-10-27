@@ -68,6 +68,8 @@ class Config:
         self.runner = visor.get("runner", os.path.join(HERE, "visor-run.sh"))
         self.results = visor.get("results", "/srv/code/results")
         self.work = visor.get("work", "/srv/code/work")
+        # Each folder project's history, kept outside its folder (folders.py).
+        self.folders = visor.get("folders", "/srv/code/folders")
         # Live logs: what each run is doing, readable in the notes while it goes.
         self.logs = visor.get("logs", os.path.join(self.tasks, "logs"))
         self.live_log_every = visor.get("live_log_every", "60")

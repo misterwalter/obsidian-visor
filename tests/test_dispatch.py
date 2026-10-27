@@ -43,6 +43,7 @@ FAKE_RUNNER = textwrap.dedent('''\
     out = out_dir = os.path.join(results, run)
     os.makedirs(out, exist_ok=True)
     os.makedirs(os.path.join(os.environ["VISOR_WORK"], run), exist_ok=True)
+    open(calls + ".folders", "w").write(os.environ.get("VISOR_FOLDERS", ""))
     if os.environ.get("FAKE_STOPS_EARLY"):
         # As the real one does when it stops before the agent: a log, and no report.
         open(os.path.join(out, "run.log"), "w").write(
@@ -1667,6 +1668,17 @@ class DispatchTest(unittest.TestCase):
         note = self.read("output", "ch5.md")
         self.assertIn("## Drafts, ", note)
         self.assertIn("`Chapter4b.md` (draft of `Chapter4a.md`)", note)
+        self.assertEqual(open(self.calls + ".folders").read(), "/srv/code/folders",
+                         "the folders' histories where the settings leave them")
+
+    def test_a_folder_s_history_is_kept_where_the_settings_say(self):
+        text = open(self.config).read().replace("[visor]\n", f"[visor]\nfolders = {self.tmp.name}/histories\n", 1)
+        with open(self.config, "w") as f:
+            f.write(text)
+        self.d = self.fresh()
+        self.note("inbox", "ch5.md", "Project: story\nModel: official\nWrite: chapter five\n")
+        self.d.once()
+        self.assertEqual(open(self.calls + ".folders").read(), f"{self.tmp.name}/histories")
 
     def test_thinking_yes_asks_a_model_that_can_think_to_think(self):
         self.note("inbox", "ch5.md", "Project: story\nThinking: yes\nWrite: five\n")

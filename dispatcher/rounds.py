@@ -666,6 +666,7 @@ class Rounds:
                                                 VISOR_OLLAMA=self.ollama,
                                                 VISOR_HARNESS_SETTINGS=self.harness_settings,
                                                 VISOR_RESULTS=self.results, VISOR_WORK=self.work,
+                                                VISOR_FOLDERS=self.folders,
                                                 VISOR_VPN_PROXY=self.vpn_proxy, VISOR_CHAN_HOST=self.chan_host,
                                                 VISOR_CHAN_REDACT=self.chan_redact,
                                                 VISOR_CHAN_TRIPCODES=self.chan_tripcodes))

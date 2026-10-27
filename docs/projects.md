@@ -60,7 +60,7 @@ notes, say. In the list of projects it has `folder =` where a repository has
 
 - **History.** Before each run, `folders.py snapshot` records the folder as it
   is, the owner's own edits included, in a git repository visor keeps outside
-  the folder, in `/srv/code/folders/` (`VISOR_FOLDERS`). Nothing is added to the
+  the folder, in `/srv/code/folders/` (`folders` in the settings). Nothing is added to the
   folder, and hidden files such as `.obsidian/` are left out. A run clones that
   history like any repository, and its commits go back into it as `visor/<run>`.
 - **Drafts, never overwrites.** When a writing round ends, `folders.py deliver`
