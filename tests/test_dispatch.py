@@ -12,6 +12,7 @@ import fnmatch
 import json
 import os
 import re
+import shutil
 import signal
 import socket
 import stat
@@ -3678,6 +3679,19 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("It is the longest a ready note waits before visor picks it up", note)
         self.assertIn("Recommended: 120. From 10 to 3600.", note)
         self.assertNotIn("VISOR.md", [os.path.basename(p) for p in self.d.queue()])
+
+    def test_on_wsl_the_health_says_what_is_free_on_the_windows_drive(self):
+        release = os.path.join(self.tmp.name, "osrelease")
+        with open(release, "w") as f:
+            f.write("6.6.87.2-microsoft-standard-WSL2\n")
+        self.assertEqual(visor_server._windows_drive(release, self.tmp.name), shutil.disk_usage(self.tmp.name).free)
+        with open(release, "w") as f:
+            f.write("6.8.0-45-generic\n")
+        self.assertIsNone(visor_server._windows_drive(release, self.tmp.name), "not WSL: nothing to add")
+        with mock.patch.object(visor_server, "_windows_drive", lambda: 75 * 1024 ** 3):
+            self.d.health_at = None
+            self.d.sync_server_note()
+        self.assertIn("- Free disk on Windows' C: drive: 75 GB. This is WSL:", self.server_note())
 
     def test_visor_md_s_health_says_what_the_graphics_card_is_used_for(self):
         def health(has, drawn):

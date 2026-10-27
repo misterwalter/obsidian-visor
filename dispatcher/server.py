@@ -101,6 +101,17 @@ def _lock_owner(path):
     return None
 
 
+def _windows_drive(release="/proc/sys/kernel/osrelease", drive="/mnt/c"):
+    """On WSL, the free space of Windows' C: drive, where its virtual disk is a file; None elsewhere."""
+    try:
+        with open(release, encoding="utf-8") as f:
+            if "microsoft" not in f.read().lower():
+                return None
+        return shutil.disk_usage(drive).free
+    except OSError:
+        return None
+
+
 class Server:
     """Mixed into Dispatcher (dispatch.py): its methods share the Dispatcher's settings and state."""
 
@@ -446,6 +457,10 @@ class Server:
                 lines.append(f"- Free disk for {what} (`{folder}`): {server_note.rounded_gb(shutil.disk_usage(folder).free)}")
             except OSError:
                 lines.append(f"- Free disk for {what}: `{folder}` is not there")
+        windows = _windows_drive()
+        if windows:
+            lines.append(f"- Free disk on Windows' C: drive: {server_note.rounded_gb(windows)}. This is WSL: the figures "
+                         "above are its virtual disk's, a file on that drive, which fills first; full, it takes WSL down")
         try:
             kept = sum(os.path.isdir(os.path.join(self.results, name)) for name in os.listdir(self.results))
             lines.append(f"- Runs kept: {kept}, in `{self.results}` and `{self.work}`. A run is deleted a day "
