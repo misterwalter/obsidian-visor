@@ -234,16 +234,9 @@ class DispatchTest(unittest.TestCase):
         os.makedirs(self.state, exist_ok=True)
         with open(os.path.join(self.state, "starters.json"), "w") as f:
             json.dump(["dreamshaper", "looker", "pix2pix", "small"], f)
-        self.d = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                     other_run_active=lambda: self.other_run, log=self.logged.append)
         self.vpn = True  # the tunnel is up unless a test says otherwise
-        self.d.vpn_up = lambda: self.vpn
-        # Never the real model server: on a machine that has one, a media job's first
-        # step would unload whatever a run there is using.
-        self.d._unload_models = lambda: None
         self.kept_warm = []
-        self.d.keep_warm = lambda address, model, seconds: self.kept_warm.append((model, seconds))
-        self.d.context_of = lambda address, model: 8192
+        self.d = self.fresh()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -429,11 +422,16 @@ class DispatchTest(unittest.TestCase):
     # Chats: characters, each with a config note, alone or several to a note
 
     def fresh(self):
-        """The dispatcher again, as after a restart, with the same stand-ins."""
+        """The dispatcher, as at a start or after a restart, with the stand-ins."""
         d = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
                                 other_run_active=lambda: self.other_run, log=self.logged.append)
         d.vpn_up = lambda: self.vpn
+        # Never the real model server: on a machine that has one, a media job's first step would
+        # unload whatever a run there is using, and every note would be checked against its models.
+        # A test that wants Ollama answering says what it has, and puts its own `ollama` on the PATH.
         d._unload_models = lambda: None
+        d._in_ollama = lambda: None
+        d.ollama_command = "ollama"
         d.keep_warm = lambda address, model, seconds: self.kept_warm.append((model, seconds))
         d.context_of = lambda address, model: 8192
         return d
@@ -1609,8 +1607,7 @@ class DispatchTest(unittest.TestCase):
         with open(self.config, "w") as f:
             f.write(text)
         os.makedirs(os.path.join(self.tmp.name, "repos"), exist_ok=True)
-        return dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                   other_run_active=lambda: self.other_run, log=self.logged.append)
+        return self.fresh()
 
     def test_a_note_makes_a_folder_project_that_the_next_note_can_use(self):
         self.note("inbox", "new.md", "New project: College Class\nGitHub: no\nModel: writer\n")
@@ -2002,8 +1999,7 @@ class DispatchTest(unittest.TestCase):
         text = open(self.config).read().replace("self_update", "x").replace("[visor]\n", "[visor]\nreview = yes\n", 1)
         with open(self.config, "w") as f:
             f.write(text)
-        return dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                   other_run_active=lambda: self.other_run, log=self.logged.append)
+        return self.fresh()
 
     def test_each_build_is_reviewed_on_its_branch_with_the_checks_and_the_builders_claims(self):
         d = self.reviewing()
@@ -2286,8 +2282,7 @@ class DispatchTest(unittest.TestCase):
         text = open(self.config).read().replace("[visor]\n", "[visor]\nchan_host = forum.test\n", 1)
         with open(self.config, "w") as f:
             f.write(text)
-        d = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                other_run_active=lambda: self.other_run, log=self.logged.append)
+        d = self.fresh()
         d.vpn_up = lambda: True
         self.note("inbox", "a.md", "Project: game\nModel: official\nChan: Read\nAnalysis: what do they say?\n")
         self.note("inbox", "b.md", "Project: game\nModel: official\nChan: All\nAnalysis: ask them\n")
@@ -2306,8 +2301,7 @@ class DispatchTest(unittest.TestCase):
         text = open(self.config).read().replace("[visor]\n", "[visor]\nchan_host = forum.test\n", 1)
         with open(self.config, "w") as f:
             f.write(text)
-        d = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                other_run_active=lambda: self.other_run, log=self.logged.append)
+        d = self.fresh()
         d.vpn_up = lambda: False
         self.note("inbox", "b.md", "Project: game\nModel: official\nChan: Read\nAnalysis: x\n")
         d.once()
@@ -2834,8 +2828,7 @@ class DispatchTest(unittest.TestCase):
                 "dispatcher enabled / FAILED: the rules engine was not installed"]
         self.assertEqual(self.d.version["install"], said)
         self.assertIn("self-update: install.sh: the rules engine was not installed", self.logged)
-        again = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                    other_run_active=lambda: self.other_run, log=self.logged.append)
+        again = self.fresh()
         self.assertEqual(again.version["install"], said, "kept across the restart")
         again.sync_server_note()
         note = self.server_note()
@@ -3468,8 +3461,7 @@ class DispatchTest(unittest.TestCase):
         note = self.server_note()
         self.assertIn("journal: Journal | my personal journal\n> ✓ 2 notes named by date, 2024-03-04 to 2024-03-05.", note)
         self.assertIn("VISOR.md: browse nothing -> journal", self.logged)
-        again = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                    other_run_active=lambda: self.other_run, log=self.logged.append)
+        again = self.fresh()
         self.assertEqual(list(again.reading), ["journal"], "kept over a restart")
         self.edit_server_note("journal: Journal |", "journal: Gone |")
         self.d.once()
@@ -3586,8 +3578,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("**Paused** in [[VISOR]]", self.read("", "STATUS.md"))
         self.assertIn("VISOR.md: paused False -> True", self.logged)
         self.assertIn("- [x] Pause (take no new notes until this is unticked; a run going now finishes)", self.server_note())
-        again = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                    other_run_active=lambda: self.other_run, log=self.logged.append)
+        again = self.fresh()
         self.assertTrue(again.paused)
         # Unpaused the way it was paused: the one box unticked.
         self.edit_server_note("- [x] Pause (take no new notes until this is unticked; a run going now finishes)", "- [ ] Pause (take no new notes until this is unticked; a run going now finishes)")
@@ -3734,8 +3725,7 @@ class DispatchTest(unittest.TestCase):
         git("commit", "--quiet", "-am", "two", cwd=seed)
         git("push", "--quiet", "origin", "HEAD:main", cwd=seed)
         self.assertTrue(self.update(checkout))
-        again = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                    other_run_active=lambda: self.other_run, log=self.logged.append)
+        again = self.fresh()
         again.once()
         self.assertRegex(self.server_note(), r"Last update: \d{4}-\d\d-\d\d \d\d:\d\d, took 1 new commit and restarted\.")
 
@@ -4352,8 +4342,7 @@ class DispatchTest(unittest.TestCase):
                 z.writestr(voice + ".npy", b"")
         with open(self.config, "a") as f:
             f.write(f"\n[media]\ntools = {tools}\n")
-        d = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                other_run_active=lambda: self.other_run, log=self.logged.append)
+        d = self.fresh()
         d.ensure_sample()
         for name in ("sample-analysis.md", "sample-plan.md", "sample-build.md", "sample-write.md"):
             sample = self.read("samples", name)
@@ -4380,9 +4369,7 @@ class DispatchTest(unittest.TestCase):
             open(os.path.join(tools, "models", "comfy", "checkpoints", testmodels.IMAGE[model]["file"]), "w").close()
         with open(self.config, "a") as f:
             f.write(f"\n[media]\ntools = {tools}\n")
-        d = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
-                                other_run_active=lambda: self.other_run, log=self.logged.append)
-        d._unload_models = lambda: None
+        d = self.fresh()
         d.ensure_sample()
         sample = self.read("samples", "sample-image.md")
         self.assertIn("Model\n- [ ] anime-xl (SDXL, illustrated and anime", sample)
