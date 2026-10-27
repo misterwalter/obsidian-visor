@@ -102,6 +102,15 @@ class ChecksTest(unittest.TestCase):
         self.assertEqual(found["nothing refers to it"], [], "score is used by its test")
         self.assertEqual(found["no test added"], [])
 
+    def test_what_a_test_framework_calls_by_itself_is_not_said_to_be_unreferenced(self):
+        self.write("test_reset.py", "import unittest\n\n\nclass TestReset(unittest.TestCase):\n"
+                                    "    def setUp(self):\n        self.counts = {}\n\n"
+                                    "    def test_reset(self):\n        self.assertEqual(self.counts, {})\n")
+        self.write("scripts/helpers.py", "def setUp():\n    return 1\n")
+        self.commit("tests")
+        self.assertEqual(self.found()["nothing refers to it"], ["`setUp`, defined at `scripts/helpers.py:1`"],
+                         "a hook's name counts only in a test file")
+
     def test_a_clean_change_reports_only_what_is_true(self):
         self.write("test/unit/test_world.gd", "func test_vignette():\n\tassert_eq(make_vignette(), 1)\n\nfunc test_more():\n\tassert_eq(1, 1)\n")
         self.commit("only a test")

@@ -23,6 +23,10 @@ import sys
 TEST_PATH = re.compile(r"(^|/)(tests?|spec)(/|$)|(^|/)test_[^/]*$|(^|/)[^/]*_test\.\w+$|(^|/)tests\.py$")
 TEST_LINE = re.compile(r"\b(assert\w*|check|expect)\s*\(|\b(func|def)\s+test_")
 TEST_DEF = re.compile(r"^\s*(static\s+)?(func|def)\s+test_\w+")
+# Called by the test frameworks themselves, never by name: unittest's, pytest's, and Godot's GUT.
+FRAMEWORK_HOOKS = {"setUp", "tearDown", "setUpClass", "tearDownClass", "setUpModule", "tearDownModule",
+                   "setup_method", "teardown_method", "setup_class", "teardown_class", "setup_module",
+                   "teardown_module", "before_each", "after_each", "before_all", "after_all"}
 DEFINITION = re.compile(r"^\s*(?:static\s+)?(?:func|def)\s+(\w+)|\bclass_name\s+(\w+)|^\s*class\s+(\w+)")
 NUMBER = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?(?![\w.])")
 MAX_LISTED = 8
@@ -117,8 +121,11 @@ def check(workspace, base):
             findings["removed"].append(f"`{name}` from `{path}`")
 
     for name, where in added_defs.items():
-        # Engine callbacks and private helpers start with an underscore; tests are found by name.
-        if name.startswith("_") or name.startswith("test_"):
+        # Engine callbacks and private helpers start with an underscore; tests are found by name, and in a
+        # test file, so are test classes and the hooks the test framework calls around each test.
+        in_tests = bool(TEST_PATH.search(where.rsplit(":", 1)[0]))
+        if name.startswith("_") or name.startswith("test_") or (in_tests and (
+                name in FRAMEWORK_HOOKS or name.startswith("Test") or name.endswith("Test"))):
             continue
         uses = git(workspace, "grep", "-n", "-w", "-I", name, "HEAD").splitlines()
         others = []
