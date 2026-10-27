@@ -380,8 +380,11 @@ class ModelNotes:
         """The models an Analysis, Plan, Build, Write or chat note can name, as a table."""
         lines = ["**Language models on this server** (`Model:`)", "", "| Model | What it is |", "|---|---|"]
         for name, ollama in sorted(self.models.items()):
-            lines.append(f"| `{name}` | {self._about(name) or f'`{ollama}` in Ollama'}"
-                         + (" Can think: `Thinking: yes`." if self.can_think(name) else "") + " |")
+            about = (self._about(name) or f"`{ollama}` in Ollama").rstrip()
+            if self.can_think(name):
+                # _about leaves off the sentence's full stop; the owner may have ended it otherwise.
+                about += ("" if about.endswith((".", "!", "?")) else ".") + " Can think: `Thinking: yes`."
+            lines.append(f"| `{name}` | {about} |")
         return "\n".join(lines)
 
     def image_models(self):

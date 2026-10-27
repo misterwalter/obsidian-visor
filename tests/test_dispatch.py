@@ -4374,8 +4374,8 @@ class DispatchTest(unittest.TestCase):
         d.ensure_sample()
         for name in ("sample-analysis.md", "sample-plan.md", "sample-build.md", "sample-write.md"):
             sample = self.read("samples", name)
-            self.assertIn("> | `writer` | A writer's model", sample, name)
-            self.assertIn("Can think: `Thinking: yes`.", sample, name)
+            self.assertIn("> | `writer` | A writer's model: prose and fiction. Can think: `Thinking: yes`. |",
+                          sample, name)
             self.assertIn("Visor knows: `game`, `notests`, `story`, `textgame`.", sample, name)
         image = self.read("samples", "sample-image.md")
         self.assertRegex(image, r"\| `anime-xl` \|[^\n]*\| yes \|")
