@@ -177,8 +177,11 @@ class Server:
                              ("flock", "the run lock (util-linux)"), ("curl", "fetching models"),
                              ("ollama", "the model server (ollama.com)")):
             say(bool(shutil.which(program)), f"`{program}`", why)
-        harness = shutil.which(HARNESS) or os.path.exists(os.path.expanduser(f"~/.npm-global/bin/{HARNESS}"))
-        say(bool(harness), f"the agent loop `{HARNESS}`", "npm install -g @earendil-works/pi-coding-agent")
+        # Where the runs look for it (visor-run.sh, wall.sh), and nowhere else: one on the PATH of
+        # whoever runs this check is not one a run can find.
+        harness = os.path.exists(os.path.expanduser(f"~/.npm-global/bin/{HARNESS}"))
+        say(harness, f"the agent loop `{HARNESS}` in `~/.npm-global`",
+            "npm install -g --prefix ~/.npm-global @earendil-works/pi-coding-agent")
         say(shutil.which("ffmpeg") is not None, "`ffmpeg`, for transcription, speech and motion",
             "apt install ffmpeg", needed=False)
         for folder in FOLDERS:

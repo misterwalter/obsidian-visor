@@ -89,14 +89,15 @@ out of this repository.
 Not done by `install.sh`, because each is an install you should approve yourself:
 
 ```bash
-npm install -g @earendil-works/pi-coding-agent
+npm install -g --prefix ~/.npm-global @earendil-works/pi-coding-agent
 flatpak install --user flathub org.godotengine.Godot
 ollama pull <weights named on the FROM line of a Modelfile>
 ```
 
-- `npm install -g` installs the agent loop for the current user. `-g` means
-  "global", which here is the user's own npm folder, not the system. Add
-  `@<version>` to the name to install one exact version.
+- `npm install -g --prefix ~/.npm-global` installs the agent loop for the
+  current user, in `~/.npm-global`: the one folder of yours the wall shows a
+  run, read-only, and where visor looks for it. Installed anywhere else, runs
+  cannot find it. Add `@<version>` to the name to install one exact version.
 - `flatpak install --user` installs Godot for the current user only. No sudo.
 - `ollama pull` downloads model weights, about 50 GB each.
 
