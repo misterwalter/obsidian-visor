@@ -102,13 +102,33 @@ def _venv_root(python):
     return os.path.dirname(os.path.dirname(python))
 
 
+def _interpreter_of(venv):
+    """Where a Python environment's own interpreter is installed, when that is outside /usr, which
+    every wall shows already: uv's, pyenv's, one built by hand. Its pyvenv.cfg names the folder
+    (`home = .../bin`). None for anything else."""
+    try:
+        with open(os.path.join(venv, "pyvenv.cfg"), encoding="utf-8") as f:
+            home = next((line.split("=", 1)[1].strip() for line in f if line.split("=", 1)[0].strip() == "home"), "")
+    except OSError:
+        return None
+    # As the environment names it, which may go through a link (uv's, for the minor version): the wall
+    # shows it by that name and by the real one.
+    base = os.path.dirname(home.rstrip("/")) if home else ""
+    return (base if base and not (os.path.realpath(base) + "/").startswith("/usr/") and os.path.isdir(base)
+            else None)
+
+
 def walled(settings, job, readable, command, timeout=None, background=False, log=None):
-    """Run command inside media_wall.sh, able to read `readable` and write only `job`."""
+    """Run command inside media_wall.sh, able to read `readable` and write only `job`. A Python
+    environment among `readable` brings its interpreter's folder with it, wherever that is."""
     tool = os.path.basename(command[0])
     if settings.sandbox:
         wall = [os.path.join(HERE, "media_wall.sh"), job]
         for path in readable:
             wall += ["--ro", path]
+            interpreter = _interpreter_of(path)
+            if interpreter:
+                wall += ["--ro", interpreter]
         if settings.gpu != "no":
             wall.append("--gpu")
         command = wall + ["--"] + list(command)

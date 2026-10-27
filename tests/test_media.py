@@ -454,6 +454,22 @@ class MediaTest(unittest.TestCase):
         self.assertIsNone(media.card(self.settings), "ComfyUI not installed: nothing to say")
 
     @unittest.skipUnless(shutil.which("bwrap"), "needs bubblewrap")
+    def test_a_python_environment_s_interpreter_is_shown_wherever_it_is_installed(self):
+        # As uv makes one: the environment's python is a link to an interpreter in a folder of its own,
+        # named through a link for the minor version.
+        real = os.path.join(self.tmp.name, "uv-python", "cpython-3.13.18")
+        self.write(os.path.join(real, "bin", "python3.13"), "#!/bin/sh\necho the interpreter answered\n", 0o755)
+        base = os.path.join(self.tmp.name, "uv-python", "cpython-3.13")
+        os.symlink(real, base)
+        venv = os.path.join(self.tmp.name, "tools", "speech-venv")
+        os.makedirs(os.path.join(venv, "bin"))
+        os.symlink(os.path.join(base, "bin", "python3.13"), os.path.join(venv, "bin", "python"))
+        self.write(os.path.join(venv, "pyvenv.cfg"), f"home = {os.path.join(base, 'bin')}\nversion = 3.13.0\n")
+        done = media.walled(self.settings, self.job, [venv], [os.path.join(venv, "bin", "python")])
+        self.assertEqual(done.stdout.strip(), "the interpreter answered")
+        self.assertIsNone(media._interpreter_of(self.tmp.name), "not an environment")
+
+    @unittest.skipUnless(shutil.which("bwrap"), "needs bubblewrap")
     def test_the_wall_shows_this_machine_s_graphics_card_only_when_asked(self):
         def devices(*gpu):
             listed = subprocess.run([os.path.join(HERE, "media_wall.sh"), self.job, *gpu, "--", "ls", "/dev"],

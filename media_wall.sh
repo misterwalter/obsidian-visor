@@ -20,7 +20,11 @@ readable=()
 cards=()
 while [ $# -gt 0 ] && [ "$1" != "--" ]; do
   case "$1" in
-    --ro) path="$(realpath "${2:?--ro needs a path}")"; readable+=(--ro-bind "$path" "$path"); shift 2 ;;
+    --ro) path="$(realpath "${2:?--ro needs a path}")"; readable+=(--ro-bind "$path" "$path")
+          # Shown by the name it was given too, when that goes through a link: a program may name it
+          # that way (a Python environment its interpreter, through uv's link for the minor version).
+          [ "$2" != "$path" ] && readable+=(--ro-bind "$path" "$2")
+          shift 2 ;;
     # NVIDIA's devices, WSL's one for any card, AMD's compute device and the render devices.
     --gpu) for device in /dev/nvidia* /dev/dxg /dev/kfd /dev/dri; do
              [ -e "$device" ] && cards+=(--dev-bind "$device" "$device")
