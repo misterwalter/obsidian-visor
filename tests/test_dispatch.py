@@ -4646,14 +4646,15 @@ class DispatchTest(unittest.TestCase):
         with open(os.path.join(self.tasks, "inbox", "dancer.jpg"), "wb") as f:
             f.write(b"photo")
         self.note("inbox", "trace.md", sample.replace("Skeleton: ", "Skeleton: ![[dancer.jpg]]", 1).replace("- [ ] wholebody", "- [x] wholebody"))
-        seen = {}
+        seen = []
         def fake(settings, photo, job, parts="body"):
-            seen.update(photo=os.path.basename(photo), parts=parts)
+            seen.append({"photo": os.path.basename(photo), "parts": parts})
             return {"file": self.made(job, "skeleton.png"), "people": "1 person, 133 points"}
         with mock.patch.object(dispatch.media, "trace_pose", fake):
             self.d.once()
-        self.assertEqual(seen, {"photo": "dancer.jpg", "parts": "wholebody"})
+        self.assertEqual(seen, [{"photo": "dancer.jpg", "parts": "wholebody"}], "traced once, though named and embedded")
         self.assertIn("Use it on an Image note with `Pose: ![[trace skeleton 1.png]]`.", self.read("output", "trace.md"))
+        self.assertNotIn("skeleton 2", self.read("output", "trace.md"))
         self.assertIn("> **Drawing in a pose.**", self.read("samples", "sample-image.md"))
         self.assertIn("> **Drawing in a pose.**", sample)
 

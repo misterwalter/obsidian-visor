@@ -15,6 +15,7 @@ redrawing hands afterwards; and <out>.keypoints.json: each person's points as
 [x, y, score], in OpenPose order, for motion capture.
 """
 
+import contextlib
 import json
 import sys
 
@@ -30,9 +31,11 @@ def main(argv):
     image = cv2.imread(photo)
     if image is None:
         sys.exit(f"trace_pose: cannot read {photo}")
-    model = Wholebody(det=detector, det_input_size=(640, 640), pose=pose, pose_input_size=(288, 384),
-                      to_openpose=True, backend="onnxruntime", device="cpu")
-    keypoints, scores = model(image)
+    # rtmlib says which models it loaded on standard output, which is this program's answer: to stderr.
+    with contextlib.redirect_stdout(sys.stderr):
+        model = Wholebody(det=detector, det_input_size=(640, 640), pose=pose, pose_input_size=(288, 384),
+                          to_openpose=True, backend="onnxruntime", device="cpu")
+        keypoints, scores = model(image)
     # Each hand's box, from its 21 points (COCO-wholebody order: left 91-111, right 112-132),
     # padded by half its size, since a hand's outline reaches past its joints.
     hands = []

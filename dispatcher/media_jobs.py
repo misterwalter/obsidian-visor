@@ -373,7 +373,9 @@ class MediaJobs:
         """Trace the people in a photograph into a skeleton, and nothing more."""
         photos = [p for p in self._attachments(owner_text) if p.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
         if header["round text"]:
-            photos = [self._named_file(header["round text"], "skeleton")] + [p for p in photos if p != header["round text"]]
+            # The photograph the line names first; the rest of the note's, each once.
+            named = self._named_file(header["round text"], "skeleton")
+            photos = [named] + [p for p in photos if p != named]
         if not photos:
             raise media.MediaError("there is no photograph to trace: attach one to the note (`![[photo.jpg]]`), "
                                    "with the file somewhere in `tasks/`.")
