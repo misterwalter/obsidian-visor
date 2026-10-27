@@ -220,12 +220,23 @@ class Server:
                               "direct": "the internet, directly: no VPN installed, and VISOR.md allows going without"
                               }.get(way, "a way to the internet"),
             f"{why_not}. Only notes with Web: or Chan:, and fetching image models, need it", needed=False)
-        for what, paths in (("transcription (whisper.cpp)", [self.media.whisper, self.media.whisper_model]),
-                            ("speech (Kokoro)", [self.media.kokoro_python, self.media.kokoro_model]),
-                            ("images (ComfyUI)", [os.path.join(self.media.comfyui, "main.py"), self.media.comfy_python]),
-                            ("poses (rtmlib)", [self.media.pose_python, self.media.pose_model])):
+        # Each tool: the files it needs, there and not empty; then its own program, started inside its wall,
+        # as a job starts it, so that what only fails there (an interpreter the wall cannot see) is found here.
+        m = self.media
+        for what, paths, readable, command in (
+                ("transcription (whisper.cpp)", [m.whisper, m.whisper_model], [m.whisper_dir, os.path.dirname(m.whisper)],
+                 [m.whisper, "--help"]),
+                ("speech (Kokoro)", [m.kokoro_python, m.kokoro_model, m.kokoro_voices], [media._venv_root(m.kokoro_python)],
+                 [m.kokoro_python, "-c", "import kokoro_onnx"]),
+                ("images (ComfyUI)", [os.path.join(m.comfyui, "main.py"), m.comfy_python], None, None),
+                ("poses (rtmlib)", [m.pose_python, m.pose_detector, m.pose_model], [media._venv_root(m.pose_python)],
+                 [m.pose_python, "-c", "import rtmlib, cv2"])):
             absent = [path for path in paths if not os.path.exists(path)]
-            say(not absent, what, f"no `{absent[0]}`" if absent else "", needed=False)
+            empty = [path for path in paths if path not in absent and os.path.isfile(path) and not os.path.getsize(path)]
+            broken = media.starts(m, readable, command) if command and not (absent or empty) else None
+            say(not (absent or empty or broken), what,
+                f"no `{absent[0]}`" if absent else f"`{empty[0]}` is empty" if empty else
+                f"it does not start in its wall: {broken}" if broken else "", needed=False)
         have = [n for n, spec in self.media.image_models.items() if not models.on_disk(spec, self.media.comfy_models)]
         say(bool(have), f"image models on disk: {', '.join(sorted(have)) or 'none'}", "each image model's note "
             "names its file; put it under comfy_models, or Fetch: yes in its note", needed=False)

@@ -173,6 +173,35 @@ _ASK_TORCH = ("import torch\n"
 _cards = {}
 
 
+# What a tool's own program said when started inside its wall, by what was asked and when its files changed.
+_starts = {}
+
+
+def starts(settings, readable, command):
+    """Why a tool's program does not start inside its wall, in a line (an interpreter the wall cannot
+    see, a module it cannot import), or None when it does. Asked once, and again when the program or
+    its environment's packages change."""
+    program = command[0]
+    packages = glob.glob(os.path.join(_venv_root(program), "lib", "python*", "site-packages"))
+    try:
+        changed = max([os.path.getmtime(program)] + [os.path.getmtime(path) for path in packages])
+    except OSError:
+        changed = 0
+    key = (tuple(command), tuple(readable), changed)
+    if key not in _starts:
+        os.makedirs(settings.work, exist_ok=True)
+        job = tempfile.mkdtemp(prefix="check-", dir=settings.work)
+        try:
+            walled(settings, job, readable, command, timeout=120)
+            _starts[key] = None
+        except MediaError as error:
+            said = [line.strip() for line in str(error).splitlines() if line.strip() and not line.startswith("```")]
+            _starts[key] = said[-1][:200] if said else "it did not start"
+        finally:
+            shutil.rmtree(job, ignore_errors=True)
+    return _starts[key]
+
+
 def has_card():
     """Whether this machine has a graphics card's devices for the wall to pass on: NVIDIA's, WSL's, AMD's."""
     return any(os.path.exists(device) for device in ("/dev/nvidia0", "/dev/dxg", "/dev/kfd"))
