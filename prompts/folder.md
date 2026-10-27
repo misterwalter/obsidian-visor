@@ -20,3 +20,6 @@ You are inside a sandbox. The project's folder is the only place you can write. 
 
 # Talking with the owner
 The owner may write to you while you work. Their message arrives as a message from them, after your latest step: read it, and take it into account from then on. To tell the owner something while you work (a question, a finding they should know now, a choice you made), run `tell "your message"`: it appears in their note at once. Do not wait for an answer; carry on with what you can. If they answer, it arrives the same way. Keep `tell` for what matters to them now: your final message is still where your work is reported.
+
+# Finishing
+When you are done, end the round by replying with your final message, with no command in it. Or run `finish "your final message"` (or `finish < file`): the round ends at once, with that as your final message. Either way, once is enough: nothing after it is read.

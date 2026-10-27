@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# End this round: what you give it is your final message, and the round ends at once.
+#
+#   finish "your final message"        or        finish < report.md
+#
+# A reply with no command in it ends the round too; this is for saying so with a command.
+# Up to 100000 characters.
+set -u
+OUT=/run/finish
+LIMIT=100000
+[ -d "$OUT" ] && [ -w "$OUT" ] || { echo "finish: this round ends when you reply without a command" >&2; exit 2; }
+if [ $# -gt 0 ]; then text="$*"; else text="$(cat)"; fi
+[ -n "${text//[[:space:]]/}" ] || { echo "finish: give it your final message: finish \"what you did\"" >&2; exit 2; }
+[ "${#text}" -le "$LIMIT" ] || { echo "finish: that is over $LIMIT characters; put the rest in a file and show it" >&2; exit 2; }
+printf '%s\n' "$text" > "$OUT/.message" && mv "$OUT/.message" "$OUT/message" \
+  && echo "finished: the round ends now, with that as your final message. Nothing more is needed." \
+  || { echo "finish: could not finish; end with your final message as a reply" >&2; exit 1; }

@@ -465,8 +465,10 @@ echo "$WINDOW" > "$WALL/window"   # read by inside/browse: how much a reply may 
 TALK=""
 if [ "$ROUND" != chat ]; then
   TALK="$OUT/talk"
-  mkdir -p "$TALK" "$OUT/told"
+  mkdir -p "$TALK" "$OUT/told" "$OUT/finish"
   export VISOR_TELL_DIR="$OUT/told"
+  # And an agent that ends with a command rather than a reply leaves its final message in finish/.
+  export VISOR_FINISH_DIR="$OUT/finish"
 fi
 # In a build on a Godot project, the model door keeps the scripts compiling in front of the agent: it checks them
 # whenever one has changed, and tells the agent what no longer compiles (model-door.py).
@@ -676,6 +678,21 @@ MAX_CALLS="${VISOR_MAX_CALLS:-1000}"
 ) &
 WATCHERS="$WATCHERS $!"
 
+# Finish: an agent that ends with `finish` (inside/finish) rather than a reply leaves its final message in
+# finish/, and the round ends at once, as if it had replied, rather than going on until it is stopped as
+# stuck for running the command again and again.
+if [ -n "${VISOR_FINISH_DIR:-}" ]; then
+  (
+    while sleep 1 && kill -0 "$AGENT_PID" 2>/dev/null; do
+      [ -s "$VISOR_FINISH_DIR/message" ] || continue
+      echo "the agent ended it with \`finish\`" > "$OUT/finished.txt"
+      kill "$AGENT_PID"
+      break
+    done
+  ) &
+  WATCHERS="$WATCHERS $!"
+fi
+
 # Stop: the dispatcher writes $OUT/stop, saying why: the owner took the note out of working/, or an idle
 # run gives way to something that arrived in inbox/. The agent is ended and the run finishes as usual,
 # keeping what there is. By hand, `touch <results>/<run>/stop` does the same.
@@ -753,6 +770,8 @@ SWAP_LIMIT="${VISOR_SWAP_LIMIT:-50}"   # MB per second, in and out together
 WATCHERS="$WATCHERS $!"
 
 wait "$AGENT_PID"; AGENT=$?
+# Ended by its own `finish`: finished, as much as one that ended with a reply.
+[ -f "$OUT/finished.txt" ] && AGENT=0
 T1=$(date +%s)
 # Stopped, it writes what is left.
 [ -z "$LIVE_LOG_PID" ] || { kill "$LIVE_LOG_PID" 2>/dev/null; wait "$LIVE_LOG_PID"; }
@@ -786,6 +805,15 @@ GODOT_TOLD="$(grep -c 'GODOT CHECK: [1-9]' "$OUT/model-door.log")"
 REFUSED=$(( $(refusals) - REFUSED_BY_CHECK ))
 [ "$REFUSED" = 0 ] || say "the doors refused $REFUSED requests from the agent -- see the door logs in $OUT"
 harness_final_message > "$OUT/final-message.md" 2> /dev/null
+# With `finish`: what it said with it, after what it last said in its reply, once if the two are the same.
+if [ -s "${VISOR_FINISH_DIR:-/nonexistent}/message" ]; then
+  python3 - "$OUT/final-message.md" "$VISOR_FINISH_DIR/message" <<'EOF'
+import sys
+said, finished = (open(path, encoding="utf-8", errors="replace").read().strip() for path in sys.argv[1:3])
+whole = finished if not said or said in finished else said if finished in said else said + "\n\n" + finished
+open(sys.argv[1], "w", encoding="utf-8").write(whole + "\n")
+EOF
+fi
 [ -s "$OUT/final-message.md" ] || say "WARNING: the agent left no closing message"
 # What the agent made for the owner to see and did not show: what its closing message names,
 # and the pictures, video, sound and PDFs it made (autoshow.py).
@@ -900,7 +928,7 @@ fi
   [ -n "$CONTINUE" ] && echo "- continues: $CONTINUE"
   [ -n "$FORK" ] && echo "- carries on the conversation of: $FORK"
   echo "- base: $START"
-  echo "- agent minutes: $(( (T1-T0)/60 ))   agent exit: $AGENT"
+  echo "- agent minutes: $(( (T1-T0)/60 ))   agent exit: $AGENT$([ -f "$OUT/finished.txt" ] && echo " (ended with \`finish\`)")"
   echo "- tests before: exit $BEFORE   tests after: exit $AFTER"
   echo "- model calls: $(answered | wc -l)   first prompt: $(answered | head -1 | jq -r '.prompt_tokens // "unknown"') tokens" \
        "  largest prompt: $(answered | jq -s '[.[].prompt_tokens // 0] | max // 0') tokens"

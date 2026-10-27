@@ -16,7 +16,8 @@
 #   writable    the workspace (its .git read-only), the log dir, an empty home, /tmp,
 #               and /run/show when VISOR_SHOW_DIR names a folder: what `show` copies
 #               out for the owner; /run/tell when VISOR_TELL_DIR names one: the messages
-#               `tell` sends the owner while the run goes
+#               `tell` sends the owner while the run goes; /run/finish when VISOR_FINISH_DIR
+#               names one: the final message `finish` ends the round with
 #   read-only   /run/reading when VISOR_READING_DIR names a folder: the copy of what the owner lets
 #               this run read (sources.py), never the owner's own folders
 #   absent      everything else: the real home, other runs, the source clone, notes
@@ -100,6 +101,8 @@ shown=()
 [ -n "${VISOR_SHOW_DIR:-}" ] && [ -d "$VISOR_SHOW_DIR" ] && shown=(--bind "$(realpath "$VISOR_SHOW_DIR")" /run/show)
 # And what it tells the owner while it works, through another (inside/tell).
 [ -n "${VISOR_TELL_DIR:-}" ] && [ -d "$VISOR_TELL_DIR" ] && shown+=(--bind "$(realpath "$VISOR_TELL_DIR")" /run/tell)
+# And its final message, when it ends the round with a command (inside/finish).
+[ -n "${VISOR_FINISH_DIR:-}" ] && [ -d "$VISOR_FINISH_DIR" ] && shown+=(--bind "$(realpath "$VISOR_FINISH_DIR")" /run/finish)
 # And what it may read besides the project: a copy, which it cannot change (inside/browse).
 [ -n "${VISOR_READING_DIR:-}" ] && [ -d "$VISOR_READING_DIR" ] && shown+=(--ro-bind "$(realpath "$VISOR_READING_DIR")" /run/reading)
 

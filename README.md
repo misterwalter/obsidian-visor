@@ -56,9 +56,9 @@ The words these docs use for the sandbox, and what each is:
 - **The self-check** (`inside/check-wall`) runs inside the wall before every
   agent: it tries what must fail (writing outside the workspace, the network,
   requests each door must refuse) and stops the run if any succeeds.
-- **Openings that are not doors**, with no program behind them: `/run/show` and
-  `/run/tell`, folders the agent writes into for you, and `/run/reading`, the
-  read-only copy a note's `Browse:` gives it.
+- **Openings that are not doors**, with no program behind them: `/run/show`,
+  `/run/tell` and `/run/finish`, folders the agent writes into for you, and
+  `/run/reading`, the read-only copy a note's `Browse:` gives it.
 
 To learn more: bubblewrap's manual (`man bwrap`) and Linux namespaces
 (`man namespaces`) for the wall; Unix domain sockets (`man unix`) and `socat`

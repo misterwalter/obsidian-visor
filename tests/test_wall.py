@@ -73,6 +73,16 @@ class WallTest(unittest.TestCase):
         (name,) = os.listdir(told)
         self.assertEqual(open(os.path.join(told, name)).read(), "Which save format?\n")
 
+    def test_the_finish_folder_is_the_way_out_for_the_final_message(self):
+        finished = os.path.join(self.tmp.name, "finish")
+        os.makedirs(finished)
+        env = dict(os.environ, HOME=self.home, VISOR_FINISH_DIR=finished)
+        done = subprocess.run([os.path.join(HERE, "wall.sh"), self.work, self.wall, self.logs, "ro",
+                               "bash", "-c", "finish 'Read it all; nothing to change.'"], capture_output=True, text=True,
+                              timeout=60, env=env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(open(os.path.join(finished, "message")).read(), "Read it all; nothing to change.\n")
+
     def test_what_the_run_may_read_cannot_be_changed_whatever_the_agent_tries(self):
         reading = os.path.join(self.tmp.name, "reading")
         os.makedirs(os.path.join(reading, "journal", "2024"))

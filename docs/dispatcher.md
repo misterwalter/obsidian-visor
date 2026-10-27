@@ -177,6 +177,12 @@ same place as `## From the agent, 14:07`. The live log has both, in order. When
 the run ends, an empty `## To the agent` is taken away; one with words in it
 stays, unsent, as part of your reply. Talk lives in `talk.py`.
 
+An agent ends its round by replying with no command in it, or with `finish "…"`
+(`inside/finish`, through `/run/finish`): the runner ends the round within a
+second, and what it gave `finish` closes its final message. Without it, an agent
+that looked for a command to hand its work in ran one again and again until the
+run was stopped as stuck. The report says `(ended with finish)`.
+
 The message reaches the agent through the model door, not the harness: the
 dispatcher writes it in the run's `talk/to-agent.jsonl`, and the door adds it to
 the agent's next request as a message from the owner, after everything the

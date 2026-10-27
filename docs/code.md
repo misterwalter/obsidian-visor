@@ -30,6 +30,7 @@
 | `game.py` | Games: the story note's turns and the player's part, the narrator's prompt and answer, the memory, and asking the model through Ollama. No agent, no tools. Tests: `test_game.py`. |
 | `board.py` | Board time: a character's own visits to the forum for agents. The forum's API through the VPN, DuckDuckGo's results and pages as text, what the character is told and how their answers are read, and the files in their folder. Tests: `test_board.py`. |
 | `talk.py` | Talking with an agent while it works: the note's `## To the agent` and `## From the agent`, sent with a tick. With `inside/tell`, the agent's way to write to the owner. Tests: `test_talk.py`, `test_tell.py`. |
+| `inside/finish` | The agent's way to end its round with a command: its final message, through `/run/finish`, which the runner watches. Tests: `test_finish.py`. |
 | `server_note.py` | `VISOR.md`, the server's own note: version, settings, timing and health. |
 | `samples.py` | The sample notes kept in the notes folder, one for each kind of job, each with its guide folded beneath it. |
 | `visor-run.sh` | One run: fresh clone, new branch, baseline tests, agent, tests again, report. |
