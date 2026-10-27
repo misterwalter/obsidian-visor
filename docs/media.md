@@ -103,6 +103,17 @@ Comfy-Org's and lightx2v's pages on Hugging Face; then a model note naming them.
 A vision model is an Ollama model (`ollama pull qwen2.5vl:7b`, about 6 GB) and a
 note, `Kind: vision`, `Ollama: qwen2.5vl:7b`.
 
+**The graphics card.** On a machine with one, the wall passes its devices to
+each tool (`media_wall.sh --gpu`: NVIDIA's, WSL's `/dev/dxg`, AMD's), and each
+uses it when its install can. ComfyUI does when its PyTorch is a CUDA build,
+which visor asks of that PyTorch, inside the wall, once and again whenever its
+environment's packages change (`media.card`); otherwise it is started with
+`--cpu`. whisper.cpp does when it was built with CUDA. The pose tracer and Kokoro
+keep to the processor. `VISOR.md`'s health says what the card is used for, and
+each image model's note where it runs; a language model's note says where
+Ollama last ran it, which Ollama decides for itself, putting on the card as much
+as fits. `gpu = no` in `[media]` keeps every tool on the processor.
+
 The dispatcher frees the model server's memory first, reads attachments only from
 inside `tasks/`, copies results into the note's own folder in `tasks/media/`
 (`media/<note>/`, which stays when the note is deleted, as its live log does), and

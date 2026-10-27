@@ -432,6 +432,7 @@ class DispatchTest(unittest.TestCase):
         # A test that wants Ollama answering says what it has, and puts its own `ollama` on the PATH.
         d._unload_models = lambda: None
         d._in_ollama = lambda: None
+        d._loaded = lambda: {}
         d.ollama_command = "ollama"
         d.keep_warm = lambda address, model, seconds: self.kept_warm.append((model, seconds))
         d.context_of = lambda address, model: 8192
@@ -3581,6 +3582,21 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("Recommended: 120. From 10 to 3600.", note)
         self.assertNotIn("VISOR.md", [os.path.basename(p) for p in self.d.queue()])
 
+    def test_visor_md_s_health_says_what_the_graphics_card_is_used_for(self):
+        def health(has, drawn):
+            with mock.patch.object(dispatch.media, "has_card", lambda: has), \
+                    mock.patch.object(dispatch.media, "card", lambda settings: drawn):
+                self.d.health_at = None
+                self.d.sync_server_note()
+            return self.server_note()
+        self.assertIn("- Graphics card: Test Card, 8 GB. Ollama puts language models on it by itself, and the image "
+                      "tools draw on it\n", health(True, ("card", "Test Card, 8 GB")))
+        self.assertIn("- Graphics card: Ollama puts language models on it by itself; images are drawn on the "
+                      "processor: `gpu = no` in visor.conf\n", health(True, ("processor", "`gpu = no` in visor.conf")))
+        self.assertIn("- Graphics card: Ollama puts language models on it by itself\n", health(True, None),
+                      "ComfyUI not installed")
+        self.assertIn("- Graphics card: none visor can use, so everything runs on the processor\n", health(False, None))
+
     def test_pause_in_visor_md_takes_no_new_notes_and_is_kept_over_a_restart(self):
         self.d.once()
         self.edit_server_note("- [ ] Pause (take no new notes until this is unticked; a run going now finishes)", "- [x] Pause (take no new notes until this is unticked; a run going now finishes)")
@@ -4269,6 +4285,20 @@ class DispatchTest(unittest.TestCase):
             self.assertIn(["pull", "looker:7b"], [json.loads(line) for line in open(record)])
         finally:
             os.environ["PATH"] = os.environ["PATH"].split(os.pathsep, 1)[1]
+
+    def test_a_language_model_s_note_says_where_ollama_last_ran_it(self):
+        self.d._in_ollama = lambda: {"coder-official:latest", "coder-second:latest", "writer-local:latest"}
+        self.d._loaded = lambda: {"coder-official:latest": 1.0, "coder-second:latest": 0.6}
+        self.d.once()
+        self.assertIn("(its `num_ctx`); last run all on the graphics card\n", self.read("models", "official.md"))
+        self.assertIn("(its `num_ctx`); last run 60% on the graphics card and the rest on the processor, as much as "
+                      "fitted\n", self.read("models", "second.md"))
+        self.assertIn("(its `num_ctx`)\n", self.read("models", "writer.md"), "not run yet: nothing said")
+        again = self.fresh()
+        again._in_ollama = self.d._in_ollama
+        again.once()
+        self.assertIn("last run all on the graphics card", self.read("models", "official.md"),
+                      "remembered after a restart, with nothing loaded now")
 
     def test_an_ollama_that_cannot_be_started_is_said_in_the_note_and_stops_nothing(self):
         path = os.path.join(self.tasks, "models", "writer.md")

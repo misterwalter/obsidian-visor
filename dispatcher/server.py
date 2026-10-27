@@ -395,6 +395,15 @@ class Server:
         lines = [f"Checked {_stamp()}.", ""]
         lines.append(f"- Ollama, at {self.ollama}: " + ("answering" if self._in_ollama() is not None else
                                                        "**not answering**. Start it: `systemctl start ollama`"))
+        drawn = media.card(self.media)
+        if drawn and drawn[0] == "card":
+            lines.append(f"- Graphics card: {drawn[1]}. Ollama puts language models on it by itself, and the image "
+                         "tools draw on it")
+        elif media.has_card():
+            lines.append("- Graphics card: Ollama puts language models on it by itself" +
+                         (f"; images are drawn on the processor: {drawn[1]}" if drawn else ""))
+        else:
+            lines.append("- Graphics card: none visor can use, so everything runs on the processor")
         lines.append(f"- The VPN tunnel, at {self.vpn_proxy}: " + (
             "answering" if self.vpn_up() else "not answering. Only notes with `Web:` or `Chan:`, and fetching "
                                               "models, need it"))

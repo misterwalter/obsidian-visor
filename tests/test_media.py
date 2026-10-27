@@ -7,6 +7,7 @@ ffmpeg and socat are the real ones, so these also show each tool runs walled in.
 
 import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -68,6 +69,7 @@ FAKE_COMFY = textwrap.dedent('''\
     port = int(args[args.index("--port") + 1]); out = args[args.index("--output-directory") + 1]
     assert "--disable-all-custom-nodes" in args and "--disable-api-nodes" in args, "add-ons must be off"
     assert "--enable-manager" not in args, "the add-on installer must stay off"
+    open(os.path.join(out, "..", "comfy-args.json"), "w").write(json.dumps(args))
     BUILT_IN = {"CheckpointLoaderSimple", "LoraLoader", "CLIPSetLastLayer", "ModelSamplingDiscrete",
                 "CLIPTextEncode", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage",
                 "UNETLoader", "ModelSamplingAuraFlow", "CLIPLoader", "T5TokenizerOptions", "VAELoader",
@@ -417,6 +419,44 @@ class MediaTest(unittest.TestCase):
         self.assertEqual(len(ready), 1, "said once, when ComfyUI was up")
         self.assertGreaterEqual(ready[0], 0)
         self.assertEqual(steps, [(2, 3, 8)], "how far picture 2 had got, as ComfyUI said it")
+
+    def test_comfyui_draws_on_the_card_its_pytorch_reaches_and_else_keeps_to_the_processor(self):
+        media.generate(self.settings, {"prompt": "a boat", "model": "photo-xl"}, self.job)
+        self.assertIn("--cpu", json.load(open(os.path.join(self.job, "comfy-args.json"))),
+                      "this test's Python has no PyTorch, so no card")
+        second = os.path.join(self.tmp.name, "second")
+        os.makedirs(second)
+        with mock.patch.object(media, "card", lambda settings: ("card", "Test Card, 8 GB")):
+            media.generate(self.settings, {"prompt": "a boat", "model": "photo-xl"}, second)
+        self.assertNotIn("--cpu", json.load(open(os.path.join(second, "comfy-args.json"))))
+
+    def test_what_comfyui_draws_on_is_asked_of_its_own_pytorch(self):
+        def python(name, says):
+            path = os.path.join(self.tmp.name, name, "bin", "python")
+            self.write(path, f"#!/bin/sh\necho {says}\n", 0o755)
+            return path
+        with mock.patch.object(media, "has_card", lambda: True):
+            self.settings.comfy_python = python("cuda-venv", "card 8 Test Card")
+            self.assertEqual(media.card(self.settings), ("card", "Test Card, 8 GB"))
+            self.settings.gpu = "no"
+            self.assertEqual(media.card(self.settings), ("processor", "`gpu = no` in visor.conf"))
+            self.settings.gpu = "auto"
+            self.settings.comfy_python = python("cpu-venv", "none without")
+            self.assertIn("built without CUDA", media.card(self.settings)[1])
+        with mock.patch.object(media, "has_card", lambda: False):
+            self.assertEqual(media.card(self.settings),
+                             ("processor", "this machine has no graphics card visor can use"))
+        self.settings.comfy_python = os.path.join(self.tmp.name, "absent", "bin", "python")
+        self.assertIsNone(media.card(self.settings), "ComfyUI not installed: nothing to say")
+
+    @unittest.skipUnless(shutil.which("bwrap"), "needs bubblewrap")
+    def test_the_wall_shows_this_machine_s_graphics_card_only_when_asked(self):
+        def devices(*gpu):
+            listed = subprocess.run([os.path.join(HERE, "media_wall.sh"), self.job, *gpu, "--", "ls", "/dev"],
+                                    capture_output=True, text=True).stdout.split()
+            return {name for name in listed if name in ("nvidia0", "dxg", "kfd")}
+        self.assertEqual(devices(), set())
+        self.assertEqual(devices("--gpu"), {name for name in ("nvidia0", "dxg", "kfd") if os.path.exists("/dev/" + name)})
 
     def test_fix_hands_and_finish_say_which_models_they_work_with(self):
         self.assertEqual(media.improvers(self.settings.image_models),

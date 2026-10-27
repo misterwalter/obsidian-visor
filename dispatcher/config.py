@@ -2,6 +2,7 @@
 config.md, and making a new one from a note."""
 
 import configparser
+import json
 import os
 import random
 import re
@@ -125,6 +126,12 @@ class Config:
         # How often a run's note is looked at while it goes, in seconds: to stop it, and to talk.
         self.watch_every = 5
         self._contexts = {}
+        # How much of each language model was on the graphics card when Ollama last had it loaded: {name: 0 to 1}.
+        try:
+            with open(os.path.join(self.state_dir, "on-card.json"), encoding="utf-8") as f:
+                self.on_card = json.load(f)
+        except (OSError, ValueError):
+            self.on_card = {}
         self.made_so_far = []  # what the media job running now has made (media_job)
         self.load_models()
         try:

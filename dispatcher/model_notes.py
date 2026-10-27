@@ -69,6 +69,35 @@ class ModelNotes:
         except (OSError, ValueError, KeyError):
             return None
 
+    def _loaded(self):
+        """The models Ollama has loaded now, and how much of each is on the graphics card: {name: 0 to 1}.
+        Ollama decides that itself, putting on the card as much as fits."""
+        try:
+            with urllib.request.urlopen(f"http://{self.ollama}/api/ps", timeout=3) as reply:
+                return {m["name"]: (m.get("size_vram") or 0) / m["size"]
+                        for m in json.load(reply).get("models", []) if m.get("size")}
+        except (OSError, ValueError, KeyError):
+            return {}
+
+    def _where_it_ran(self, tag):
+        """Where a language model ran when Ollama last had it loaded, said after its state; '' before then."""
+        share = self.on_card.get(tag, self.on_card.get(f"{tag}:latest"))
+        if share is None:
+            return ""
+        if share >= 0.99:
+            return "; last run all on the graphics card"
+        if share <= 0.01:
+            return "; last run on the processor"
+        return (f"; last run {round(share * 100)}% on the graphics card and the rest on the processor, "
+                "as much as fitted")
+
+    def _remember_on_card(self):
+        """Keep how much of each loaded model is on the graphics card, for its note, across restarts."""
+        fresh = dict(self.on_card, **{name: round(share, 2) for name, share in self._loaded().items()})
+        if fresh != self.on_card:
+            self.on_card = fresh
+            write_file(os.path.join(self.state_dir, "on-card.json"), json.dumps(fresh, indent=2))
+
     def _offer_starters(self):
         """A starter note for each kind of model the folder has none of (an edit model, a vision
         model), offered once: one the owner deletes is not offered again. Like every starter it says
@@ -123,6 +152,8 @@ class ModelNotes:
                 if ollama is None:
                     ollama = self._in_ollama()
                     ollama = "silent" if ollama is None else ollama
+                    if ollama != "silent":
+                        self._remember_on_card()
                 tag = model["ollama"]
                 found = ("not known: Ollama is not answering" if ollama == "silent" else
                          self._language_state(name, model, ollama))
@@ -134,6 +165,10 @@ class ModelNotes:
                            if model["kind"] == "video"
                            else [p for p in [models.target(model, self.media.comfy_models)] if not os.path.exists(p)])
                 found = "yes" if not missing else self._fetch_state(name, model, missing)
+                drawn = media.card(self.media) if not missing and model["kind"] != "lora" else None
+                if drawn:
+                    found += (f"; runs on the graphics card ({drawn[1]})" if drawn[0] == "card" else
+                              f"; runs on the processor: {drawn[1]}")
                 if missing and model["fetch"].lower() in models.YES:
                     said = [fetch.problem(item, self.download_hosts) for item in models.files(model, self.media.comfy_models)
                             if item["target"] in missing]
@@ -209,7 +244,7 @@ class ModelNotes:
                 return "yes"
             length = self._context(tag)
             if length:
-                return f"yes, with a context length of {length} (its `num_ctx`)"
+                return f"yes, with a context length of {length} (its `num_ctx`)" + self._where_it_ran(tag)
             return (f"yes, but nothing sets its `num_ctx`, so Ollama gives it a context length of {models.OLLAMA_CONTEXT}, "
                     "too short for an agent's work. " +
                     (f"Add `PARAMETER num_ctx {models.SUGGESTED_CONTEXT}` to its `## Modelfile`." if recipe else

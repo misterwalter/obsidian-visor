@@ -18,6 +18,7 @@ import base64
 import collections
 import configparser
 import fnmatch
+import glob
 import http.client
 import json
 import os
@@ -25,6 +26,7 @@ import re
 import shutil
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 import wave
@@ -69,6 +71,9 @@ class Settings:
         # How long a job may take before it is stopped, in minutes.
         self.minutes = int(get("minutes", "360"))
         self.sandbox = (get("sandbox", "yes") or "yes").lower() != "no"
+        # The graphics card, when this machine has one: shown to every tool's wall, and used by those
+        # whose install can. "no" keeps every tool on the processor.
+        self.gpu = (get("gpu", "auto") or "auto").strip().lower()
         # The image models, from the owner's model notes (models.py): {name: spec}, and the
         # one a note that names none gets. Set by whoever made these settings.
         self.image_models, self.default_image = {}, None
@@ -104,6 +109,8 @@ def walled(settings, job, readable, command, timeout=None, background=False, log
         wall = [os.path.join(HERE, "media_wall.sh"), job]
         for path in readable:
             wall += ["--ro", path]
+        if settings.gpu != "no":
+            wall.append("--gpu")
         command = wall + ["--"] + list(command)
     if background:
         out = open(log, "wb") if log else subprocess.DEVNULL
@@ -131,6 +138,57 @@ def walled(settings, job, readable, command, timeout=None, background=False, log
 
 # Tools running now, by job folder, so that stop() can reach them.
 _running = {}
+
+
+# ── The graphics card ─────────────────────────────────────────────────────────
+
+# Asked of ComfyUI's own Python, inside the wall: whether its PyTorch can use a graphics card, and which.
+_ASK_TORCH = ("import torch\n"
+              "if torch.cuda.is_available():\n"
+              "    card = torch.cuda.get_device_properties(0)\n"
+              "    print('card', round(card.total_memory / 2 ** 30), card.name)\n"
+              "else:\n"
+              "    print('none', 'cuda' if torch.version.cuda or torch.version.hip else 'without')\n")
+# What PyTorch said, by ComfyUI's Python and when its environment's packages last changed.
+_cards = {}
+
+
+def has_card():
+    """Whether this machine has a graphics card's devices for the wall to pass on: NVIDIA's, WSL's, AMD's."""
+    return any(os.path.exists(device) for device in ("/dev/nvidia0", "/dev/dxg", "/dev/kfd"))
+
+
+def card(settings):
+    """What ComfyUI draws on: ("card", "NVIDIA GeForce RTX 4070 Laptop GPU, 8 GB") or ("processor", why),
+    or None while ComfyUI is not installed. Asked of its PyTorch once, and again when its packages change."""
+    if not os.path.exists(settings.comfy_python):
+        return None
+    if settings.gpu == "no":
+        return ("processor", "`gpu = no` in visor.conf")
+    if not has_card():
+        return ("processor", "this machine has no graphics card visor can use")
+    key = (settings.comfy_python, max((os.path.getmtime(path) for path in glob.glob(
+        os.path.join(_venv_root(settings.comfy_python), "lib", "python*", "site-packages"))), default=0))
+    if key not in _cards:
+        _cards[key] = _ask_card(settings)
+    return _cards[key]
+
+
+def _ask_card(settings):
+    os.makedirs(settings.work, exist_ok=True)
+    job = tempfile.mkdtemp(prefix="card-", dir=settings.work)
+    try:
+        said = walled(settings, job, [_venv_root(settings.comfy_python)],
+                      [settings.comfy_python, "-c", _ASK_TORCH], timeout=300).stdout.split()
+    except MediaError as error:
+        return ("processor", f"ComfyUI's PyTorch could not be asked: {str(error)[:300]}")
+    finally:
+        shutil.rmtree(job, ignore_errors=True)
+    if said[:1] == ["card"] and len(said) > 2:
+        return ("card", f"{' '.join(said[2:])}, {said[1]} GB")
+    if said[1:2] == ["cuda"]:
+        return ("processor", "ComfyUI's PyTorch cannot reach the card")
+    return ("processor", "ComfyUI's PyTorch is built without CUDA: install PyTorch's CUDA build in its environment")
 
 
 def _end(process):
@@ -879,10 +937,13 @@ class _comfy_server:
                     "  vae: vae\n  text_encoders: text_encoders\n  diffusion_models: diffusion_models\n"
                     "  controlnet: controlnet\n  clip_vision: clip_vision\n  vae_approx: vae_approx\n")
         self.sock, port = os.path.join(job, "comfy.sock"), _free_port()
+        # On the graphics card when its PyTorch can reach one; told to keep to the processor otherwise,
+        # since without a card it would fail looking for one.
+        processor = [] if (card(settings) or ("processor",))[0] == "card" else ["--cpu"]
         # ComfyUI listens on a port inside the wall, where the network is its own and empty;
         # socat joins that port to a socket in the job folder, which visor can reach.
         serve = ["sh", "-c", 'sock=$0; port=$1; shift; socat UNIX-LISTEN:"$sock",fork TCP:127.0.0.1:"$port" & exec "$@"',
-                 self.sock, str(port), settings.comfy_python, main, "--cpu", "--listen", "127.0.0.1", "--port", str(port),
+                 self.sock, str(port), settings.comfy_python, main, *processor, "--listen", "127.0.0.1", "--port", str(port),
                  # No add-ons, no paid cloud nodes; and the built-in add-on installer stays off,
                  # since it runs only when given --enable-manager.
                  "--disable-auto-launch", "--disable-all-custom-nodes", "--disable-api-nodes", "--preview-method", "auto",
