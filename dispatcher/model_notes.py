@@ -158,6 +158,8 @@ class ModelNotes:
             if item["target"] in missing and said and said[0] == (item["download"], item["sha-256"]):
                 return f"not downloaded: `{item['file']}`: {said[1]}"
         if model["fetch"].lower() in models.YES:
+            if not self.vpn_up():
+                return "waiting for the VPN, which is down: visor fetches image models only through it"
             return "waiting to be fetched, when visor is next idle"
         return f"not downloaded: no `{missing[0]}`"
 

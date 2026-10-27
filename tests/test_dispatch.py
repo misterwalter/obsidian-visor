@@ -4122,6 +4122,20 @@ class DispatchTest(unittest.TestCase):
         args = json.load(open(os.path.join(self.tmp.name, "curl-args.json")))
         self.assertEqual(args[args.index("--socks5-hostname") + 1], self.d.vpn_proxy, "through the VPN tunnel only")
 
+    def test_a_model_to_fetch_while_the_vpn_is_down_says_it_waits_for_the_vpn(self):
+        self.give_image_models()
+        self.vpn = False
+        path = os.path.join(self.tasks, "models", "photo-xl.md")
+        with open(path) as f:
+            text = f.read()
+        with open(path, "w") as f:
+            f.write(text.replace("Download:\n", "Download: https://huggingface.co/a/b/resolve/main/photoXL_v9.safetensors\n")
+                        .replace("- [ ] Fetch", "- [x] Fetch"))
+        self.d.once()
+        self.assertIsNone(self.d.fetching)
+        self.assertIn("\nOn this server: waiting for the VPN, which is down: visor fetches image models only "
+                      "through it\n", open(path).read())
+
     def test_every_file_a_model_names_is_fetched_one_by_one_from_its_note(self):
         fake_curl = os.path.join(self.tmp.name, "curl")
         with open(fake_curl, "w") as f:
