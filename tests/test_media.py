@@ -443,6 +443,10 @@ class MediaTest(unittest.TestCase):
             self.settings.gpu = "auto"
             self.settings.comfy_python = python("cpu-venv", "none without")
             self.assertIn("built without CUDA", media.card(self.settings)[1])
+            self.settings.comfy_python = python("no-torch-venv", "Traceback; echo 'ModuleNotFoundError: torch' >&2; exit 1")
+            self.assertEqual(media.card(self.settings),
+                             ("processor", "ComfyUI's PyTorch could not be asked: ModuleNotFoundError: torch"),
+                             "one line, whatever the tool said")
         with mock.patch.object(media, "has_card", lambda: False):
             self.assertEqual(media.card(self.settings),
                              ("processor", "this machine has no graphics card visor can use"))

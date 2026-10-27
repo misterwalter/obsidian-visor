@@ -181,7 +181,9 @@ def _ask_card(settings):
         said = walled(settings, job, [_venv_root(settings.comfy_python)],
                       [settings.comfy_python, "-c", _ASK_TORCH], timeout=300).stdout.split()
     except MediaError as error:
-        return ("processor", f"ComfyUI's PyTorch could not be asked: {str(error)[:300]}")
+        # The tool's last line says why (a missing module, say): one line, for a line of a note.
+        said = [line.strip() for line in str(error).splitlines() if line.strip() and not line.startswith("```")]
+        return ("processor", f"ComfyUI's PyTorch could not be asked: {said[-1][:200] if said else 'no answer'}")
     finally:
         shutil.rmtree(job, ignore_errors=True)
     if said[:1] == ["card"] and len(said) > 2:
