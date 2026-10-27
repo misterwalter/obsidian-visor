@@ -512,6 +512,32 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("## Mara\n\nAnswer from coder-official.", note)
         self.assertTrue(note.rstrip().endswith("## You"), "a fresh turn for the owner")
 
+    def test_a_character_s_lan_and_loopback_reach_their_turns_and_a_chat_can_say_otherwise(self):
+        path = self.character("Mara", "Dry, sixty, a lighthouse keeper.", model="official")
+        text = open(path).read()
+        self.assertIn("LAN: \n\nThe local network, reached directly", text)
+        with open(path, "w") as f:
+            f.write(text.replace("LAN: \n", "LAN: homeassistant.local:8123\n"))
+        self.clock += 1000
+        self.d.sync_character("Mara")
+        self.assertIn("LAN: `homeassistant.local:8123`", open(path).read())
+        self.note("inbox", "Evening.md", "Chat: mara\n\n## You\nIs the lamp on?\n")
+        self.d.once()
+        (call,) = self.calls_made()
+        self.assertEqual(call[call.index("--lan") + 1], "homeassistant.local:8123")
+        self.assertNotIn("--loopback", call)
+        # The chat's own lines, over hers.
+        self.note("inbox", "Later.md", "Chat: mara\nLAN: no\nLoopback: 8080\n\n## You\nAnd now?\n")
+        self.d.once()
+        second = self.calls_made()[1]
+        self.assertNotIn("--lan", second)
+        self.assertEqual(second[second.index("--loopback") + 1], "8080")
+        # What is not a port: the chat comes back, saying so.
+        self.note("inbox", "Bad.md", "Chat: mara\nLoopback: lots\n\n## You\nHm?\n")
+        self.d.once()
+        self.assertIn("`Loopback: lots` has what is not a port: lots", self.read("output", "Bad.md"))
+        self.assertEqual(len(self.calls_made()), 2)
+
     def test_a_name_visor_does_not_know_gets_a_config_note_and_the_chat_comes_back(self):
         self.note("inbox", "Evening.md", "Chat: Zed\n\n## You\nHello?\n")
         self.d.once()

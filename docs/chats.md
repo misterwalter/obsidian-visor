@@ -11,8 +11,9 @@ folder made by hand is given whatever of those it lacks.
 
 **Characters.** Each is a folder under `tasks/characters/`. Its `config.md` is
 visor's note for it, kept the way a project's is: settings as groups of tick
-boxes (`Model`, `Thinking`, `Image`, `Quality`, `Web`, `Chan`, and a `Speak:`
-line), then who they are and how they look, in the owner's words. Its
+boxes (`Model`, `Thinking`, `Image`, `Quality`, `Web`, `Chan`), the typed lines
+`Speak:`, `LAN:` and `Loopback:`, then who they are and how they look, in the
+owner's words. Its
 `memory.md` and the pages in `memory/` are the character's own. A character is
 the same in every chat; a line in a chat note overrides the same setting of
 everyone present, for that chat. A name visor does not know gets a `config.md`
@@ -21,8 +22,10 @@ made for it, and the note comes back.
 **A turn** is a `chat` round of `visor-run.sh`: the character's folder as the
 project, what has been said as the task, and who they are as the system prompt
 (`prompts/chat.md`). The character gets `bash`, `read` and `write` inside
-the usual wall, plus what its settings allow: the web and the forum as on any
-note, and drawing, through `doors/media-door.py`. Each character carries on its
+the usual wall, plus what its settings allow: the web, the local network, this
+machine and the forum as on any note, and drawing, through
+`doors/media-door.py`. With one narrator, the first character named sets what
+the narrator's run is given. Each character carries on its
 own pi conversation from its last turn in that note, and is given only what was
 said since.
 

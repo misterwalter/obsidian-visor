@@ -306,7 +306,8 @@ def new_character(ctx):
         "| `Image`, as boxes | Whether they may draw, and with which image model. | They may not draw. |\n"
         "| `Speak: <voice>` | The voice their turns are read aloud in, such as `bf_emma`, or a blend of several, `(25 af_heart 75 am_david)`; `no` for text only. | No. |\n"
         "| `LoRA: <name>` | A LoRA trained on them, by its note's name in `models/`. | None. |\n"
-        "| `Thinking:`, `Full quality` (a box), `Web:`, `Chan:` | As in their `config.md`. | Off; unticked. |",
+        "| `Thinking:`, `Full quality` (a box), `Web:`, `LAN:`, `Loopback:`, `Chan:` | As in their `config.md`. "
+        "| Off; unticked. |",
         "Visor answers in the note, and from then on everything about them is in their `config.md`. Put a picture "
         "of them in `looks/` and name it on its `Reference:` line, so that pictures of them look like them. "
         "Visor knows: " + ctx["characters_known"] + ".",
@@ -333,8 +334,8 @@ def chat_note(ctx):
         "`config.md` has them. " + COPY,
         "**Characters.** Each character is a folder in `characters/` with two notes of their own. `config.md` "
         "is who they are, how they look, and their settings as boxes to tick: the model that plays them, "
-        "whether and with what they draw and at what quality, their voice, and whether they may use the web "
-        "or the forum. `memory.md` is what they remember, which they keep themselves and you can read and "
+        "whether and with what they draw and at what quality, their voice, and whether they may use the web, "
+        "the forum, the local network or the server's own services. `memory.md` is what they remember, which they keep themselves and you can read and "
         "edit; its longer pages are beside it in `memory/`. A character is the same in every chat. Name "
         "someone visor does not know and it makes their `config.md` for you to fill in, and hands the note back.",
         "| Line in the chat note | Meaning | If left out |\n|---|---|---|\n"
@@ -349,11 +350,12 @@ def chat_note(ctx):
         f"| `Turns: {chat.DEFAULT_TURNS}` | The most turns the characters take before the note comes back to you. "
         f"| {chat.DEFAULT_TURNS}. |\n"
         "| `Scene: <text>` | Where they are and what is going on, told to everyone present. | |\n"
-        "| `Model:`, `Thinking:`, `Image:`, `Quality:`, `Speak:`, `Web:`, `Chan:` | That setting for everyone in "
-        "this chat, over each character's own. `Image: <model>` has them all draw, with that model; `Image: no` "
-        "has nobody draw. `Web: yes` or `no`, and `Quality: full` or `fast`, become a box once typed (`Web`, "
-        "`Full quality`), ticked or unticked for everyone; left empty, they are each character's own. | Each "
-        "character's own. |",
+        "| `Model:`, `Thinking:`, `Image:`, `Quality:`, `Speak:`, `Web:`, `LAN:`, `Loopback:`, `Chan:` | That "
+        "setting for everyone in this chat, over each character's own. `Image: <model>` has them all draw, with "
+        "that model; `Image: no` has nobody draw. `Web: yes` or `no`, and `Quality: full` or `fast`, become a box "
+        "once typed (`Web`, `Full quality`), ticked or unticked for everyone; left empty, they are each "
+        "character's own. `LAN:` and `Loopback:` are typed as in a character's `config.md`: `yes`, a list, or "
+        "`no` for nobody. | Each character's own. |",
         "**Settings.** `Project: <name>` sets the chat in the world of a folder project, as its `canon/` folder "
         "has it; the drafts outside `canon/` are never shown. `canon/summary.md` is the front page: everyone "
         "has it in front of them every turn, so keep it to what they always need. The other pages are listed "

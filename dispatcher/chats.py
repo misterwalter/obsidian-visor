@@ -14,6 +14,7 @@ import chat
 import game
 import media
 import models
+import network
 import runs
 import settings
 
@@ -58,7 +59,8 @@ class Chats:
         # The note's settings and words, read as the character's own config.md would be.
         lines = [f"{key}: {header[key]}" for key, word in (("model", "Model"), ("thinking", "Thinking"),
                                                             ("image", "Image"), ("quality", "Quality"),
-                                                            ("web", "Web"), ("chan", "Chan"), ("speak", "Speak"),
+                                                            ("web", "Web"), ("lan", "LAN"), ("loopback", "Loopback"),
+                                                            ("chan", "Chan"), ("speak", "Speak"),
                                                             ("lora", "LoRA")) if (header.get(key) or "").strip()]
         who, _, looks = ("\n" + note_body(owner_text)).partition("\n" + characters.LOOKS)
         character, problems = characters.read("\n".join(lines) + f"\n\n{characters.WHO}\n\n{who.strip()}\n\n"
@@ -276,6 +278,8 @@ class Chats:
         each = {}
         for who in present:
             own = {key: said.get(key) or people[who].get(key) for key in ("model", "thinking", "web", "chan", "quality", "speak")}
+            # What else their turns may reach: the chat's line, else their own; nothing, else.
+            own.update({key: (said.get(key) or people[who].get(key) or "").strip() for key in network.LINES})
             # Image: is one line for two things: whether they may draw, and with what.
             image = (said.get("image") or people[who].get("image") or "no").lower()
             own["image"] = people[who].get("image", "no") if image in ("yes", "on") else image
@@ -287,6 +291,10 @@ class Chats:
                             ask(own["image"], ["no"] + sorted(self._images_on_disk()), "Image")):
                 if problem:
                     return {"error": problem}
+            for key in network.LINES:
+                problem = network.problem(key, own[key])
+                if problem:
+                    return {"error": f"{problem} (From {origin(key)}.)"}
             own["model"] = own["model"].lower()
             own["lora"] = models.loras(self.model_notes).get((people[who].get("lora") or "").strip().lower())
             if THINKING[own["thinking"].lower()] and not self.can_think(own["model"]):
@@ -433,6 +441,9 @@ class Chats:
             flags += ["--thinking", thinking]
         if WEB[own["web"].lower()]:
             flags += ["--web"]
+        for reach in network.LINES:
+            if network.given(own.get(reach)):
+                flags += [f"--{reach}", own[reach]]
         if CHAN[own["chan"].lower()]:
             flags += ["--chan", CHAN[own["chan"].lower()]]
             if who != "narrator":

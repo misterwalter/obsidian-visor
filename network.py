@@ -18,6 +18,20 @@ import re
 import urllib.parse
 
 HOST_NAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
+# The two lines, as a project's or a character's config.md shows them: {key: (the line, what it means)}.
+LINES = {
+    "lan": ("LAN", "The local network, reached directly, never through the VPN: `yes` for all of it, or the hosts a "
+                   "run may reach, by name, address or network, each with a port if only that one "
+                   "(`nas.local, 192.168.1.20:8123, 10.0.0.0/24`). Empty, none of it."),
+    "loopback": ("Loopback", "Services on the server itself, which a run reaches as `host.internal`: `yes` for any "
+                             "port, or a list (`8080, 3000-3010`). Never the model server's. Empty, none."),
+}
+
+
+def shown(key, value):
+    """A project's or a character's config.md lines for one of the two: the line, then what it means."""
+    name, what = LINES[key]
+    return [f"{name}: " + (f"`{value}`" if value else ""), "", what, ""]
 
 
 def parts(spec):

@@ -36,15 +36,8 @@ NOTES = {
     "web": {"yes": "the internet, through the VPN and nothing else", "no": ""},
     "chan": {"none": "", "read": "read and search the forum", "all": "read, and post"},
 }
-# What a project's runs may reach besides the internet, written as the owner writes them (network.py),
-# and what each line means, said under it in the config.md.
-REACH = {
-    "lan": ("LAN", "The local network, reached directly, never through the VPN: `yes` for all of it, or the hosts a "
-                   "run may reach, by name, address or network, each with a port if only that one "
-                   "(`nas.local, 192.168.1.20:8123, 10.0.0.0/24`). Empty, none of it."),
-    "loopback": ("Loopback", "Services on the server itself, which a run reaches as `host.internal`: `yes` for any "
-                             "port, or a list (`8080, 3000-3010`). Never the model server's. Empty, none."),
-}
+# What a project's runs may reach besides the internet, written as the owner writes them (network.py).
+REACH = network.LINES
 CHANGES = "## Changes"
 KEPT_CHANGES = 15
 # A project's Model when its notes run on the default model in VISOR.md, not one of its own.
@@ -168,8 +161,8 @@ def panel(name, project, models, default_model, remote="", godot=False, problems
         if key == "web":
             # On or off: one box; then what else a run may reach, as lines.
             lines += [settings.toggle("Web", project[key] == "yes", NOTES[key]["yes"]), ""]
-            for reach, (name_, what) in REACH.items():
-                lines += [f"{name_}: " + (f"`{project.get(reach)}`" if project.get(reach) else ""), "", what, ""]
+            for reach in REACH:
+                lines += network.shown(reach, project.get(reach))
         else:
             lines += settings.group(key.capitalize(), CHOICES[key], project[key], NOTES[key]) + [""]
     if project["folder"]:

@@ -19,6 +19,7 @@ wrote under the headings is theirs, and is written back as it was.
 
 import re
 
+import network
 import schedule
 import settings
 
@@ -46,13 +47,13 @@ LOOKS_FOLDER = "looks"
 MEMORY, MEMORY_FOLDER = "memory.md", "memory"
 # A new character's memory, before they have remembered anything: they read it every turn.
 MEMORY_START = "# Memory\n\nNothing yet.\n"
-PLAIN = ("speak", "reference", "lora", "boards")
+PLAIN = ("speak", "reference", "lora", "boards") + tuple(network.LINES)
 
 
 def blank(model):
     """A new character's settings: the given language model, and nothing else allowed."""
     return dict({key: choices[0] for key, choices in CHOICES.items()}, model=model, image="no", speak="no",
-                reference="", lora="", boards="", **{"board time": "no"})
+                reference="", lora="", boards="", lan="", loopback="", **{"board time": "no"})
 
 
 def render(name, character, models, image_models, problems=()):
@@ -73,8 +74,10 @@ def render(name, character, models, image_models, problems=()):
                             dict(image_models, no="may not draw")) + [""]
     for key in ("quality", "web", "chan"):
         if key == "web":
-            # On or off: one box.
+            # On or off: one box; then what else their turns may reach, as lines.
             lines += [settings.toggle("Web", character.get(key) == "yes", NOTES[key]["yes"]), ""]
+            for reach in network.LINES:
+                lines += network.shown(reach, character.get(reach, ""))
         elif key == "quality":
             # Fast or full: one box, ticked for full.
             lines += [settings.toggle(settings.BOXED[key][0], character.get(key) == "full", NOTES[key]["full"]), ""]
@@ -140,6 +143,14 @@ def read(text, standing, models, image_models):
                 problems.append(f"Under `Board time`, {problem} Kept: {standing.get(key)}.")
             else:
                 character[key] = value or "no"
+            continue
+        if key in network.LINES:
+            value = entry["value"].strip().strip("`").strip()
+            problem = network.problem(key, value)
+            if problem:
+                problems.append(f"{problem} Kept: {standing.get(key) or 'none'}.")
+            elif entry["boxes"] is None:
+                character[key] = value
             continue
         if key in PLAIN:
             if entry["boxes"] is None:
