@@ -29,8 +29,9 @@ Web
 ```
 
 - **What can be set:** `Model` (`default` follows the default model in
-  `VISOR.md`), `Thinking`, `Web`, `Chan` (none, read or all), and for a
-  repository that is not Godot, the `Tests:` command.
+  `VISOR.md`), `Thinking`, `Web`, `LAN:` and `Loopback:` (typed, as a note's
+  are: `yes`, or a list), `Chan` (none, read or all), and for a repository that
+  is not Godot, the `Tests:` command.
 - **Ticking.** A click ticks one box and leaves the old one ticked. Visor reads
   the note once it has been left alone for a minute, takes the newly ticked box
   as the choice, and writes the note back with that one ticked and the change

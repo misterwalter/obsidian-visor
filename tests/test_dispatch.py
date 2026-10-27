@@ -13,6 +13,7 @@ import json
 import os
 import re
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -44,6 +45,7 @@ FAKE_RUNNER = textwrap.dedent('''\
     os.makedirs(out, exist_ok=True)
     os.makedirs(os.path.join(os.environ["VISOR_WORK"], run), exist_ok=True)
     open(calls + ".folders", "w").write(os.environ.get("VISOR_FOLDERS", ""))
+    open(calls + ".route", "w").write(os.environ.get("VISOR_NET_ROUTE", ""))
     if os.environ.get("FAKE_STOPS_EARLY"):
         # As the real one does when it stops before the agent: a log, and no report.
         open(os.path.join(out, "run.log"), "w").write(
@@ -236,6 +238,7 @@ class DispatchTest(unittest.TestCase):
         with open(os.path.join(self.state, "starters.json"), "w") as f:
             json.dump(["dreamshaper", "looker", "pix2pix", "small"], f)
         self.vpn = True  # the tunnel is up unless a test says otherwise
+        self.vpn_installed = True  # as on a server with one, which never goes without it
         self.kept_warm = []
         self.d = self.fresh()
 
@@ -299,7 +302,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("--plan-only", call)
         self.assertNotIn("--notes", call, "a fresh task has nothing to add")
         note = self.read("output", "task.md")
-        self.assertTrue(note.startswith("Project: game\nModel:\nThinking:\nWeb:\nChan:\nChan as:\nBrowse:\nBranch:\nRepeat: no\nOn repeat:\nMake the thing.\n"),
+        self.assertTrue(note.startswith("Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nBranch:\nRepeat: no\nOn repeat:\nMake the thing.\n"),
                         "the owner's text is kept, with the lines a Plan reads added to its top")
         self.assertIn("## Plan, ", note)
         self.assertIn("official model", note)
@@ -311,7 +314,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "task.md", "Project: game\nMake the thing.\n")
         self.d.once()
         with open(self.calls_made()[0][1]) as f:
-            self.assertEqual(f.read(), "Project: game\nModel:\nThinking:\nWeb:\nChan:\nChan as:\nBrowse:\nBranch:\nRepeat: no\nOn repeat:\nMake the thing.\n")
+            self.assertEqual(f.read(), "Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nBranch:\nRepeat: no\nOn repeat:\nMake the thing.\n")
 
     def test_an_analysis_question_gets_an_analysis_round(self):
         self.note("inbox", "q.md", "Project: textgame\nModel: official\nAnalysis: why is it slow?\n")
@@ -427,6 +430,7 @@ class DispatchTest(unittest.TestCase):
         d = dispatch.Dispatcher(self.config, self.state, now=lambda: self.clock,
                                 other_run_active=lambda: self.other_run, log=self.logged.append)
         d.vpn_up = lambda: self.vpn
+        d.vpn_installed = lambda: self.vpn_installed
         # Never the real model server: on a machine that has one, a media job's first step would
         # unload whatever a run there is using, and every note would be checked against its models.
         # A test that wants Ollama answering says what it has, and puts its own `ollama` on the PATH.
@@ -2275,11 +2279,78 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         note = self.read("output", "a.md")
         self.assertIn("> [!warning] Visor could not run this note", note)
-        self.assertIn("the VPN is not running on the server", note)
+        self.assertIn("there is no way to it: the VPN tunnel is not running", note)
         # A note that asks for no web is unaffected.
         (call,) = self.calls_made()
         self.assertTrue(call[1].endswith("b.md"))
         self.assertNotIn("--web", call)
+
+    def test_visor_md_says_how_the_internet_is_reached_and_a_box_allows_it_without_a_vpn(self):
+        self.d.once()
+        self.assertIn("VPN: installed, and **up**", self.server_note())
+        self.assertEqual(self.d.internet(), ("tunnel", None))
+        # No VPN installed: nothing goes out until the owner ticks the box.
+        self.vpn, self.vpn_installed = False, False
+        self.d.sync_server_note()
+        note = self.server_note()
+        self.assertIn("VPN: **none installed**", note)
+        self.assertIn("Nothing goes to the internet: notes with `Web:` or `Chan:` come back unrun", note)
+        self.assertEqual(self.d.internet()[0], None)
+        self.note("inbox", "a.md", "Project: game\nModel: official\nWeb: yes\nPlan:\n")
+        self.d.once()
+        self.assertIn("`Allow non-VPN web traffic` is unticked", self.read("output", "a.md"))
+        self.edit_server_note("- [ ] Allow non-VPN web traffic", "- [x] Allow non-VPN web traffic")
+        self.d.sync_server_note()
+        note = self.server_note()
+        self.assertIn("> [!warning] No VPN: what needs the internet goes out from this machine's own address", note)
+        self.assertIn("> [!warning] No VPN: a run's web (`Web:`), the forum (`Chan:`)", note)
+        self.assertEqual(self.d.internet(), ("direct", None))
+        self.note("inbox", "b.md", "Project: game\nModel: official\nWeb: yes\nPlan:\n")
+        self.clock += 1000  # past the settling of an ordinary note, longer than VISOR.md's
+        self.d.once()
+        (call,) = self.calls_made()
+        self.assertIn("--web", call)
+        self.assertEqual(open(self.calls + ".route").read(), "direct")
+        self.assertTrue(self.fresh().allow_direct, "kept over a restart")
+        # A VPN installed and down is never gone without, whatever the box says.
+        self.vpn_installed = True
+        self.assertEqual(self.d.internet()[0], None)
+        self.assertIn("the VPN tunnel is not running", self.d.internet()[1])
+        self.d.sync_server_note()
+        self.assertIn("The box above does nothing while a VPN is installed: a VPN that is down never means going "
+                      "without one", self.server_note())
+
+    def test_lan_and_loopback_come_from_the_note_or_the_project_and_reach_the_run(self):
+        self.note("inbox", "a.md", "Project: game\nModel: official\nLAN: nas.local, 10.0.0.0/24\nLoopback: 8080\nPlan:\n")
+        self.d.once()
+        (call,) = self.calls_made()
+        self.assertEqual(call[call.index("--lan") + 1], "nas.local, 10.0.0.0/24")
+        self.assertEqual(call[call.index("--loopback") + 1], "8080")
+        self.assertNotIn("--web", call)
+        self.assertEqual(open(self.calls + ".route").read(), "tunnel")
+        # A project's lines, in its config.md, go to every note on it that says nothing itself.
+        self.d.sync_panels()
+        panel = open(self.panel("game")).read()
+        self.assertIn("LAN: \n\nThe local network, reached directly, never through the VPN", panel)
+        with open(self.panel("game"), "w") as f:
+            f.write(panel.replace("LAN: \n", "LAN: yes\n").replace("Loopback: \n", "Loopback: 3000-3002\n"))
+        self.clock += 1000
+        self.d.sync_panels()
+        self.assertEqual((self.d.projects["game"]["lan"], self.d.projects["game"]["loopback"]), ("yes", "3000-3002"))
+        self.assertIn(": LAN, nothing → yes", open(self.panel("game")).read())
+        self.note("inbox", "b.md", "Project: game\nModel: official\nLoopback: no\nPlan:\n")
+        self.d.once()
+        second = self.calls_made()[1]
+        self.assertEqual(second[second.index("--lan") + 1], "yes")
+        self.assertNotIn("--loopback", second, "the note's own `no` wins over the project's")
+        # What is not a host or a port comes back, saying what.
+        self.note("inbox", "c.md", "Project: game\nModel: official\nLAN: nas.local, http://\nPlan:\n")
+        self.note("inbox", "d.md", "Project: game\nModel: official\nLoopback: 80, http\nPlan:\n")
+        self.d.once()
+        self.d.once()
+        self.assertIn("has what is not a host, an address or a network: http://", self.read("output", "c.md"))
+        self.assertIn("`Loopback: 80, http` has what is not a port: http", self.read("output", "d.md"))
+        self.assertEqual(len(self.calls_made()), 2)
 
     def test_the_vpn_counts_as_up_only_while_its_proxy_answers(self):
         import socket
@@ -4138,6 +4209,52 @@ class DispatchTest(unittest.TestCase):
         args = json.load(open(os.path.join(self.tmp.name, "curl-args.json")))
         self.assertEqual(args[args.index("--socks5-hostname") + 1], self.d.vpn_proxy, "through the VPN tunnel only")
 
+    def test_with_no_vpn_and_the_owner_s_leave_a_model_is_fetched_directly(self):
+        fake_curl = os.path.join(self.tmp.name, "curl")
+        with open(fake_curl, "w") as f:
+            f.write("#!/usr/bin/env python3\nimport sys, json\na = sys.argv[1:]\n"
+                    f"open({os.path.join(self.tmp.name, 'curl-args.json')!r}, 'w').write(json.dumps(a))\n"
+                    "open(a[a.index('--output') + 1], 'wb').write(b'weights')\n")
+        os.chmod(fake_curl, 0o755)
+        with open(self.config, "a") as f:
+            f.write(f"curl = {fake_curl}\n")
+        self.give_image_models()
+        self.vpn, self.vpn_installed, self.d.allow_direct = False, False, True
+        path = os.path.join(self.tasks, "models", "photo-xl.md")
+        sha = __import__("hashlib").sha256(b"weights").hexdigest()
+        with open(path) as f:
+            text = f.read()
+        with open(path, "w") as f:
+            f.write(text.replace("Download:\n", "Download: https://huggingface.co/a/b/resolve/main/photoXL_v9.safetensors\n")
+                        .replace("SHA-256:\n", f"SHA-256: {sha}\n").replace("- [ ] Fetch", "- [x] Fetch"))
+        self.d.once()
+        self.d.fetching["process"].wait()
+        self.d.once()
+        self.assertIn("\nOn this server: yes\n", open(path).read())
+        self.assertNotIn("--socks5-hostname", json.load(open(os.path.join(self.tmp.name, "curl-args.json"))))
+
+    def test_board_time_fetches_a_page_directly_only_from_an_internet_address_it_checked(self):
+        import board as board_module
+        asked = []
+        def transport(proxy, curl, pinned=None):
+            asked.append((proxy, pinned))
+            return lambda method, url: (200, "a page")
+        addresses = {"example.test": "93.184.216.34", "router.test": "192.168.1.1"}
+        def getaddrinfo(host, port, **_):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (addresses[host], port))]
+        with mock.patch.object(board_module, "curl", transport), \
+                mock.patch.object(board_module.socket, "getaddrinfo", getaddrinfo):
+            self.assertEqual(self.d._fetch_web("https://example.test/page"), "a page")
+            self.assertEqual(asked[-1], (self.d.vpn_proxy, None), "through the tunnel, looked up there")
+            self.vpn, self.vpn_installed, self.d.allow_direct = False, False, True
+            self.d._fetch_web("https://example.test/page")
+            self.assertEqual(asked[-1], (None, "example.test:443:93.184.216.34"), "directly, to the address checked")
+            with self.assertRaisesRegex(board_module.BoardError, "router.test is not on the internet"):
+                self.d._fetch_web("https://router.test/admin")
+            self.d.allow_direct = False
+            with self.assertRaisesRegex(board_module.BoardError, "there is no VPN on this server"):
+                self.d._fetch_web("https://example.test/page")
+
     def test_a_model_to_fetch_while_the_vpn_is_down_says_it_waits_for_the_vpn(self):
         self.give_image_models()
         self.vpn = False
@@ -4149,8 +4266,8 @@ class DispatchTest(unittest.TestCase):
                         .replace("- [ ] Fetch", "- [x] Fetch"))
         self.d.once()
         self.assertIsNone(self.d.fetching)
-        self.assertIn("\nOn this server: waiting for the VPN, which is down: visor fetches image models only "
-                      "through it\n", open(path).read())
+        self.assertIn("\nOn this server: waiting for a way to the internet: the VPN tunnel is not running",
+                      open(path).read())
 
     def test_every_file_a_model_names_is_fetched_one_by_one_from_its_note(self):
         fake_curl = os.path.join(self.tmp.name, "curl")
@@ -4389,7 +4506,8 @@ class DispatchTest(unittest.TestCase):
         (call,) = self.calls_made()
         note = self.read("output", "a.md")
         self.assertTrue(note.startswith("Project: story\nModel: official\nWrite: five\nUNUSED Branch: tidy\n"
-                                        "UNUSED Voice: bf_emma\nThinking:\nWeb:\nChan:\nChan as:\nBrowse:\n- [x] Canon only\n\nRepeat: no\nOn repeat:\n\nDarker.\n"), note)
+                                        "UNUSED Voice: bf_emma\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\n"
+                                        "- [x] Canon only\n\nRepeat: no\nOn repeat:\n\nDarker.\n"), note)
         self.assertEqual(call[2], "coder-official")
         self.assertNotIn("--thinking", call, "an empty line is the project's setting, which is none")
 

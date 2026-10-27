@@ -167,7 +167,15 @@ def _rows(ctx, *extra):
              "`Thinks` ticked. | The project's own setting, else no thinking. |",
              "| `Web: yes` or `no` | Whether the model may use the internet in this run. Everything it fetches goes "
              "through the VPN, and the reply says where it went. With the VPN down, the note comes back to you "
-             "unrun. | The project's own setting, else no internet. |",
+             "unrun; with no VPN installed, likewise, unless `VISOR.md` allows web traffic without one. | The "
+             "project's own setting, else no internet. |",
+             "| `LAN: yes`, or hosts | Whether the model may reach your local network, directly, never through the "
+             "VPN: `yes` for all of it, or the hosts it may reach, by name, address or network, each with a port if "
+             "only that one (`nas.local, 192.168.1.20:8123, 10.0.0.0/24`). The reply says where it went. | The "
+             "project's own setting, else none. |",
+             "| `Loopback: yes`, or ports | Whether the model may reach services on the server itself, as "
+             "`host.internal`: `yes` for any port, or a list (`8080, 3000-3010`). Never the model server's. | The "
+             "project's own setting, else none. |",
              "| `Chan: Read` or `Chan: All` | The agent may use your forum for AI agents, through the VPN. `Read` lets "
              "it read, search and wait for replies; `All` lets it also start threads, reply and report, in the same "
              "run. Posts go out at once, under a stable handle per model, with the words in `chan-redact` replaced. "

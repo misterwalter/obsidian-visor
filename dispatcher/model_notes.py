@@ -193,8 +193,9 @@ class ModelNotes:
             if item["target"] in missing and said and said[0] == (item["download"], item["sha-256"]):
                 return f"not downloaded: `{item['file']}`: {said[1]}"
         if model["fetch"].lower() in models.YES:
-            if not self.vpn_up():
-                return "waiting for the VPN, which is down: visor fetches image models only through it"
+            way, why_not = self.internet()
+            if way is None:
+                return f"waiting for a way to the internet: {why_not}"
             return "waiting to be fetched, when visor is next idle"
         return f"not downloaded: no `{missing[0]}`"
 
@@ -326,10 +327,11 @@ class ModelNotes:
             self.log(f"{' '.join(command[:3])}: model {name}")
             self.sync_models()
             return
-        if not self.vpn_up():
+        way, _ = self.internet()
+        if way is None:
             return
         # Image, edit, video and LoRA models: each file a note names (models.files), the main one and its
-        # parts, fetched one at a time through the VPN, in the same way.
+        # parts, fetched one at a time through the VPN (or directly, as the owner allowed), in the same way.
         for name, (model, problems, _) in sorted(self.model_notes.items()):
             if (not model or problems or model["kind"] not in ("image", "lora", "edit", "video")
                     or model["fetch"].lower() not in models.YES):
@@ -341,7 +343,8 @@ class ModelNotes:
                     continue
                 part = os.path.join(self.state_dir, "downloads", item["file"] + ".part")
                 try:
-                    process = fetch.start(item["download"], part, self.vpn_proxy, self.curl)
+                    process = fetch.start(item["download"], part, self.vpn_proxy if way == "tunnel" else None,
+                                          self.curl)
                 except OSError as error:
                     self.fetch_said[(name, item["file"])] = (asked, f"visor could not start `{self.curl}`: "
                                                                     f"{error.strerror or error}.")

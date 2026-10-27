@@ -142,7 +142,15 @@ A note that says `Web: yes` gives its run the internet, and only through a VPN
 tunnel. The tunnel is wireproxy: a WireGuard client that runs as an ordinary
 program and offers the tunnel as a proxy on this machine. It needs no root and
 leaves the machine's own network as it was. Without it everything else works,
-and a note that asks for the web comes back unrun. This too is an install to
+and a note that asks for the web comes back unrun.
+
+On a machine with no VPN installed at all (no wireproxy, no `wireproxy.conf`,
+nothing answering at the tunnel's address), `VISOR.md`'s `## Network` has a box,
+`Allow non-VPN web traffic`: ticked, what needs the internet (a run's web, the
+forum, image downloads) goes out from the machine's own address, with a warning
+at the top of the note for as long as it does. Where a VPN is installed the box
+does nothing: a tunnel that is down, or broken, never means going without one.
+`## Network` always says which it is. Installing the tunnel is an install to
 approve yourself:
 
 ```bash
@@ -177,4 +185,6 @@ language models, which Ollama downloads itself (`Fetch` ticked on a language
 model's note runs `ollama pull`, and a `## Modelfile` whose `FROM` is not here
 has Ollama fetch it) and which cannot be led through the tunnel; a `New project:`
 cloned from GitHub; and the self-update's `git fetch`. None of them is started
-by an agent.
+by an agent. Nor do the local network and this machine, which a note reaches
+only when it says `LAN:` or `Loopback:`, and then directly ([The
+sandbox](sandbox.md)).

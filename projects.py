@@ -22,6 +22,7 @@ import json
 import os
 import re
 
+import network
 import settings
 
 # What a project can be told, beyond where it is. The first choice of each is the default.
@@ -34,6 +35,15 @@ NOTES = {
     "thinking": {"no": "the model answers straight away", "low": "", "medium": "", "high": "slowest"},
     "web": {"yes": "the internet, through the VPN and nothing else", "no": ""},
     "chan": {"none": "", "read": "read and search the forum", "all": "read, and post"},
+}
+# What a project's runs may reach besides the internet, written as the owner writes them (network.py),
+# and what each line means, said under it in the config.md.
+REACH = {
+    "lan": ("LAN", "The local network, reached directly, never through the VPN: `yes` for all of it, or the hosts a "
+                   "run may reach, by name, address or network, each with a port if only that one "
+                   "(`nas.local, 192.168.1.20:8123, 10.0.0.0/24`). Empty, none of it."),
+    "loopback": ("Loopback", "Services on the server itself, which a run reaches as `host.internal`: `yes` for any "
+                             "port, or a list (`8080, 3000-3010`). Never the model server's. Empty, none."),
 }
 CHANGES = "## Changes"
 KEPT_CHANGES = 15
@@ -103,6 +113,7 @@ def load(path):
             raise ValueError(f"{path}: [{section}] needs either source (a repository) or folder (a plain folder)")
         project = {"source": source or folder, "folder": bool(folder), "tests": entry.get("tests", ""),
                    "model": (entry.get("model") or "").strip().lower() or None}
+        project.update({key: entry.get(key, "") for key in REACH})
         for key, choices in CHOICES.items():
             value = (entry.get(key) or choices[0]).strip().lower()
             if value not in choices:
@@ -120,7 +131,7 @@ def save(path, projects):
         project = projects[name]
         lines.append(f"[project {name}]")
         lines.append(("folder = " if project["folder"] else "source = ") + project["source"])
-        for key in ("tests", "model") + tuple(CHOICES):
+        for key in ("tests", "model") + tuple(CHOICES) + tuple(REACH):
             if project.get(key):
                 lines.append(f"{key} = {project[key]}")
         lines.append("")
@@ -155,8 +166,10 @@ def panel(name, project, models, default_model, remote="", godot=False, problems
                             {DEFAULT: f"the default model in VISOR.md, now {default_model or 'none'}"}) + [""]
     for key in CHOICES:
         if key == "web":
-            # On or off: one box.
+            # On or off: one box; then what else a run may reach, as lines.
             lines += [settings.toggle("Web", project[key] == "yes", NOTES[key]["yes"]), ""]
+            for reach, (name_, what) in REACH.items():
+                lines += [f"{name_}: " + (f"`{project.get(reach)}`" if project.get(reach) else ""), "", what, ""]
         else:
             lines += settings.group(key.capitalize(), CHOICES[key], project[key], NOTES[key]) + [""]
     if project["folder"]:
@@ -184,11 +197,19 @@ def read_panel(text, project, models):
     choices = dict(CHOICES, model=(DEFAULT,) + tuple(models))
     standing = dict(project, model=own_model(project, models))
     wanted, problems = {}, []
-    for entry in settings.scan(top, tuple(choices) + ("tests",))[0]:
+    for entry in settings.scan(top, tuple(choices) + ("tests",) + tuple(REACH))[0]:
         key = entry["key"]
         if key == "tests":
             if not project["folder"] and entry["boxes"] is None:
                 wanted[key] = entry["value"].strip().strip("`").strip()
+            continue
+        if key in REACH:
+            value = entry["value"].strip().strip("`").strip()
+            problem = network.problem(key, value)
+            if problem:
+                problems.append(f"{problem} Kept: {project.get(key) or 'none'}.")
+            elif entry["boxes"] is None:
+                wanted[key] = value
             continue
         if entry["boxes"] is None:
             value, problem = entry["value"].strip().lower(), None   # typed as a line: `Web: yes`
@@ -206,7 +227,7 @@ def read_panel(text, project, models):
         if wanted.get(key, standing.get(key)) == standing.get(key):
             wanted[key] = "yes" if on else "no"
     # In the note's own order, whichever way each was read.
-    order = ["model"] + list(CHOICES) + ["tests"]
+    order = ["model"] + list(CHOICES) + list(REACH) + ["tests"]
     changed = {key: wanted[key] for key in sorted(wanted, key=lambda k: order.index(k) if k in order else len(order))
                if wanted[key] != (standing.get(key) or "")}
     earlier = [line for line in listed.splitlines() if re.match(r"^- \d{4}-", line)]

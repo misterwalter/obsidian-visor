@@ -41,8 +41,14 @@
 # --self-directed  a build on the agent's own project: its standing instructions frame no task of the
 #               owner's (prompts/self.md, prompts/self-session.md); the practical ones are the same
 # --chan-as NAME  the name, and the handle, the agent's forum posts go under: a character's, or a note's own
-# --web         the agent may use the internet, through the net door, which leads only
-#               into the VPN tunnel (doors/net-door.py). Without it there is no network
+# --web         the agent may use the internet, through the net door (doors/net-door.py), which
+#               leads into the VPN tunnel, or directly where the dispatcher says there is no VPN
+#               and the owner allowed that (VISOR_NET_ROUTE). Without it, or --lan or --loopback,
+#               there is no network
+# --lan HOSTS   the agent may reach the local network through the net door, directly: yes for
+#               all of it, or a list of names, addresses and networks, each with a port if only that
+# --loopback PORTS  the agent may reach this machine's services through the net door, as
+#               host.internal: yes for any port, or a list; never the model server's or the tunnel's
 # --reading DIR  what the owner lets this run read besides the project: a copy the dispatcher
 #               made (sources.py), one folder per source and .sources.json saying what each is.
 #               The wall shows it at /run/reading, read-only; `browse` reads it by date
@@ -56,7 +62,7 @@ umask 002
 
 REPO_SRC="$(realpath "${1:?repo required}")"; TASK="$(realpath "${2:?task file required}")"
 MODEL="${3:?model required}"; HARNESS="${4:?harness required: pi}"; shift 4
-ROUND="build"; NOTES=""; CONTINUE=""; BRANCH=""; FORK=""; TESTS=""; LIVE_LOG=""; FOLDER=no; CANON=no; SETTING=""; THINKING=""; WEB=no; CHAN=""; CHAN_AS=""; PERSONA=""; DRAW=""; NARRATOR=no; READING=""; SELF=no
+ROUND="build"; NOTES=""; CONTINUE=""; BRANCH=""; FORK=""; TESTS=""; LIVE_LOG=""; FOLDER=no; CANON=no; SETTING=""; THINKING=""; WEB=no; LAN=""; LOOPBACK=""; CHAN=""; CHAN_AS=""; PERSONA=""; DRAW=""; NARRATOR=no; READING=""; SELF=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --plan-only) ROUND="plan" ;;
@@ -72,6 +78,8 @@ while [ $# -gt 0 ]; do
     --live-log) LIVE_LOG="$2"; shift ;;
     --thinking) THINKING="$2"; shift ;;
     --web) WEB=yes ;;
+    --lan) LAN="$2"; shift ;;
+    --loopback) LOOPBACK="$2"; shift ;;
     --self-directed) SELF=yes ;;
     --reading) READING="$(realpath "$2")"; shift ;;
     --chan) CHAN="$2"; shift ;;
@@ -123,6 +131,13 @@ MODEL_SERVER="${VISOR_OLLAMA:-127.0.0.1:11434}"
 export OLLAMA_HOST="$MODEL_SERVER"
 # The VPN tunnel's proxy on this machine (examples/wireproxy.conf).
 VPN_PROXY="${VISOR_VPN_PROXY:-127.0.0.1:25344}"
+# The way to the internet, as the dispatcher found it: tunnel, direct (no VPN installed, and the
+# owner allowed going without one in VISOR.md), or none.
+NET_ROUTE="${VISOR_NET_ROUTE:-tunnel}"
+case "$NET_ROUTE" in tunnel|direct|none) ;; *) echo "VISOR_NET_ROUTE is tunnel, direct or none, not $NET_ROUTE" >&2; exit 2 ;; esac
+# What the run may reach through the net door, as the wall's check is told it: web, lan, loopback, or none.
+NET_GIVEN="$( { [ "$WEB" = yes ] && echo web; [ -n "$LAN" ] && echo lan; [ -n "$LOOPBACK" ] && echo loopback; } | paste -sd, -)"
+NET_GIVEN="${NET_GIVEN:-none}"
 CHAN_HOST="${VISOR_CHAN_HOST:-}"
 CHAN_TRIPCODES="${VISOR_CHAN_TRIPCODES:-$HOME/.config/visor/chan-tripcodes}"
 CHAN_REDACT="${VISOR_CHAN_REDACT:-$HOME/.config/visor/chan-redact}"
@@ -173,7 +188,7 @@ if [ -n "$LIVE_LOG" ]; then
   mkdir -p "$(dirname "$LIVE_LOG")" && touch "$LIVE_LOG" \
     || { say "cannot write the live log $LIVE_LOG"; exit 1; }
   live_note "
-## $(date '+%Y-%m-%d %H:%M') · $ROUND round$([ "$SELF" = yes ] && echo ", self-directed") · $MODEL${THINKING:+ · thinking $THINKING}$([ "$WEB" = yes ] && echo " · web")${CHAN:+ · board: $CHAN}${READING:+ · browse: $READ_NAMES}
+## $(date '+%Y-%m-%d %H:%M') · $ROUND round$([ "$SELF" = yes ] && echo ", self-directed") · $MODEL${THINKING:+ · thinking $THINKING}$([ "$WEB" = yes ] && echo " · web")${LAN:+ · LAN: $LAN}${LOOPBACK:+ · loopback: $LOOPBACK}${CHAN:+ · board: $CHAN}${READING:+ · browse: $READ_NAMES}
 
 \`$RUN\`${FORK:+ · carries on the conversation of \`$FORK\`}${CONTINUE:+ · builds on \`$CONTINUE\`}
 "
@@ -203,11 +218,17 @@ fi
 for tool in bwrap socat python3 jq flock git "$HARNESS"; do
   command -v "$tool" > /dev/null || { say "missing program: $tool"; exit 1; }
 done
-# A run given the web gets a third door, which leads only into the VPN tunnel. The
-# tunnel must be there first: an agent told it has the web is not started without it.
-if { [ "$WEB" = yes ] || [ -n "$CHAN" ]; } && ! timeout 5 bash -c "echo > /dev/tcp/${VPN_PROXY%:*}/${VPN_PROXY##*:}" 2>/dev/null; then
-  say "the VPN tunnel is not running at $VPN_PROXY, and this run was given the web -- not started (systemctl --user status visor-vpn)"
-  exit 1
+# A run given the web gets a third door, which leads into the VPN tunnel. The tunnel must be
+# there first: an agent told it has the web is not started without it, nor without any way out.
+if [ "$WEB" = yes ] || [ -n "$CHAN" ]; then
+  if [ "$NET_ROUTE" = none ]; then
+    say "there is no VPN on this server, and VISOR.md does not allow web traffic without one, and this run was given the web -- not started"
+    exit 1
+  fi
+  if [ "$NET_ROUTE" = tunnel ] && ! timeout 5 bash -c "echo > /dev/tcp/${VPN_PROXY%:*}/${VPN_PROXY##*:}" 2>/dev/null; then
+    say "the VPN tunnel is not running at $VPN_PROXY, and this run was given the web -- not started (systemctl --user status visor-vpn)"
+    exit 1
+  fi
 fi
 # The test door hands these paths to socat, which splits its arguments on spaces and commas.
 for path in "$WORK" "$WALL"; do
@@ -332,6 +353,14 @@ if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
     fi
   fi
   if [ "$WEB" = yes ]; then echo; cat "$HERE/prompts/web.md"; fi
+  # What the local network and this machine offer the run, said as the owner gave it (sed-escaped).
+  said_as() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
+  if [ -n "$LAN" ]; then
+    echo; sed "s|WHAT|$(said_as "$([ "$LAN" = yes ] && echo "any device on it" || echo "these, and nothing else on it: $LAN")")|" "$HERE/prompts/lan.md"
+  fi
+  if [ -n "$LOOPBACK" ]; then
+    echo; sed "s|WHAT|$(said_as "$([ "$LOOPBACK" = yes ] && echo "any port" || echo "these ports, and no others: $LOOPBACK")")|" "$HERE/prompts/loopback.md"
+  fi
   if [ -n "$READING" ]; then
     # Its examples are of the first source given, by name.
     echo; sed "s/SOURCE/$(jq -r 'keys_unsorted[0]' "$READING/.sources.json")/g" "$HERE/prompts/reading.md"
@@ -465,15 +494,20 @@ if [ -n "$CHAN" ]; then
   python3 "$HERE/tripcodes.py" "$CHAN_TRIPCODES" "$TRIP_KEY" > "$TRIP_FILE" \
     || say "WARNING: could not read or keep the tripcode in $CHAN_TRIPCODES; posts go out with no handle"
   echo "$MODEL" > "$WALL/chan-model"   # read by inside/chan, for the post's model field
-  python3 "$HERE/doors/chan-door.py" "$WALL/chan.sock" "$VPN_PROXY" "$CHAN_HOST" "$CHAN" \
+  python3 "$HERE/doors/chan-door.py" "$WALL/chan.sock" "$([ "$NET_ROUTE" = direct ] && echo direct || echo "$VPN_PROXY")" "$CHAN_HOST" "$CHAN" \
     --tripcode "$TRIP_FILE" --redact "$CHAN_REDACT" ${CHAN_AS:+--name "$CHAN_AS"} 2> "$OUT/chan-door.log" &
   CHAN_DOOR=$!
   DOOR_LOGS+=("$OUT/chan-door.log")
 fi
 NET_DOOR=""
-if [ "$WEB" = yes ]; then
-  # The forum is never reached through the web, only through its own door (net-door.py).
-  python3 "$HERE/doors/net-door.py" "$WALL/net.sock" "$VPN_PROXY" ${CHAN_HOST:+"$CHAN_HOST"} 2> "$OUT/net-door.log" &
+if [ "$NET_GIVEN" != none ]; then
+  # The forum is never reached through the web, only through its own door (net-door.py); nor are
+  # the model server (only through the model door) and the tunnel's own proxy, whatever the run was given.
+  python3 "$HERE/doors/net-door.py" "$WALL/net.sock" \
+    --route "$([ "$NET_ROUTE" = tunnel ] && echo "tunnel:$VPN_PROXY" || echo "$NET_ROUTE")" \
+    $([ "$WEB" = yes ] && echo --web) ${LAN:+--lan "$LAN"} ${LOOPBACK:+--loopback "$LOOPBACK"} \
+    --never 11434 --never "${MODEL_SERVER##*:}" --never "${VPN_PROXY##*:}" ${CHAN_HOST:+--forum "$CHAN_HOST"} \
+    2> "$OUT/net-door.log" &
   NET_DOOR=$!
   DOOR_LOGS+=("$OUT/net-door.log")
 fi
@@ -492,7 +526,7 @@ close_doors() {
 }
 trap close_doors EXIT
 doors_open() {
-  [ -S "$WALL/model.sock" ] && [ -S "$WALL/godot.sock" ] && { [ "$WEB" = no ] || [ -S "$WALL/net.sock" ]; } && { [ -z "$CHAN" ] || [ -S "$WALL/chan.sock" ]; } && { [ -z "$DRAW" ] || [ -S "$WALL/media.sock" ]; }
+  [ -S "$WALL/model.sock" ] && [ -S "$WALL/godot.sock" ] && { [ "$NET_GIVEN" = none ] || [ -S "$WALL/net.sock" ]; } && { [ -z "$CHAN" ] || [ -S "$WALL/chan.sock" ]; } && { [ -z "$DRAW" ] || [ -S "$WALL/media.sock" ]; }
 }
 for _ in $(seq 1 50); do
   doors_open && break
@@ -511,7 +545,7 @@ if [ "$ROUND" != chat ] && [ "$FOLDER" != yes ]; then
   export VISOR_SHOW_DIR="$OUT/shown"
 fi
 WALLED=("$HERE/wall.sh" "$WORK" "$WALL" "$OUT/harness-log" "$ACCESS")
-"${WALLED[@]}" check-wall "$ACCESS" "$WEB" "$WORK" "$HOME/.ssh" "$REPO_SRC" "$TASK" "$OUT/run.log" "$HERE/visor-run.sh" \
+"${WALLED[@]}" check-wall "$ACCESS" "$NET_GIVEN" "$WORK" "$HOME/.ssh" "$REPO_SRC" "$TASK" "$OUT/run.log" "$HERE/visor-run.sh" \
   < /dev/null > "$OUT/wall-check.log" 2>&1 \
   || { cat "$OUT/wall-check.log"
        say "WALL CHECK FAILED -- the agent was not started: $(grep '^FAIL' "$OUT/wall-check.log" | cut -c7- | paste -sd';' -)"
@@ -520,10 +554,12 @@ say "wall checked: $(grep -c '^ok' "$OUT/wall-check.log") checks passed"
 # The check knocks on the doors, with requests they must refuse among them. Those are not the agent's.
 refusals() { cat "${DOOR_LOGS[@]}" | grep -c REFUSED; }
 REFUSED_BY_CHECK="$(refusals)"
-# Where the agent went on the web, from the net door's own record of what it passed.
-NET_CHECKED=0; [ "$WEB" = no ] || NET_CHECKED="$(wc -l < "$OUT/net-door.log")"
+# Where the agent went, from the net door's own record of what it passed: the web through the
+# tunnel (or, with no VPN, directly to a public address), the local network and this machine directly.
+NET_CHECKED=0; [ "$NET_GIVEN" = none ] || NET_CHECKED="$(wc -l < "$OUT/net-door.log")"
 web_log() { tail -n +"$(( NET_CHECKED + 1 ))" "$OUT/net-door.log"; }
-web_visits() { web_log | awk '$2 == "passed" {sub(/:[0-9]+$/, "", $4); print $4}'; }
+visits() { web_log | awk -v kind="$1" '$2 == "passed" && (kind == "" ? ($5 != "directly," || /\(the internet\)$/) : index($0, "(" kind ")")) {sub(/:[0-9]+$/, "", $4); print $4}'; }
+web_visits() { visits ""; }
 # The model's answers to the agent, as the model door recorded them.
 answered() { jq -c 'select(.status == 200)' "$CALLS"; }
 
@@ -876,13 +912,26 @@ fi
        "the doors refused $REFUSED requests from the agent"
   if [ "$WEB" = yes ]; then
     VISITS="$(web_visits | wc -l)"; LOST="$(web_log | grep -c ' FAILED ')"
+    WAY="$([ "$NET_ROUTE" = tunnel ] && echo "through the VPN" || echo "directly (no VPN)")"
+    FAILED_HOW="$([ "$NET_ROUTE" = tunnel ] && echo "in the tunnel" || echo "to connect")"
     if [ "$VISITS" = 0 ]; then
-      echo "- web: given, and not used$([ "$LOST" = 0 ] || echo "; $LOST requests failed in the tunnel")"
+      echo "- web: given, and not used$([ "$LOST" = 0 ] || echo "; $LOST requests failed $FAILED_HOW")"
     else
-      echo "- web: $VISITS connections through the VPN to $(web_visits | sort -u | wc -l) hosts:" \
-           "$(web_visits | sort -u | head -20 | paste -sd' ' -)$([ "$LOST" = 0 ] || echo "; $LOST requests failed in the tunnel")"
+      echo "- web: $VISITS connections $WAY to $(web_visits | sort -u | wc -l) hosts:" \
+           "$(web_visits | sort -u | head -20 | paste -sd' ' -)$([ "$LOST" = 0 ] || echo "; $LOST requests failed $FAILED_HOW")"
     fi
   fi
+  # The local network and this machine, each reached directly, said with what the run was given.
+  for reached in "lan|the local network|$LAN" "loopback|this machine|$LOOPBACK"; do
+    IFS='|' read -r label kind given <<< "$reached"
+    [ -n "$given" ] || continue
+    VISITS="$(visits "$kind" | wc -l)"
+    if [ "$VISITS" = 0 ]; then
+      echo "- $label: given ($given), and not used"
+    else
+      echo "- $label: given ($given); $VISITS connections to $(visits "$kind" | sort -u | head -20 | paste -sd' ' -)"
+    fi
+  done
   if [ "$ROUND" = chat ]; then
     echo "- turn: $(answered | wc -l) model calls$([ -n "$DRAW" ] && echo "   pictures: $(grep -c '^media-door: drawn' "$OUT/media-door.log")")"
   else

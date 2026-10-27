@@ -22,7 +22,7 @@ request. The sandbox makes it a fact, enforced by the kernel.
 | The harness and visor's own programs | at `/opt/visor`, not where they really are |
 | `/run/show` | writable, for `show`: the one way out for a file, checked again outside |
 | `/run/reading` | read-only, for a note with `Browse:`: a copy of what it may read, never the folder itself |
-| Network | none; for a note that says `Web: yes`, the net door and nothing else |
+| Network | none; for a note that says `Web: yes`, `LAN:` or `Loopback:`, the net door and nothing else |
 
 `.git` is read-only because git runs hook scripts, and the runner uses git on
 the workspace after the agent has finished. A hook written by the agent would
@@ -42,7 +42,7 @@ project folder alone.
 
 **The doors.** Godot's flatpak cannot start inside wall 1, and the harness
 needs to reach the model, so the wall has two narrow openings, and a third for
-a run given the web:
+a run given some network:
 
 - **The model door** passes `POST /v1/chat/completions` for the run's model and
   refuses everything else, and any request over 64 MB before reading it. The model server can also pull, push and delete
@@ -52,26 +52,46 @@ a run given the web:
 - **The test door** accepts `import`, `test`, `test NAME`, `testfn NAME`, `check FILE`,
   `run FILE` and `doc NAME [WORD]`. It runs one Godot at a time, inside wall 2,
   and sends back the output.
-- **The net door** is opened only when the note says `Web: yes`. From inside it
-  is an ordinary web proxy. Every connection it makes goes to one address, the
-  VPN tunnel's proxy on this machine, which is handed the destination by name:
-  the door looks nothing up and connects to nothing else. The wall's network
-  has nothing else on it, so whatever the agent runs, and whatever tools are
-  added later, the tunnel is the only way out, and with the tunnel down every
-  request fails at the door. It refuses `localhost` and any address given as a
-  number that is not a public one (this machine, a private network), and
-  records every destination in `net-door.log`. A name is handed to the tunnel
-  unresolved, as the tunnel is there to look it up: so a name that the VPN's
-  own resolver points at a private address, on the VPN provider's side, is
-  reached. The report says
-  where the run went.
+- **The net door** is opened only when the note says `Web: yes`, `LAN:` or
+  `Loopback:`, and leads only to what it says (`doors/net-door.py`, reading
+  `LAN:` and `Loopback:` as the dispatcher does, `network.py`). From inside it is
+  an ordinary web proxy; the wall's network has nothing else on it, so whatever
+  the agent runs, and whatever tools are added later, the door is the only way
+  out. Where each request may go is decided before any connection, by what the
+  destination is:
+  - **The internet** (`Web: yes`) goes to one address, the VPN tunnel's proxy on
+    this machine, handed the destination by name: an internet name is never
+    looked up here, so not even that question leaves outside the tunnel, and with
+    the tunnel down every such request fails at the door. A name the VPN's own
+    resolver points at a private address, on the VPN provider's side, is reached.
+    Only on a server with no VPN installed, whose owner ticked `Allow non-VPN web
+    traffic` in `VISOR.md`, does the internet go directly, and then every name is
+    looked up here and must have an internet address.
+  - **The local network** (`LAN:`, all of it or a list of hosts) and **this
+    machine** (`Loopback:`, any port or a list, reached as `host.internal`, since
+    `127.0.0.1` inside the wall is the wall's own) are reached directly, never
+    through the tunnel, which cannot reach them. A name is looked up here only
+    if it looks local (no dot, or `.local`, `.lan`, `.home.arpa`, `.internal`,
+    `.localdomain`) or the `LAN:` list names it, and the door connects to the
+    very address it checked, so a name cannot be pointed elsewhere between the
+    check and the connection. This machine's own network addresses count as this
+    machine.
+  - **Never**, whatever the note says: the model server's port (the model door is
+    the only way to the model) and the tunnel's own proxy.
+
+  It records every destination in `net-door.log`, and the report says where the
+  run went: the web, the local network and this machine apart.
 
 **The self-check.** Before every run, `inside/check-wall` is run inside the
 wall. It confirms that the paths which must be hidden are hidden, that `.git`,
 `/usr` and `/etc` cannot be written, that the network is closed, and that each
 door passes what it should and refuses what it should not. For a run given
 the web it makes one connection out through the net door, so a tunnel that is
-up but carrying nothing is found before the agent starts; for any other run it
+up but carrying nothing is found before the agent starts. It asks the door for
+each thing the run was not given (the internet, the local network, this
+machine) and for the model server's port, and each must be refused; what the
+run was given on the local network or this machine is not knocked on, which
+would reach it before the agent has started. For a run given no network it
 confirms there is no net door. If any check fails, the agent is not started.
 
 **What the sandbox does not do:**
@@ -84,7 +104,11 @@ confirms there is no net door. If any check fails, the agent is not started.
 - It rests on the kernel's namespaces, as flatpak does. A kernel flaw could
   breach it.
 - The doors are visor's own programs and run outside the wall, with this
-  account's whole network. That the net door connects only to the tunnel is
-  held by its code and its tests, not by the kernel.
+  account's whole network. That the net door leads only where a run was given
+  is held by its code and its tests, not by the kernel.
 - The tunnel hides this machine's address from the sites a run visits. It does
-  not hide what the run asks for from the VPN provider.
+  not hide what the run asks for from the VPN provider. With no VPN, and the
+  owner's leave in `VISOR.md`, nothing hides it.
+- What a run given `LAN:` or `Loopback:` reaches is the owner's own: a device or
+  a service that does what it is asked, with no password, does it for the agent
+  too. A list of hosts or ports keeps it to those.

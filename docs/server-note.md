@@ -15,6 +15,13 @@ Each on/off setting is a single box: ticked is on, unticked is off.
   models are still synced and the notes still written. `STATUS.md` says it is
   paused.
 - **Restart:** restart visor once, when nothing is running, then clear.
+- **Network:** whether a VPN is installed, and up; what goes through it and what
+  never does; and **Allow non-VPN web traffic**, unticked to begin with. On a
+  server with no VPN installed, ticking it lets what needs the internet (a run's
+  web, the forum, image downloads) go out from the server's own address, with a
+  warning at the top of the note for as long as it does. Where a VPN is
+  installed it does nothing, and says so: a VPN that is down never means going
+  without one.
 - **Review**, and the **Default model** and **Reviewer** groups, as in
   `visor.conf`.
 - **Timing**, each in seconds with what it does, its recommended value and its
@@ -23,8 +30,9 @@ Each on/off setting is a single box: ticked is on, unticked is off.
   `Update check every:` (600), `Memory retry:` (300), `Live log every:` (60)
   and `Health every:` (600).
 - **Browse:** the sources a note may let its agent read ([Browse](browse.md)).
-- **Health:** Ollama and the VPN answering, free disk for results and image
-  models, free memory, and anything `dispatch.py check` finds missing.
+- **Health:** Ollama answering, the graphics card and what uses it, free disk
+  for results and image models, free memory, and anything `dispatch.py check`
+  finds missing.
 
 Visor reads it once it has been left alone for `Settle settings:`, takes what you
 set, and writes it back with one box ticked a group. A note written by an older

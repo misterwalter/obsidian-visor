@@ -8,6 +8,9 @@ No VPN and no internet needed.
     python3 tests/test_net_door.py
 """
 
+import http.server
+import importlib.util
+import ipaddress
 import os
 import shutil
 import socket
@@ -22,6 +25,85 @@ import unittest
 
 HERE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 DOOR = os.path.join(HERE, "doors", "net-door.py")
+_spec = importlib.util.spec_from_file_location("net_door", DOOR)
+net_door = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(net_door)
+
+
+def address(text):
+    return ipaddress.ip_address(text)
+
+
+class PlanTest(unittest.TestCase):
+    """Where the door sends each request, decided before any connection: by what the destination
+    is, what the run was given, and the way to the internet."""
+
+    NAMES = {"nas.local": ["192.168.1.20"], "printer": ["192.168.1.30"], "nas.home.example": ["192.168.1.20"],
+             "sneaky.example": ["192.168.1.1"], "site.example": ["93.184.216.34"], "box.internal": ["127.0.0.1"]}
+
+    def resolve(self, name, port):
+        self.looked_up.append(name)
+        if name not in self.NAMES:
+            raise OSError("not found")
+        return [address(a) for a in self.NAMES[name]]
+
+    def plan(self, host, port=443, **given):
+        self.looked_up = []
+        given.setdefault("route", "tunnel")
+        rules = net_door.Rules(own=frozenset([address("172.20.0.5")]), never=(11434, 25344), **given)
+        return rules.plan(host, port, resolve=self.resolve)
+
+    def test_an_internet_name_goes_into_the_tunnel_unlooked_up(self):
+        self.assertEqual(self.plan("site.example", web=True), ("tunnel", "site.example"))
+        self.assertEqual(self.looked_up, [], "no question about it left outside the tunnel")
+        self.assertEqual(self.plan("93.184.216.34", web=True), ("tunnel", "93.184.216.34"))
+        self.assertEqual(self.plan("site.example")[0], "refuse", "not given the web")
+
+    def test_with_no_vpn_the_internet_is_reached_directly_only_when_the_owner_allowed_it(self):
+        self.assertEqual(self.plan("site.example", web=True, route="direct"), ("direct", address("93.184.216.34")))
+        refused = self.plan("site.example", web=True, route="none")
+        self.assertEqual(refused, ("refuse", net_door.NO_ROUTE))
+        self.assertEqual(self.looked_up, [])
+
+    def test_the_local_network_needs_lan_and_is_reached_directly_even_with_a_vpn(self):
+        self.assertEqual(self.plan("nas.local", web=True), ("refuse", net_door.NO_LAN))
+        self.assertEqual(self.plan("nas.local", lan="yes"), ("direct", address("192.168.1.20")))
+        self.assertEqual(self.plan("printer", 631, lan="yes"), ("direct", address("192.168.1.30")), "no dot: local")
+        self.assertEqual(self.plan("10.0.0.7", 22, lan="yes"), ("direct", address("10.0.0.7")))
+        self.assertEqual(self.plan("100.101.102.103", lan="yes")[0], "direct", "Tailscale's addresses are local")
+
+    def test_a_lan_list_reaches_what_it_names_and_nothing_else(self):
+        lan = net_door.parse_hosts("nas.local, 10.0.0.0/24, 192.168.1.30:631, http://nas.home.example:5000/")
+        self.assertEqual(self.plan("nas.local", lan=lan)[0], "direct")
+        self.assertEqual(self.plan("10.0.0.9", lan=lan)[0], "direct", "inside the network listed")
+        self.assertEqual(self.plan("10.0.1.9", lan=lan)[0], "refuse")
+        self.assertEqual(self.plan("printer", 631, lan=lan)[0], "direct", "its address is listed, with that port")
+        self.assertEqual(self.plan("printer", 80, lan=lan)[0], "refuse", "but only that port")
+        self.assertEqual(self.plan("nas.home.example", 5000, lan=lan), ("direct", address("192.168.1.20")),
+                         "a name the list gives is looked up here, even one that does not look local")
+        self.assertEqual(self.plan("nas.home.example", 80, lan=lan, web=True)[0], "tunnel",
+                         "on another port it is an internet name like any other, for the tunnel")
+
+    def test_this_machine_needs_loopback_and_some_ports_never(self):
+        self.assertEqual(self.plan("host.internal", 8080, web=True, lan="yes"), ("refuse", net_door.NO_MACHINE))
+        self.assertEqual(self.plan("host.internal", 8080, loopback="yes"), ("direct", address("127.0.0.1")))
+        ports = net_door.parse_ports("8080, 3000-3002")
+        self.assertEqual(self.plan("localhost", 3001, loopback=ports)[0], "direct")
+        self.assertEqual(self.plan("localhost", 5000, loopback=ports)[0], "refuse")
+        for host in ("host.internal", "127.0.0.1", "::1", "0.0.0.0", "172.20.0.5"):
+            how, why = self.plan(host, 11434, loopback="yes", lan="yes")
+            self.assertEqual(how, "refuse", host)
+            self.assertIn("it is the model server's, which only the model door leads to", why)
+        self.assertEqual(self.plan("172.20.0.5", 8080, lan="yes"), ("refuse", net_door.NO_MACHINE),
+                         "this machine's own network address is this machine, not the local network")
+        self.assertEqual(self.plan("box.internal", 8080, lan="yes")[0], "refuse", "a local name for this machine")
+
+    def test_a_name_is_judged_by_the_address_it_has_not_by_how_it_looks(self):
+        # Without a VPN every name is looked up, and one pointing into the local network needs LAN.
+        self.assertEqual(self.plan("sneaky.example", web=True, route="direct"), ("refuse", net_door.NO_LAN))
+        self.assertEqual(self.plan("sneaky.example", web=True, route="direct", lan="yes"),
+                         ("direct", address("192.168.1.1")))
+        self.assertEqual(self.plan("nowhere.local", lan="yes")[0], "fail")
 
 
 class FakeTunnel(socketserver.ThreadingTCPServer):
@@ -87,17 +169,26 @@ class NetDoorTest(unittest.TestCase):
         self.tunnel.server_close()
         self.tmp.cleanup()
 
-    def open_door(self, proxy):
+    def open_door(self, proxy, *given):
+        """The door as a run given the web has it, through the tunnel at proxy; given adds to that."""
         if self.door:
             self.door.kill()
             self.door.wait()
             os.unlink(self.socket)
         with open(self.log, "w") as log:
-            self.door = subprocess.Popen([sys.executable, DOOR, self.socket, proxy], stderr=log)
-        for _ in range(100):
-            if os.path.exists(self.socket):
+            self.door = subprocess.Popen([sys.executable, DOOR, self.socket, "--route", f"tunnel:{proxy}", "--web",
+                                          "--never", "11434", *given], stderr=log)
+        self.wait_for_door()
+
+    def wait_for_door(self):
+        """Until the door takes a connection: its socket's file is there a moment before it listens."""
+        for _ in range(200):
+            try:
+                with socket.socket(socket.AF_UNIX) as s:
+                    s.connect(self.socket)
                 return
-            time.sleep(0.05)
+            except OSError:
+                time.sleep(0.05)
         self.fail("the door did not open")
 
     def ask(self, *messages):
@@ -173,17 +264,33 @@ class NetDoorTest(unittest.TestCase):
         self.assertEqual(self.tunnel.asked, [])
         self.assertEqual(self.logged().count("net-door: REFUSED"), 6)
 
+    def test_this_machine_given_is_reached_directly_as_host_internal(self):
+        class Echo(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = f"this machine received {self.path}".encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            def log_message(self, *a):
+                pass
+        here = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Echo)
+        threading.Thread(target=here.serve_forever, daemon=True).start()
+        port = here.server_address[1]
+        try:
+            self.open_door(self.tunnel.address, "--loopback", str(port))
+            answer = self.ask(f"GET http://host.internal:{port}/status HTTP/1.1\r\nHost: host.internal\r\n\r\n".encode())
+            self.assertIn("this machine received /status", answer)
+            self.assertIn(f"net-door: passed GET host.internal:{port} directly, to 127.0.0.1", self.logged())
+            answer = self.ask(b"CONNECT host.internal:11434 HTTP/1.1\r\n\r\n")
+            self.assertTrue(answer.startswith("HTTP/1.1 403"), "the model server, never")
+            self.assertEqual(self.tunnel.asked, [], "this machine is never reached through the tunnel")
+        finally:
+            here.shutdown()
+            here.server_close()
+
     def test_the_forum_is_refused_with_where_it_is_reached_instead(self):
-        self.door.kill()
-        self.door.wait()
-        os.unlink(self.socket)
-        with open(self.log, "w") as log:
-            self.door = subprocess.Popen([sys.executable, DOOR, self.socket, self.tunnel.address, "forum.test"],
-                                         stderr=log)
-        for _ in range(100):
-            if os.path.exists(self.socket):
-                break
-            time.sleep(0.05)
+        self.open_door(self.tunnel.address, "--forum", "forum.test")
         for request in (b"CONNECT forum.test:443 HTTP/1.1\r\n\r\n", b"CONNECT FORUM.test.:443 HTTP/1.1\r\n\r\n",
                         b"CONNECT api.forum.test:443 HTTP/1.1\r\n\r\n",
                         b"GET http://forum.test/b/ HTTP/1.1\r\nHost: forum.test\r\n\r\n"):
@@ -219,9 +326,9 @@ class NetDoorTest(unittest.TestCase):
              os.path.join(HERE, "inside", "start-agent")] + list(command),
             capture_output=True, text=True, timeout=120)
 
-    def wall_check(self, web):
-        """What the wall's own check says of the net door, for a run given the web or not."""
-        checked = self.walled(os.path.join(HERE, "inside", "check-wall"), "ro", web, self.tmp.name)
+    def wall_check(self, given):
+        """What the wall's own check says of the net door, for a run given that (web, lan, loopback or none)."""
+        checked = self.walled(os.path.join(HERE, "inside", "check-wall"), "ro", given, self.tmp.name)
         return [line for line in checked.stdout.splitlines() if "net door" in line]
 
     @unittest.skipUnless(shutil.which("bwrap") and shutil.which("socat"), "needs bubblewrap and socat")
@@ -240,21 +347,38 @@ class NetDoorTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("bwrap") and shutil.which("socat"), "needs bubblewrap and socat")
     def test_the_wall_s_own_check_proves_the_door_before_a_run(self):
-        self.assertEqual(self.wall_check("yes"), ["ok    net door reaches the internet through the tunnel",
+        self.assertEqual(self.wall_check("web"), ["ok    net door reaches the internet",
+                                                  "ok    net door refuses the local network",
+                                                  "ok    net door refuses the model server",
                                                   "ok    net door refuses this machine"])
         self.assertEqual(self.tunnel.asked, [("number", "1.1.1.1", 443)])
-        # A run that was not given the web must have no door at all.
-        self.assertEqual(self.wall_check("no"), ["FAIL  there is a net door, and this run was not given the web"])
+        # A run given no network must have no door at all.
+        self.assertEqual(self.wall_check("none"), ["FAIL  there is a net door, and this run was given no network"])
         os.unlink(self.socket)
-        self.assertEqual(self.wall_check("no"), ["ok    no net door"])
+        self.assertEqual(self.wall_check("none"), ["ok    no net door"])
+        self.assertEqual(self.wall_check("web"), ["FAIL  no net door, and this run was given web"])
+
+    @unittest.skipUnless(shutil.which("bwrap") and shutil.which("socat"), "needs bubblewrap and socat")
+    def test_the_wall_s_own_check_of_a_door_given_the_local_network_alone(self):
+        self.door.kill()
+        self.door.wait()
+        os.unlink(self.socket)
+        with open(self.log, "w") as log:
+            self.door = subprocess.Popen([sys.executable, DOOR, self.socket, "--route", f"tunnel:{self.tunnel.address}",
+                                          "--lan", "yes", "--never", "11434"], stderr=log)
+        self.wait_for_door()
+        self.assertEqual(self.wall_check("lan"), ["ok    net door refuses the internet",
+                                                  "ok    net door refuses the model server",
+                                                  "ok    net door refuses this machine"])
+        self.assertEqual(self.tunnel.asked, [])
 
     @unittest.skipUnless(shutil.which("bwrap") and shutil.which("socat"), "needs bubblewrap and socat")
     def test_the_wall_s_own_check_fails_while_the_tunnel_is_down(self):
         closed = socket.socket()
         closed.bind(("127.0.0.1", 0))
         self.open_door(f"127.0.0.1:{closed.getsockname()[1]}")
-        self.assertEqual(self.wall_check("yes")[0],
-                         "FAIL  net door: no way out through the VPN tunnel (got 502, expected 200)")
+        self.assertEqual(self.wall_check("web")[0],
+                         "FAIL  net door: no way out to the internet (got 502, expected 200)")
         closed.close()
 
 

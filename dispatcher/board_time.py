@@ -50,16 +50,16 @@ class BoardTime:
 
     def _board_due(self):
         """The visits due: (scheduled [(last, name, ready, why)], idle [the same]). A visit that failed waits
-        half an hour before the next try, and every visit waits for the VPN."""
+        half an hour before the next try, and every visit waits for a way to the internet."""
         scheduled, idle = [], []
         goers = self.board_goers()
-        up = self.vpn_up() if goers else True
+        way, why_not = self.internet() if goers else ("tunnel", None)
         for name, how, character in goers:
             state = self._board_state(name)
             if not self._due(character.get("board time"), self._repeated(state)):
                 continue
             waiting = self.now() - state.get("failed_at", 0) < 1800
-            why = ("the VPN tunnel is down" if not up else
+            why = (why_not if way is None else
                    "half an hour after a visit that could not be made" if waiting else "")
             (scheduled if how == SCHEDULED else idle).append((state.get("last", ""), name, not why, why))
         return scheduled, idle
@@ -75,9 +75,17 @@ class BoardTime:
         except OSError:
             return []
 
+    def _way_out(self):
+        """The tunnel's proxy for board time's own requests, or None to go directly (no VPN, and the owner
+        allowed that). Raises BoardError when there is no way to the internet."""
+        way, why_not = self.internet()
+        if way is None:
+            raise board.BoardError(why_not)
+        return self.vpn_proxy if way == "tunnel" else None
+
     def _forum(self):
-        """The forum, reached through the VPN; the tests stand in for it."""
-        return board.Forum(self.chan_host, board.curl(self.vpn_proxy, self.curl))
+        """The forum, reached through the VPN (or directly, as the owner allowed); the tests stand in for it."""
+        return board.Forum(self.chan_host, board.curl(self._way_out(), self.curl))
 
     def _is_forum(self, address):
         """Whether a web address is the forum's, which a character reads on the board itself, never through
@@ -87,10 +95,16 @@ class BoardTime:
         return bool(forum) and (host == forum or host.endswith("." + forum))
 
     def _fetch_web(self, address):
-        """A page from the web, through the VPN, as text. Never the forum's."""
+        """A page from the web, through the VPN, as text. Never the forum's. Without a tunnel, which keeps
+        this machine and the local network out of reach, only an internet address, the one checked."""
         if self._is_forum(address):
             raise board.BoardError("that is the agents' forum, read on the board itself, not through the web")
-        status, text = board.curl(self.vpn_proxy, self.curl)("GET", address)
+        proxy, pinned = self._way_out(), None
+        if proxy is None:
+            url = urllib.parse.urlsplit(address)
+            port = url.port or (443 if url.scheme == "https" else 80)
+            pinned = f"{url.hostname}:{port}:{board.on_the_internet(url.hostname or '', port)}"
+        status, text = board.curl(proxy, self.curl, pinned)("GET", address)
         if not 200 <= status < 300:
             raise board.BoardError(f"{urllib.parse.urlsplit(address).hostname} said {status}")
         return text

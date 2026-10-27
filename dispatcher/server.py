@@ -105,13 +105,33 @@ class Server:
     """Mixed into Dispatcher (dispatch.py): its methods share the Dispatcher's settings and state."""
 
     def vpn_up(self):
-        """Whether the tunnel's proxy is listening. No run is given the web without it."""
+        """Whether the tunnel's proxy is listening."""
         host, _, port = self.vpn_proxy.rpartition(":")
         try:
             with socket.create_connection((host, int(port)), timeout=5):
                 return True
         except (OSError, ValueError):
             return False
+
+    def vpn_installed(self):
+        """Whether this server has a VPN: the tunnel's program or its settings are here, or something
+        answers at its address. With one, nothing goes to the internet without it, however it is broken."""
+        return any(os.path.exists(path) for path in self.vpn_files) or self.vpn_up()
+
+    def internet(self):
+        """The way to the internet for what needs it (a run's web, the forum, fetching an image model):
+        ("tunnel", None); ("direct", None) on a server with no VPN whose owner allowed going without one in
+        VISOR.md; or (None, why there is none)."""
+        if self.vpn_installed():
+            if self.vpn_up():
+                return "tunnel", None
+            return None, (f"the VPN tunnel is not running (nothing answers at {self.vpn_proxy}), and with a VPN "
+                          "installed nothing goes to the internet without it. Start it on the server: "
+                          "`systemctl --user start visor-vpn`")
+        if self.allow_direct:
+            return "direct", None
+        return None, ("there is no VPN on this server, and `Allow non-VPN web traffic` is unticked under "
+                      "`## Network` in VISOR.md")
 
     def lock_holder(self):
         """The job, other than this dispatcher's own, that holds the run lock: its command,
@@ -195,8 +215,11 @@ class Server:
             have = tags is not None and (model["ollama"] in tags or f"{model['ollama']}:latest" in tags)
             say(have, f"language model `{name}` (`{model['ollama']}` in Ollama)",
                 f"ollama pull {model['ollama']}, or ollama create it from a Modelfile (install.sh)")
-        say(self.vpn_up(), f"the VPN tunnel at {self.vpn_proxy}", "only notes with Web: or Chan: need it, "
-            "and fetching models (examples/wireproxy.conf)", needed=False)
+        way, why_not = self.internet()
+        say(way is not None, {"tunnel": f"the internet, through the VPN tunnel at {self.vpn_proxy}",
+                              "direct": "the internet, directly: no VPN installed, and VISOR.md allows going without"
+                              }.get(way, "a way to the internet"),
+            f"{why_not}. Only notes with Web: or Chan:, and fetching image models, need it", needed=False)
         for what, paths in (("transcription (whisper.cpp)", [self.media.whisper, self.media.whisper_model]),
                             ("speech (Kokoro)", [self.media.kokoro_python, self.media.kokoro_model]),
                             ("images (ComfyUI)", [os.path.join(self.media.comfyui, "main.py"), self.media.comfy_python]),
@@ -293,7 +316,7 @@ class Server:
     def _server_said(self):
         """The settings VISOR.md shows and steers, as they stand."""
         said = {"auto": self.self_update, "paused": self.paused, "default_model": self.default_model,
-                "review": self.review, "reviewer": self.reviewer}
+                "review": self.review, "reviewer": self.reviewer, "direct": self.allow_direct}
         said.update({setting: self.wait(setting) for setting in server_note.DEFAULTS})
         return said
 
@@ -311,6 +334,7 @@ class Server:
         self.chosen_model = said.get("default_model", self.chosen_model)
         self.review = said.get("review", self.review)
         self.chosen_reviewer = said.get("reviewer", self.chosen_reviewer)
+        self.allow_direct = said.get("direct", self.allow_direct)
         if "live_log_every" in said:
             self.live_log_every = str(said["live_log_every"])
         self.timing.update({setting: said[setting] for setting in server_note.DEFAULTS
@@ -384,8 +408,10 @@ class Server:
             self.health, self.health_at = self._health(), self.now()
         if self._reading_looked != (json.dumps(self.reading, sort_keys=True), self.health_at):
             self._look_at_reading()
+        installed = self.vpn_installed()
         fresh = server_note.render(self._server_said(), self.version, self.health, models, self._server_problems,
-                                   (self.reading, self.reading_found, self._reading_problems))
+                                   (self.reading, self.reading_found, self._reading_problems),
+                                   {"installed": installed, "up": installed and self.vpn_up(), "proxy": self.vpn_proxy})
         if fresh != text:
             write_file(path, fresh)
         self._server_written = fresh
@@ -404,9 +430,6 @@ class Server:
                          (f"; images are drawn on the processor: {drawn[1]}" if drawn else ""))
         else:
             lines.append("- Graphics card: none visor can use, so everything runs on the processor")
-        lines.append(f"- The VPN tunnel, at {self.vpn_proxy}: " + (
-            "answering" if self.vpn_up() else "not answering. Only notes with `Web:` or `Chan:`, and fetching "
-                                              "models, need it"))
         for what, folder in (("results", self.results), ("image models", self.media.comfy_models)):
             try:
                 lines.append(f"- Free disk for {what} (`{folder}`): {server_note.rounded_gb(shutil.disk_usage(folder).free)}")

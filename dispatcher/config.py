@@ -116,6 +116,11 @@ class Config:
         self.opera_folder = visor.get("opera_folder", os.path.join(self.tasks, "opera"))
         tools = parser["media"].get("tools", "/srv/code/tools") if parser.has_section("media") else "/srv/code/tools"
         self.opera_python = visor.get("opera_python", os.path.join(tools, "opera-venv", "bin", "python"))
+        # The VPN tunnel, where install.sh looks for it: its program, and its settings beside these.
+        self.vpn_files = (os.path.join(tools, "wireproxy", "wireproxy"),
+                          os.path.join(os.path.dirname(os.path.abspath(path)), "wireproxy.conf"))
+        # With no VPN installed, whether what needs the internet may go without one: VISOR.md's to say.
+        self.allow_direct = False
         self.opera_rng = random.Random()
         # How a game's narrator is asked, a model kept loaded and its context found; the tests stand in.
         self.narrate, self.keep_warm, self.context_of = game.ask, game.keep, game.loaded_context
@@ -185,7 +190,8 @@ class Config:
         changed, problems, listed = ({}, [], []) if text is None else projects.read_panel(text, project, models)
         for key, value in changed.items():
             was = projects.own_model(project, models) if key == "model" else project.get(key) or "nothing"
-            listed.append(f"- {_stamp()}: {key.capitalize()}, {was} → {value or 'nothing'}")
+            label = projects.REACH[key][0] if key in projects.REACH else key.capitalize()
+            listed.append(f"- {_stamp()}: {label}, {was} → {value or 'nothing'}")
             self.log(f"{name}: {key} {was} -> {value or 'nothing'}, from its config.md")
             project[key] = value
         if changed:
@@ -235,6 +241,12 @@ class Config:
         from the project's setting: (thinking, web, chan), as the header would say them."""
         settings_ = self.projects[project]
         return tuple((header[key] or "").strip() or settings_[key] for key in ("thinking", "web", "chan"))
+
+    def _reach_for_this_note(self, header, project):
+        """What a note's run may reach besides the internet, each from the note's own line if it has one,
+        else from the project's setting: (lan, loopback), as written (network.py)."""
+        settings_ = self.projects[project]
+        return tuple((header[key] or "").strip() or settings_.get(key, "") for key in ("lan", "loopback"))
 
     def folder(self, name):
         return os.path.join(self.tasks, name)

@@ -16,6 +16,7 @@ import board
 import chat
 import kinds
 import livelog
+import network
 import projects
 import settings
 import sources
@@ -143,15 +144,19 @@ class Rounds:
         if chan and not self.chan_host:
             return None, None, None, ("`Chan:` asks for the board, and visor's settings name no forum "
                                       "(`chan_host` in visor.conf).")
-        if chan and not self.vpn_up():
-            return None, None, None, (f"`Chan: {said_chan}`{where('chan')} asks for the board, which visor reaches "
-                                      "only through the VPN, and the VPN tunnel is not running. Start it "
-                                      "(`systemctl --user start visor-vpn`) and move the note back to `inbox/`.")
-        if WEB[said_web.lower()] and not self.vpn_up():
-            return None, None, None, (f"`Web: yes`{where('web')} asks for the internet, which visor reaches only through the VPN, and "
-                                      f"the VPN is not running on the server (nothing answers at {self.vpn_proxy}). "
-                                      "Nothing was started. Start it there with `systemctl --user start visor-vpn`, "
+        way, why_not = self.internet() if chan or WEB[said_web.lower()] else ("", None)
+        if chan and way is None:
+            return None, None, None, (f"`Chan: {said_chan}`{where('chan')} asks for the board, and there is no way "
+                                      f"to the internet: {why_not}. Nothing was started; move the note back to "
+                                      "`inbox/` once there is.")
+        if WEB[said_web.lower()] and way is None:
+            return None, None, None, (f"`Web: yes`{where('web')} asks for the internet, and there is no way to it: "
+                                      f"{why_not}. Nothing was started; move the note back to `inbox/` once there is, "
                                       "or take the line out to run without the internet.")
+        for key, said in zip(("lan", "loopback"), self._reach_for_this_note(header, header["project"])):
+            problem = network.problem(key, said)
+            if problem:
+                return None, None, None, problem + where(key)
         problem = self._reading_asked(header)[1]
         if problem:
             return None, None, None, problem
@@ -256,6 +261,7 @@ class Rounds:
         header = parse_header(owner_text)
         said_thinking, said_web, said_chan = self._for_this_note(header, project)
         thinking, web, chan = THINKING[said_thinking.lower()], WEB[said_web.lower()], CHAN[said_chan.lower()]
+        lan, loopback = self._reach_for_this_note(header, project)
         reading = self._reading_asked(header)[0]
         own = (header["self-directed"] or "no").strip().lower() in YES and round_ == "build"
         chan_as = (header["chan as"] or "").strip()
@@ -284,7 +290,7 @@ class Rounds:
         while True:
             run_name, exit_code, result, parts, log, continue_build = self._run_in_parts(
                 path, name, state, round_, model, project, task_file, rest, fix, continue_build,
-                (thinking, web, chan, branch, canon, reading, own, chan_as))
+                (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback))
             path = self._wherever_the_owner_put(path)
             broke = (round_ == "build" and exit_code == 0 and result["pushed"] and result["tests_before"] == "0"
                      and result["tests_after"] not in ("0", "none", "n/a"))
@@ -322,9 +328,9 @@ class Rounds:
     def _run_in_parts(self, path, name, state, round_, model, project, task_file, rest, fix, continue_build, asked):
         """One try of a round: a part after another, each a run of visor-run.sh carrying on the one
         before (its conversation, or a note on where it got to), until one ends, is stopped, or
-        MAX_PARTS is reached. asked: (thinking, web, chan, branch, canon, reading, own, chan_as) as the note has
-        them. Returns (run_name, exit_code, result, parts, log, continue_build) of the last part."""
-        thinking, web, chan, branch, canon, reading, own, chan_as = asked
+        MAX_PARTS is reached. asked: (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback) as
+        the note has them. Returns (run_name, exit_code, result, parts, log, continue_build) of the last part."""
+        thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback = asked
         parts = []
         resume, fork = "", ""
         retried_for_memory = False
@@ -343,6 +349,10 @@ class Rounds:
                 flags += ["--thinking", thinking]
             if web:
                 flags += ["--web"]
+            if network.given(lan):
+                flags += ["--lan", lan]
+            if network.given(loopback):
+                flags += ["--loopback", loopback]
             if chan:
                 flags += ["--chan", chan] + (["--chan-as", chan_as] if chan_as else [])
             if own:
@@ -667,6 +677,7 @@ class Rounds:
                                                 VISOR_HARNESS_SETTINGS=self.harness_settings,
                                                 VISOR_RESULTS=self.results, VISOR_WORK=self.work,
                                                 VISOR_FOLDERS=self.folders,
+                                                VISOR_NET_ROUTE=self.internet()[0] or "none",
                                                 VISOR_VPN_PROXY=self.vpn_proxy, VISOR_CHAN_HOST=self.chan_host,
                                                 VISOR_CHAN_REDACT=self.chan_redact,
                                                 VISOR_CHAN_TRIPCODES=self.chan_tripcodes))
@@ -802,10 +813,11 @@ class Rounds:
         if work:
             read, written, minutes = (int(n) for n in work.groups())
             facts.append(f"the model read {read:,} tokens and wrote {written:,} in {minutes} minutes")
-        # Where a run given the web went, what it posted, and what it could read.
-        web = re.search(r"^- web: (.+)$", head, re.MULTILINE)
-        if web:
-            facts.append(f"web: {web.group(1)}")
+        # Where a run given the web, the local network or this machine went, what it posted, and what it could read.
+        for reached in ("web", "lan", "loopback"):
+            went = re.search(rf"^- {reached}: (.+)$", head, re.MULTILINE)
+            if went:
+                facts.append(f"{reached}: {went.group(1)}")
         board = re.search(r"^- board: (.+)$", head, re.MULTILINE)
         if board:
             facts.append(f"board: {board.group(1)}")

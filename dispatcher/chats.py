@@ -299,9 +299,9 @@ class Chats:
         needs_vpn = any(WEB[e["web"].lower()] or CHAN[e["chan"].lower()] for e in each.values())
         if any(CHAN[e["chan"].lower()] for e in each.values()) and not self.chan_host:
             return {"error": "the chat asks for the board, and visor's settings name no forum (`chan_host` in visor.conf)."}
-        if needs_vpn and not self.vpn_up():
-            return {"error": "the chat asks for the web or the board, which visor reaches only through the VPN, "
-                             "and the VPN tunnel is not running."}
+        way, why_not = self.internet() if needs_vpn else ("", None)
+        if way is None:
+            return {"error": f"the chat asks for the web or the board, and there is no way to the internet: {why_not}."}
         minds = (said.get("minds") or CHAT_DEFAULTS["minds"]).strip().lower()
         minds = {"narrator": "one narrator", "one": "one narrator"}.get(minds, minds)
         if minds not in chat.MINDS:

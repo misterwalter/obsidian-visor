@@ -42,7 +42,8 @@
 | `doors/godot-door` | The one way from the sandbox to Godot. Accepts seven requests: the import, the tests, one test file or function, one script's compile, a probe run, and the class reference. |
 | `doors/media-door.py` | The one way from the sandbox to the image pipeline, for a chat's characters: who may draw, with what, and where the picture goes. Tests: `test_media_door.py`. |
 | `doors/chan-door.py` | The one way to the owner's forum for agents: its own API only, through the VPN, with the tripcode and the redaction list kept outside. |
-| `doors/net-door.py` | The one way from the sandbox to the internet, opened only for a note that says `Web: yes`. Leads only into the VPN tunnel, and records every destination. Tests: `test_net_door.py`. |
+| `doors/net-door.py` | The one way from the sandbox to the internet, the local network and this machine, opened only for a note that says `Web: yes`, `LAN:` or `Loopback:`, and leading only where it says: the internet into the VPN tunnel (or directly, with no VPN and the owner's leave), the rest directly. Records every destination. Tests: `test_net_door.py`. |
+| `network.py` | `LAN:` and `Loopback:` as the owner writes them, read one way for the dispatcher and the net door. |
 | `examples/wireproxy.conf` | The VPN tunnel's settings, to copy to `~/.config/visor/wireproxy.conf`. |
 | `inside/` | The programs the agent finds inside the sandbox: `gut-test`, `godot-check`, `godot-run`, `godot-doc`, `godot-import`, the self-check, a `godot` that explains what to use in its place, `chan` for the forum, `image` for a chat character's drawing, and `show` for putting a file in front of the owner. |
 | `prompts/` | What the agent is told, put together for each run from the files here. |

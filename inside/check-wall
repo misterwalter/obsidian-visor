@@ -2,11 +2,13 @@
 # Prove the wall from the inside, before the agent is let in. Prints one line per
 # check and exits 1 if any failed.
 #
-#   check-wall <rw|ro> <yes|no> <workspace> <path that must be hidden>...
+#   check-wall <rw|ro> <network> <workspace> <path that must be hidden>...
 #
-# yes | no   whether the run was given the web, and so a net door
+# network    what the run was given, and so whether there is a net door: web, lan and
+#            loopback, separated by commas, or none
 set -u
-ACCESS="${1:?rw or ro required}"; WEB="${2:?yes or no required: whether the run has the web}"
+ACCESS="${1:?rw or ro required}"; NET="${2:?what the run was given required: web,lan,loopback or none}"
+given() { [[ ",$NET," == *",$1,"* ]]; }
 WORK="${3:?workspace required}"; shift 3
 failed=0
 ok()   { echo "ok    $1"; }
@@ -56,14 +58,31 @@ if [ "$accounts" -le 3 ]; then ok "account list holds $accounts entries"; else f
 
 if timeout 5 bash -c 'echo > /dev/tcp/1.1.1.1/443' 2>/dev/null; then fail "the network is open"; else ok "the network is closed"; fi
 
-if [ "$WEB" = yes ]; then
-  # Connecting sends nothing. It shows that the tunnel carries a connection out.
-  status="$(proxy_status CONNECT 1.1.1.1:443)"
-  if [ "$status" = 200 ]; then ok "net door reaches the internet through the tunnel"; else fail "net door: no way out through the VPN tunnel (got $status, expected 200)"; fi
-  status="$(proxy_status CONNECT 127.0.0.1:11434)"
-  if [ "$status" = 403 ]; then ok "net door refuses this machine"; else fail "net door: a request for this machine got $status, expected 403"; fi
+# What a run was not given, the net door refuses before connecting anywhere. What it was given
+# is knocked on only for the internet: a request to the local network or this machine would reach
+# them before the agent has started.
+refused() {
+  local status
+  status="$(proxy_status CONNECT "$1")"
+  if [ "$status" = 403 ]; then ok "net door refuses $2"; else fail "net door: a request for $2 got $status, expected 403"; fi
+}
+if [ "$NET" != none ]; then
+  if [ ! -S /run/visor/net.sock ]; then
+    fail "no net door, and this run was given $NET"
+  elif given web; then
+    # Connecting sends nothing. It shows that a connection gets out, through the tunnel or directly.
+    status="$(proxy_status CONNECT 1.1.1.1:443)"
+    if [ "$status" = 200 ]; then ok "net door reaches the internet"; else fail "net door: no way out to the internet (got $status, expected 200)"; fi
+  else
+    refused 1.1.1.1:443 "the internet"
+  fi
+  if [ -S /run/visor/net.sock ]; then
+    given lan || refused 192.168.0.1:80 "the local network"
+    refused host.internal:11434 "the model server"
+    given loopback || refused host.internal:22 "this machine"
+  fi
 elif [ -e /run/visor/net.sock ]; then
-  fail "there is a net door, and this run was not given the web"
+  fail "there is a net door, and this run was given no network"
 else
   ok "no net door"
 fi

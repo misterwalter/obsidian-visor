@@ -50,11 +50,12 @@ def problem(item, hosts=HOSTS):
 
 
 def start(address, part, proxy, curl="curl"):
-    """Start a download into part, carrying on one already begun. Returns the process."""
+    """Start a download into part, carrying on one already begun, through the tunnel's proxy, or with
+    proxy None directly (no VPN, and the owner allowed that). Returns the process."""
     os.makedirs(os.path.dirname(part), exist_ok=True)
     return subprocess.Popen([curl, "--silent", "--show-error", "--fail", "--location", "--proto", "=https",
-                             "--proto-redir", "=https", "--socks5-hostname", proxy, "--continue-at", "-",
-                             "--output", part, address],
+                             "--proto-redir", "=https", *(["--socks5-hostname", proxy] if proxy else []),
+                             "--continue-at", "-", "--output", part, address],
                             stdout=subprocess.DEVNULL, stderr=open(part + ".log", "w"), stdin=subprocess.DEVNULL,
                             start_new_session=True)
 

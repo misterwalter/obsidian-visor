@@ -50,7 +50,7 @@ The words these docs use for the sandbox, and what each is:
   `127.0.0.1:3128`), so the agent's programs need no changes. The forum's,
   Godot's and the media doors are reached through small commands visor puts
   inside instead: `chan`, `gut-test`, `image`.
-- **The doors:** model (every run), net (`Web: yes`), chan (`Chan:`), media
+- **The doors:** model (every run), net (`Web: yes`, `LAN:`, `Loopback:`), chan (`Chan:`), media
   (characters who may draw) and godot (Godot projects). Each is described in
   [The sandbox](docs/sandbox.md) and in its own file.
 - **The self-check** (`inside/check-wall`) runs inside the wall before every

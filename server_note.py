@@ -10,9 +10,11 @@ Visor writes the note, keeping the owner's ticks, as it does a project's config.
 the owner ticks, visor reads the note about a minute after they stop editing it, acts,
 and writes it back with one box ticked a group. What stays in visor.conf, on purpose:
 paths (an edit in the notes must not redirect where visor reads and writes) and
-anything secret or outward-facing (the VPN, the forum, GitHub). The one kind of path
-here is a folder a note may let its agent read (`## Browse`, sources.py): visor only
-ever reads it, and copies it before an agent sees it.
+anything secret or outward-facing (the VPN's address, the forum, GitHub). The one kind of
+path here is a folder a note may let its agent read (`## Browse`, sources.py): visor only
+ever reads it, and copies it before an agent sees it. The one outward-facing choice here is
+whether a server with no VPN installed may reach the internet without one (`## Network`):
+the owner's to make where they read what it means, and nothing at all where there is a VPN.
 """
 
 import re
@@ -57,20 +59,61 @@ TIMING = (
      "not every pass."),
 )
 DEFAULTS = {setting: recommended for _, setting, recommended, _, _, _ in TIMING}
-KEYS = ("auto-update", "update now", "pause", "restart", "default model", "review", "reviewer") + tuple(
-    line.lower() for line, *_ in TIMING)
+DIRECT = "Allow non-VPN web traffic"
+KEYS = ("auto-update", "update now", "pause", "restart", "default model", "review", "reviewer",
+        DIRECT.lower()) + tuple(line.lower() for line, *_ in TIMING)
+# A server's on/off settings: (the box, the setting it is).
+SWITCHES = (("auto-update", "auto"), ("pause", "paused"), ("review", "review"), (DIRECT.lower(), "direct"))
 
 
-def render(said, version, health, models, problems=(), reading=({}, {}, ())):
+def network(state, allowed):
+    """The `## Network` section: whether there is a VPN and whether it is up, the box for going
+    without one, and what goes where. state: {"installed", "up", "proxy"}."""
+    installed, up, proxy = state["installed"], state["up"], state["proxy"]
+    lines = ["## Network", ""]
+    if installed:
+        lines.append(f"VPN: installed, and **{'up' if up else 'down'}**: its proxy, `{proxy}`, "
+                     f"{'answers' if up else 'does not answer'}.")
+    else:
+        lines.append(f"VPN: **none installed**: no tunnel program, no `wireproxy.conf`, nothing answering at `{proxy}`.")
+    lines += ["", settings.toggle(DIRECT, allowed, "with no VPN installed, what needs the internet goes out from this "
+                                                   "machine's own address"), ""]
+    if installed and up:
+        lines.append("A run's web (`Web:`), the forum (`Chan:`) and the image models visor downloads go through the "
+                     "VPN. The box above does nothing while a VPN is installed.")
+    elif installed:
+        lines.append("> [!warning] The VPN is down, so nothing goes to the internet: notes with `Web:` or `Chan:` come "
+                     "back unrun, and image downloads wait. The box above does nothing while a VPN is installed: a VPN "
+                     "that is down never means going without one. Start it on the server: "
+                     "`systemctl --user start visor-vpn`.")
+    elif allowed:
+        lines.append("> [!warning] No VPN: a run's web (`Web:`), the forum (`Chan:`) and the image models visor "
+                     "downloads go out from this machine's own address. Untick the box to stop that.")
+    else:
+        lines.append("Nothing goes to the internet: notes with `Web:` or `Chan:` come back unrun, and image downloads "
+                     "wait. Tick the box to let them go out from this machine's own address, or install a VPN "
+                     "(`examples/wireproxy.conf`).")
+    lines += ["", "Never through the VPN, whatever the above says: the language models, which Ollama downloads itself; "
+                  "GitHub projects; visor's own updates; and the local network and this machine, which a note reaches "
+                  "only when it says so (`LAN:`, `Loopback:`), and then directly.", ""]
+    return lines
+
+
+def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None):
     """The note, whole. said: the settings as they stand ({"auto", "paused", "default_model",
-    "review", "reviewer"} and each
+    "review", "reviewer", "direct"} and each
     TIMING setting). version: {"commits": [(when, message, hash)],
     "behind": [(when, message, hash)], "last": text}. health: lines. reading: (the sources,
-    what visor found in each, problems with the section) for `## Browse` (sources.render)."""
+    what visor found in each, problems with the section) for `## Browse` (sources.render).
+    net: the VPN's state for `## Network` ({"installed", "up", "proxy"})."""
+    net = net or {"installed": True, "up": False, "proxy": ""}
     lines = ["# Visor", "",
              "This server's version, settings and health. Tick or untick a box to change a setting: one on its "
              "own is on or off; in a group, tick the one you want. Visor reads this note about a minute after you "
              "stop editing it, does what it says, and writes it back. `STATUS.md` says what is running now.", ""]
+    if not net["installed"] and said.get("direct"):
+        lines += ["> [!warning] No VPN: what needs the internet goes out from this machine's own address "
+                  "(`## Network`)", ""]
     if problems:
         lines += ["> [!warning] Visor could not read all of this, and kept what was set before"]
         lines += [f"> - {problem}" for problem in problems] + [""]
@@ -95,6 +138,7 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ())):
     lines += [settings.toggle("Pause", said["paused"], "take no new notes until this is unticked; a run going now "
                                                       "finishes"),
               settings.toggle("Restart", False, "restart visor once, when nothing is running; then this clears"), ""]
+    lines += network(net, said.get("direct", False))
     lines += ["## Settings", ""]
     lines += [settings.toggle("Review", said["review"], "after each build, a second model reviews it against the task"),
               ""]
@@ -116,14 +160,13 @@ def read(text, said, models):
     timing = {line.lower(): (line, setting, low, high) for line, setting, _, low, high, _ in TIMING}
     # A source in `## Browse` is not a setting, whatever it is called (sources.py).
     text = sources.without_section(text)
-    choices = {"auto-update": ("yes", "no"), "pause": ("yes", "no"), "review": ("yes", "no"),
-               "default model": tuple(models), "reviewer": tuple(models)}
-    standing = {"auto-update": "yes" if said["auto"] else "no", "pause": "yes" if said["paused"] else "no",
-                "review": "yes" if said["review"] else "no", "default model": said["default_model"],
-                "reviewer": said["reviewer"]}
+    choices = {"default model": tuple(models), "reviewer": tuple(models)}
+    choices.update({key: ("yes", "no") for key, _ in SWITCHES})
+    standing = {"default model": said["default_model"], "reviewer": said["reviewer"]}
+    standing.update({key: "yes" if said.get(setting) else "no" for key, setting in SWITCHES})
     # The on/off settings are single boxes; an older note's groups of yes and no are read below.
-    switched = settings.toggles(text, ("Auto-update", "Update now", "Pause", "Restart", "Review"))
-    for key, setting in (("auto-update", "auto"), ("pause", "paused"), ("review", "review")):
+    switched = settings.toggles(text, ("Auto-update", "Update now", "Pause", "Restart", "Review", DIRECT))
+    for key, setting in SWITCHES:
         if key in switched:
             found[setting] = switched[key]
     actions |= {key for key in ("update now", "restart") if switched.get(key)}
@@ -133,7 +176,7 @@ def read(text, said, models):
             if entry["boxes"] and any(on for on, _ in entry["boxes"]):
                 actions.add(key)
             continue
-        if key in ("auto-update", "pause", "review") and key in switched:
+        if key in dict(SWITCHES) and key in switched:
             continue
         if key in timing:
             line, setting, low, high = timing[key]
@@ -156,12 +199,8 @@ def read(text, said, models):
                 problems.append(f"Under `{key.capitalize()}`, `{value}` is not one of {', '.join(choices[key])}.")
             continue
         value = value.lower()
-        if key == "auto-update":
-            found["auto"] = value == "yes"
-        elif key == "pause":
-            found["paused"] = value == "yes"
-        elif key == "review":
-            found["review"] = value == "yes"
+        if key in dict(SWITCHES):
+            found[dict(SWITCHES)[key]] = value == "yes"
         elif key == "default model":
             found["default_model"] = value
         elif key == "reviewer":

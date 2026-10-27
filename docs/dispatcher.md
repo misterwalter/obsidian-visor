@@ -17,7 +17,9 @@ The first lines of a note say what to do:
 | `Project: <name>` | Which project, by its name in the settings. | The note comes back with an error. |
 | `Analysis:` / `Plan:` / `Build:` | The round: answer a question, propose a plan, or make the change. | `Plan:` |
 | `Model: <name>` | Which model: a language model's note in `models/`. | The project's setting, else the default model (VISOR.md). |
-| `Web: yes`, or `- [x] Web` | The run may use the internet, through the VPN tunnel and nothing else. With the tunnel down, the note comes back unrun. An on/off line typed as `yes` or `no` (`Web`, `Canon only`, `Finish`) is written back as a single box when visor takes the note; left empty, it is the project's setting. | No network at all. |
+| `Web: yes`, or `- [x] Web` | The run may use the internet, through the VPN tunnel and nothing else. With the tunnel down, the note comes back unrun; with no VPN installed, likewise, unless `VISOR.md` allows going without one. An on/off line typed as `yes` or `no` (`Web`, `Canon only`, `Finish`) is written back as a single box when visor takes the note; left empty, it is the project's setting. | No network at all. |
+| `LAN: yes`, or hosts | The run may reach the local network, directly: all of it, or the hosts listed, by name, address or network, each with a port if only that one (`nas.local, 192.168.1.20:8123, 10.0.0.0/24`). | The project's setting, else none. |
+| `Loopback: yes`, or ports | The run may reach services on the server itself, as `host.internal`: any port, or those listed (`8080, 3000-3010`). Never the model server's. | The project's setting, else none. |
 
 A note replied to and moved back to `inbox/` gets a build round, or another
 analysis round if it was a question. The whole discussion goes with it, and a

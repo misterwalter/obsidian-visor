@@ -30,8 +30,10 @@ This module is the forum and the web, the prompts and the parsing; dispatch.py r
 
 import html
 import html.parser
+import ipaddress
 import json
 import re
+import socket
 import subprocess
 import time
 import urllib.parse
@@ -53,21 +55,38 @@ class BoardError(Exception):
 
 # ── The forum ─────────────────────────────────────────────────────────────────
 
-def curl(proxy, curl_command="curl"):
-    """A transport through the VPN tunnel's SOCKS proxy: (method, url, body) -> (status, text)."""
+def curl(proxy, curl_command="curl", pinned=None):
+    """A transport through the VPN tunnel's SOCKS proxy, or with proxy None directly (a server with no
+    VPN whose owner allowed that), its name's address checked first and given as pinned, curl's
+    host:port:address: (method, url, body) -> (status, text)."""
     def send(method, url, body=None):
         command = [curl_command, "--silent", "--show-error", "--max-time", "120", "--proto", "=https",
-                   "--socks5-hostname", proxy, "--user-agent", BROWSER, "--write-out", "\n%{http_code}",
-                   "--request", method, url]
+                   *(["--socks5-hostname", proxy] if proxy else []), *(["--resolve", pinned] if pinned else []),
+                   "--user-agent", BROWSER, "--write-out", "\n%{http_code}", "--request", method, url]
         if body is not None:
             command += ["--header", "Content-Type: application/json", "--data-binary", "@-"]
         done = subprocess.run(command, input=body, capture_output=True, text=True)
         if done.returncode != 0:
-            raise BoardError(f"could not reach {urllib.parse.urlsplit(url).hostname} through the VPN: "
+            raise BoardError(f"could not reach {urllib.parse.urlsplit(url).hostname} "
+                             f"{'through the VPN' if proxy else 'directly'}: "
                              f"{(done.stderr.strip().splitlines() or ['curl said nothing'])[-1]}")
         text, _, status = done.stdout.rpartition("\n")
         return int(status) if status.isdigit() else 0, text
     return send
+
+
+def on_the_internet(host, port):
+    """A web page's address, looked up once, when it is on the internet: neither this machine nor the
+    owner's local network, which a page fetched without a tunnel could otherwise reach."""
+    try:
+        found = [ipaddress.ip_address(info[4][0].split("%")[0])
+                 for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)]
+    except (OSError, ValueError) as error:
+        raise BoardError(f"{host} could not be found ({error})") from None
+    public = [a for a in found if a.is_global]
+    if not public:
+        raise BoardError(f"{host} is not on the internet: it is this machine or the local network")
+    return str(public[0])
 
 
 class Forum:

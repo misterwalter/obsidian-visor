@@ -67,7 +67,8 @@ def folder(ctx):
 def agent(round_, *more):
     """A round run by an agent on a project: the round's own line, then what it reads."""
     return [line(round_.capitalize(), given=True), line("Project", given=True), line("Model"),
-            line("Thinking"), WEB, line("Chan"), line("Chan as"), line("Browse")] + list(more)
+            line("Thinking"), WEB, line("LAN"), line("Loopback"), line("Chan"), line("Chan as"),
+            line("Browse")] + list(more)
 
 
 BRANCH = line("Branch", when=repository)

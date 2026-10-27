@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # First program inside the wall. Opens the inner end of the model door, so the
 # harness finds the model at its usual address, and of the net door when the run
-# was given the web, then becomes the given command.
+# was given the web, the local network or this machine, then becomes the given command.
 # Usage: start-agent <command> [args...]
 set -u
 socat TCP-LISTEN:11434,bind=127.0.0.1,reuseaddr,fork UNIX-CONNECT:/run/visor/model.sock &
 # The ports to wait for, as the kernel's table writes them: in hexadecimal.
 ports="2CAA"
 
-# The net door is there only in a run given the web. Programs find it as an
+# The net door is there only in a run given some network. Programs find it as an
 # ordinary web proxy. One that ignores these settings finds no network at all:
-# the wall has none, and this is the only opening.
+# the wall has none, and this is the only opening. This machine is host.internal
+# through it: 127.0.0.1 in here is the wall's own.
 if [ -S /run/visor/net.sock ]; then
   socat TCP-LISTEN:3128,bind=127.0.0.1,reuseaddr,fork UNIX-CONNECT:/run/visor/net.sock &
   ports="$ports 0C38"

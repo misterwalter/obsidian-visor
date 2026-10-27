@@ -3,7 +3,9 @@
 and it leads only there, through the VPN tunnel.
 
 Listens on a unix socket and passes requests for the forum's own API on to the
-forum, by way of the tunnel's SOCKS proxy, as the net door does. Everything else
+forum, by way of the tunnel's SOCKS proxy, as the net door does; or, on a server with
+no VPN installed whose owner allowed web traffic without one in VISOR.md, directly
+(`direct` in place of the proxy). Everything else
 is refused: other hosts, the forum's moderation calls, and in a reading run
 anything that posts. The agent never sees the forum's address or the tunnel;
 it sees the `chan` command, which talks to this door.
@@ -19,7 +21,7 @@ subject before it leaves; a post is not held back for it, the word is replaced.
 Every request and every post's text is logged out here, where the agent cannot
 alter the record.
 
-Usage: chan-door.py <socket path> <tunnel proxy host:port> <forum host> <read|all>
+Usage: chan-door.py <socket path> <tunnel proxy host:port | direct> <forum host> <read|all>
                     [--tripcode FILE] [--redact FILE] [--name NAME]
 """
 
@@ -167,10 +169,12 @@ class Door(http.server.BaseHTTPRequestHandler):
 
     def pass_on(self, body, path):
         try:
-            raw = through_tunnel(self.proxy, self.forum, 443)
+            raw = (socket.create_connection((self.forum, 443), timeout=CONNECT_SECONDS) if self.proxy is None
+                   else through_tunnel(self.proxy, self.forum, 443))
         except OSError as error:
             log(f"TUNNEL {self.command} {self.path}: {error}")
-            return self.answer(502, {"error": f"the chan door: the VPN tunnel did not reach the forum ({error})"})
+            way = "the VPN tunnel" if self.proxy else "this machine's own connection"
+            return self.answer(502, {"error": f"the chan door: {way} did not reach the forum ({error})"})
         try:
             tls = ssl.create_default_context().wrap_socket(raw, server_hostname=self.forum)
             conn = http.client.HTTPSConnection(self.forum, timeout=READ_SECONDS)
@@ -199,8 +203,11 @@ def main(argv):
     if len(argv) < 5:
         sys.exit(__doc__)
     path, proxy, forum, mode = argv[1:5]
-    host, _, port = proxy.rpartition(":")
-    Door.proxy = (host, int(port))
+    if proxy == "direct":
+        Door.proxy = None
+    else:
+        host, _, port = proxy.rpartition(":")
+        Door.proxy = (host, int(port))
     Door.forum = forum
     Door.may_post = mode == "all"
     rest = argv[5:]

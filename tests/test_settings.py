@@ -82,7 +82,7 @@ class SettingsTest(unittest.TestCase):
 
 class ProjectsTest(unittest.TestCase):
     PROJECT = {"source": "/srv/code/tool", "folder": False, "tests": "python3 tests.py", "model": None,
-               "thinking": "no", "web": "no", "chan": "none"}
+               "thinking": "no", "web": "no", "chan": "none", "lan": "", "loopback": ""}
     MODELS = ["second", "writer", "official"]
 
     def panel(self, **changes):
@@ -123,7 +123,7 @@ class ProjectsTest(unittest.TestCase):
     def test_the_list_is_written_and_read_back_the_same(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "projects.conf")
-            listed = {"tool": dict(self.PROJECT, tests="pytest --cov=100%", web="yes"),
+            listed = {"tool": dict(self.PROJECT, tests="pytest --cov=100%", web="yes", lan="nas.local, 10.0.0.0/24"),
                       "My Story": dict(self.PROJECT, source="/srv/notes/My Story", folder=True, tests="", model="writer")}
             projects.save(path, listed)
             self.assertEqual(projects.load(path), listed)
