@@ -70,6 +70,14 @@ class ModelNotes:
         except (OSError, ValueError, KeyError):
             return None
 
+    def _ollama_version(self):
+        """The version of Ollama answering; None when it does not say."""
+        try:
+            with urllib.request.urlopen(f"http://{self.ollama}/api/version", timeout=3) as reply:
+                return json.load(reply).get("version")
+        except (OSError, ValueError, AttributeError):
+            return None
+
     def _loaded(self):
         """The models Ollama has loaded now, and how much of each is on the graphics card: {name: 0 to 1}.
         Ollama decides that itself, putting on the card as much as fits."""

@@ -57,6 +57,7 @@ class OperaGamesTest(unittest.TestCase):
                                      log=self.logged.append)
         self.d._unload_models = lambda: None
         self.d._in_ollama = lambda: None
+        self.d._ollama_version = lambda: None
         self.d._loaded = lambda: {}
         self.d.keep_warm = lambda *a: None
         self.d.context_of = lambda address, model: (8192, None)

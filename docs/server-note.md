@@ -34,7 +34,7 @@ Each on/off setting is a single box: ticked is on, unticked is off.
   `Update check every:` (600), `Memory retry:` (300), `Live log every:` (60)
   and `Health every:` (600).
 - **Browse:** the sources a note may let its agent read ([Browse](browse.md)).
-- **Health:** Ollama answering, the graphics card and what uses it, free disk
+- **Health:** Ollama answering, and which version, the graphics card and what uses it, free disk
   for results and image models, free memory, and anything `dispatch.py check`
   finds missing.
 

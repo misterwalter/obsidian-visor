@@ -439,6 +439,7 @@ class DispatchTest(unittest.TestCase):
         # A test that wants Ollama answering says what it has, and puts its own `ollama` on the PATH.
         d._unload_models = lambda: None
         d._in_ollama = lambda: None
+        d._ollama_version = lambda: None
         d._loaded = lambda: {}
         d.ollama_command = "ollama"
         d.keep_warm = lambda address, model, seconds: self.kept_warm.append((model, seconds))
@@ -3826,6 +3827,15 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("- Graphics card: Ollama puts language models on it by itself\n", health(True, None),
                       "ComfyUI not installed")
         self.assertIn("- Graphics card: none visor can use, so everything runs on the processor\n", health(False, None))
+
+    def test_visor_md_s_health_says_which_ollama_answers(self):
+        def health(models, version):
+            self.d._in_ollama, self.d._ollama_version = lambda: models, lambda: version
+            self.d.health_at = None
+            self.d.sync_server_note()
+            return self.server_note()
+        self.assertIn(f"- Ollama 0.12.6, at {self.d.ollama}: answering\n", health(set(), "0.12.6"))
+        self.assertIn(f"- Ollama, at {self.d.ollama}: **not answering**", health(None, None))
 
     def test_pause_in_visor_md_takes_no_new_notes_and_is_kept_over_a_restart(self):
         self.d.once()

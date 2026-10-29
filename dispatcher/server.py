@@ -443,8 +443,10 @@ class Server:
     def _health(self):
         """The health section of VISOR.md."""
         lines = [f"Checked {_stamp()}.", ""]
-        lines.append(f"- Ollama, at {self.ollama}: " + ("answering" if self._in_ollama() is not None else
-                                                       "**not answering**. Start it: `systemctl start ollama`"))
+        version = self._ollama_version()
+        lines.append(f"- Ollama{' ' + version if version else ''}, at {self.ollama}: " +
+                     ("answering" if self._in_ollama() is not None else
+                      "**not answering**. Start it: `systemctl start ollama`"))
         # What uses the card, tool by tool, and for a tool that does not, why.
         drawn = media.card(self.media)
         if media.has_card():
