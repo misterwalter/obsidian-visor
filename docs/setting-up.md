@@ -44,10 +44,15 @@ model is a note, with nothing to do on the server.
 
 The recipe's `PARAMETER num_ctx` is the model's context length, and the one
 place it is set: visor reads it back from Ollama for the harnesses, the model
-door, chats and games, so all of them agree with what Ollama loads. The
-harnesses are set for 65536 (see
-[When the harness summarises](harness.md#when-the-harness-summarises)). A model
-with none gets Ollama's default, 4096, and its note says so.
+door, chats and games, so all of them agree with what Ollama loads. Ollama
+loads no more than the weights were trained for, the length written in the
+model file itself, and cuts a longer `num_ctx` down to that; visor goes by the
+shorter, and the model's note says when that happens. A longer context then
+needs weights made for one: some are trained long, and some files are built
+with YaRN, which stretches what the model was trained for (Ollama 0.12.6 and
+later apply it; earlier ones do not, or wrongly). The harnesses are set for
+65536 (see [When the harness summarises](harness.md#when-the-harness-summarises)).
+A model with none gets Ollama's default, 4096, and its note says so.
 
 Sampling is the recipe's too: its `PARAMETER temperature`, `top_k`, `top_p`,
 `min_p` and `repeat_penalty` lines, or, where it has none, those of the model it

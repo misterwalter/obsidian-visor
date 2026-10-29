@@ -27,7 +27,7 @@ holding every word, each with its date). A file's date is the one in its name;
 else each line starting with a date begins that day (a log); else the day it last
 changed. Headings and fields with nothing under them are left out of a day, and a
 line in most of a source's dated notes is the template's: search passes over it.
-A reply holds about a quarter of the model's `num_ctx`; a longer one stops at the
+A reply holds about a quarter of the model's context length; a longer one stops at the
 end of a day with the command for the rest, and a day longer than that comes in
 parts.
 

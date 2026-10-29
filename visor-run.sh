@@ -511,11 +511,20 @@ fi
 # the VPN tunnel. All are closed again as soon as the agent is done.
 mkdir -m 700 "$WALL" || { say "could not create $WALL"; exit 1; }
 [ "$KIND" = godot ] && echo "${ENGINE#godot }" > "$WALL/godot-version"   # read by inside/godot
-# The model's context length, as it is loaded: num_ctx in its Modelfile, the one place it is set
-# (models.py). With none, Ollama uses its own default, 4096 (models.OLLAMA_CONTEXT).
-WINDOW="$(ollama show "$MODEL" --parameters 2>/dev/null | awk '$1 == "num_ctx" {print $2}')"
+# The model's context length, as it is loaded (game.py): num_ctx in its Modelfile, the one place it
+# is set (models.py), but no more than its weights were trained for. With no num_ctx, Ollama uses its
+# own default, 4096 (models.OLLAMA_CONTEXT).
+WINDOW="$(python3 "$HERE/game.py" context "$MODEL_SERVER" "$MODEL" 2>&1)" || { say "$WINDOW"; exit 1; }
 [ -n "$WINDOW" ] || { WINDOW=4096; say "nothing sets num_ctx for $MODEL: Ollama's default context length, $WINDOW, is used"; }
 echo "$WINDOW" > "$WALL/window"   # read by inside/browse: how much a reply may hold
+# pi is told the same, in this run's copy of its list of models, and summarises short of it.
+MODELS_LISTED="${VISOR_HARNESS_SETTINGS:-}/pi/models.json"
+[ -n "${VISOR_HARNESS_SETTINGS:-}" ] && [ -f "$MODELS_LISTED" ] || MODELS_LISTED="$HERE/pi/models.json"
+mkdir -p "$WALL/harness/pi"
+jq --arg model "$MODEL" --argjson window "$WINDOW" \
+  '.providers.ollama.models |= map(if .id == $model then .contextWindow = $window else . end)' \
+  "$MODELS_LISTED" > "$WALL/harness/pi/models.json" || { say "could not list $MODEL for pi"; exit 1; }
+export VISOR_HARNESS_SETTINGS="$WALL/harness"   # what wall.sh gives the harness
 # The owner's messages while the agent works: the dispatcher writes them in talk/, the model door
 # puts them in the conversation, and what the agent tells the owner comes out through told/.
 TALK=""

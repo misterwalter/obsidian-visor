@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """game.py's parts with no side effects: the note's turns and the player's part, the
-narrator's prompt and answer, and the memory."""
+narrator's prompt and answer, and the memory. And the context length a model is loaded with,
+asked of a stand-in for Ollama."""
 
+import http.server
+import json
 import os
+import subprocess
 import sys
+import threading
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -184,6 +189,53 @@ class Memory(unittest.TestCase):
 
     def test_the_keepers_answer(self):
         self.assertEqual(game.summary("NOTES:\n- a\n- b\nCHAPTER:\nThey met."), ("- a\n- b", "They met."))
+
+
+class Shown(http.server.BaseHTTPRequestHandler):
+    """Answers as Ollama's /api/show does, for the models it was given: {name: what it shows}."""
+    models = {}
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        name = json.loads(self.rfile.read(int(self.headers["Content-Length"])))["model"]
+        data = json.dumps(Shown.models.get(name, {})).encode()
+        self.send_response(200 if name in Shown.models else 404)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+class Context(unittest.TestCase):
+    def setUp(self):
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), Shown)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.address = f"127.0.0.1:{self.server.server_port}"
+        trained = lambda length: {"general.architecture": "qwen3", "qwen3.context_length": length}
+        Shown.models = {"long": {"parameters": "num_ctx                        65536\ntemperature 0.8",
+                                 "model_info": trained(262144)},
+                        "short": {"parameters": "num_ctx 65536", "model_info": trained(40960)},
+                        "unset": {"parameters": "temperature 0.8", "model_info": trained(40960)}}
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def test_a_model_is_loaded_with_its_num_ctx_but_no_more_than_its_weights_were_trained_for(self):
+        lengths = {name: game.context_lengths(self.address, name) for name in Shown.models}
+        self.assertEqual(lengths, {"long": (65536, 262144), "short": (65536, 40960), "unset": (None, 40960)})
+        self.assertEqual({name: game.loaded_context(said) for name, said in lengths.items()},
+                         {"long": 65536, "short": 40960, "unset": None})
+        self.assertEqual(game.loaded_context((32768, None)), 32768, "weights that do not say leave it as asked")
+
+    def test_the_runner_is_told_the_same_and_why_not_when_ollama_cannot_say(self):
+        ask = lambda model: subprocess.run([sys.executable, game.__file__, "context", self.address, model],
+                                           capture_output=True, text=True)
+        self.assertEqual([ask(name).stdout for name in ("long", "short", "unset")], ["65536\n", "40960\n", "\n"])
+        missing = ask("missing")
+        self.assertEqual((missing.returncode, missing.stdout), (1, ""))
+        self.assertIn(f"Ollama, at {self.address}, could not say how long a context missing has: ", missing.stderr)
 
 
 if __name__ == "__main__":

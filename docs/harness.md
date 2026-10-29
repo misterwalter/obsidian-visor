@@ -43,7 +43,12 @@ A harness summarises the conversation when it nears the end of the context
 window, and on this hardware one summary costs 25 to 40 minutes.
 
 In pi the point is a setting: it summarises when the context passes the window
-less `compaction.reserveTokens`, 16,384 as set here (`pi/settings.json`). With a
-window, a model's `num_ctx`, of 65,536, that is at 49,152 tokens. A window not
-much over 16,384 would summarise almost at once, and the agent would do little
-else. Read the setting again after a harness upgrade.
+less `compaction.reserveTokens`, 16,384 as set here (`pi/settings.json`). The
+window is the model's context length as Ollama loads it, its `num_ctx` but no
+more than its weights were trained for, which the runner asks of Ollama at the
+start of each run and writes into that run's copy of pi's list of models. With
+a window of 65,536, pi summarises at 49,152 tokens. After a summary the
+conversation starts again at about 22,000 tokens (the instructions and tools,
+the summary, and the latest 12,000 tokens kept, `compaction.keepRecentTokens`),
+so a window much under 45,000 summarises after nearly every reply, and the agent
+does little else. Read the settings again after a harness upgrade.

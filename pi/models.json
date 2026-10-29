@@ -7,7 +7,6 @@
       "models": [
         {
           "id": "coder-official",
-          "contextWindow": 65536,
           "maxTokens": 8192,
           "compat": {
             "supportsStore": false,

@@ -270,7 +270,8 @@ def render(name, model, found="", problems=()):
              + (" Its recipe goes in a `## Modelfile` section at the end, as a code block: visor registers it in "
                 "Ollama when it changes. The recipe's `PARAMETER num_ctx` is the model's context length, how much "
                 "it can see at once, and the one place it is set: visor reads it back from Ollama for the agents, "
-                f"chats and games. The agents' harnesses are set for {SUGGESTED_CONTEXT}: much less and they spend their time "
+                "chats and games. Ollama loads no more than the weights were trained for. "
+                f"The agents' harnesses are set for {SUGGESTED_CONTEXT}: much less and they spend their time "
                 "summarising. More takes more memory. With none, Ollama uses its default, "
                 f"{OLLAMA_CONTEXT}. Ticking `Fetch` has visor download the weights through Ollama (directly, "
                 "not through the VPN)." if model["kind"] == "language" else ""), ""]
@@ -462,17 +463,16 @@ def on_disk(spec, models_dir):
     return [path for path in wanted if not os.path.exists(path)]
 
 
-def harness_settings(language, template_dir, out_dir, lengths):
+def harness_settings(language, template_dir, out_dir):
     """The harness's settings, with the language models the notes list: pi's models.json, made
-    from this repository's template into out_dir. lengths: {Ollama's name for a model: its
-    context length, as Ollama loads it}."""
+    from this repository's template into out_dir. Each model's context length is not among them:
+    visor-run.sh adds the run's, as Ollama loads the model then."""
     with open(os.path.join(template_dir, "pi", "models.json"), encoding="utf-8") as f:
         pi = json.load(f)
     entries = []
     for name, model in sorted(language.items()):
         thinks = model["thinks"].lower() in YES
-        length = lengths.get(model["ollama"]) or OLLAMA_CONTEXT
-        entry = {"id": model["ollama"], "contextWindow": length,
+        entry = {"id": model["ollama"],
                  "maxTokens": int(model["max tokens"] or 8192),
                  "compat": {"supportsStore": False, "supportsDeveloperRole": False,
                             "supportsReasoningEffort": thinks, "maxTokensField": "max_tokens"}}

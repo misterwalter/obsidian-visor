@@ -126,7 +126,7 @@ class Config:
         self.safe_search = "moderate"
         self.opera_rng = random.Random()
         # How a game's narrator is asked, a model kept loaded and its context found; the tests stand in.
-        self.narrate, self.keep_warm, self.context_of = game.ask, game.keep, game.loaded_context
+        self.narrate, self.keep_warm, self.context_of = game.ask, game.keep, game.context_lengths
         self.available = _mem_available
         # Set when a subjob gave way to the owner's work: the next pass comes at once, not after check_every.
         self.go_on = False

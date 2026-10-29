@@ -116,15 +116,13 @@ class ModelsTest(unittest.TestCase):
     def test_the_harness_settings_list_the_language_models_in_the_notes(self):
         testmodels.write_notes(self.folder)
         out = os.path.join(self.tmp.name, "harness")
-        models.harness_settings(models.languages(models.load(self.folder)), HERE, out,
-                                {"writer-local": 65536, "coder-second": None})
+        models.harness_settings(models.languages(models.load(self.folder)), HERE, out)
         pi = json.load(open(os.path.join(out, "pi", "models.json")))["providers"]["ollama"]["models"]
         self.assertEqual([m["id"] for m in pi], ["coder-official", "coder-second", "writer-local"])
         writer = pi[2]
         self.assertEqual((writer["maxTokens"], writer["compat"]["supportsReasoningEffort"], writer["reasoning"]),
                          (16384, True, True))
-        self.assertEqual([m["contextWindow"] for m in pi], [4096, 4096, 65536],
-                         "the context length Ollama loads each with: its num_ctx, else Ollama's default")
+        self.assertFalse([m for m in pi if "contextWindow" in m], "visor-run.sh adds the run's own")
         self.assertNotIn("reasoning", pi[0])
 
     def test_a_line_visor_does_not_read_is_kept_and_marked_unused(self):

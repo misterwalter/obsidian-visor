@@ -18,10 +18,12 @@ keeps what rarely changes first (the rules, the world, the memory) and the turn'
 material last, so that Ollama can reuse its work on the unchanged start.
 
 This module is the parts with no side effects, and the asking; dispatch.py runs the turns.
+`game.py context ADDRESS MODEL` says how long a context a model is loaded with, for visor-run.sh.
 """
 
 import json
 import re
+import sys
 import time
 import urllib.request
 
@@ -554,14 +556,42 @@ def keep(address, model, seconds, timeout=10):
         pass
 
 
-def loaded_context(address, model, timeout=5):
-    """The context length a model is loaded with: its Modelfile's num_ctx, as Ollama reports it,
-    or None when nothing sets one (Ollama then uses its default). Asking for another length
-    would make Ollama load the model again, so everything uses this one. Raises OSError or
-    ValueError when Ollama cannot be asked."""
+def context_lengths(address, model, timeout=5):
+    """A model's context length as Ollama reports it: (what its Modelfile's num_ctx asks for, the most
+    its weights were trained for), each None where Ollama says none. Raises OSError or ValueError
+    when Ollama cannot be asked."""
     request = urllib.request.Request(f"http://{address}/api/show", data=json.dumps({"model": model}).encode(),
                                      headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=timeout) as answer:
-        parameters = json.load(answer).get("parameters") or ""
-    found = re.search(r"^\s*num_ctx\s+(\d+)", parameters, re.MULTILINE)
-    return int(found.group(1)) if found else None
+        shown = json.load(answer)
+    found = re.search(r"^\s*num_ctx\s+(\d+)", shown.get("parameters") or "", re.MULTILINE)
+    info = shown.get("model_info") or {}
+    trained = info.get(f"{info.get('general.architecture')}.context_length")
+    return (int(found.group(1)) if found else None), (int(trained) if trained else None)
+
+
+def loaded_context(lengths):
+    """The context length a model is loaded with, from its context_lengths: its num_ctx, but no more
+    than its weights were trained for, since Ollama cuts it down to that. None when nothing sets
+    num_ctx (Ollama then uses its default). Asking for another length would make Ollama load the
+    model again, so everything uses this one."""
+    asked, trained = lengths
+    return min(asked, trained) if asked and trained else asked
+
+
+def main(argv):
+    """game.py context ADDRESS MODEL: prints the context length the model is loaded with, or nothing
+    when nothing sets its num_ctx (visor-run.sh asks it)."""
+    if len(argv) == 4 and argv[1] == "context":
+        try:
+            print(loaded_context(context_lengths(argv[2], argv[3])) or "")
+        except (OSError, ValueError) as error:
+            print(f"Ollama, at {argv[2]}, could not say how long a context {argv[3]} has: {error}", file=sys.stderr)
+            return 1
+        return 0
+    print("usage: game.py context ADDRESS MODEL", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

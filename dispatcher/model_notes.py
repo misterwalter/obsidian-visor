@@ -11,6 +11,7 @@ import time
 import urllib.request
 
 import fetch
+import game
 import media
 import models
 
@@ -180,8 +181,7 @@ class ModelNotes:
                 if f.read() == fresh:
                     continue
             write_file(path, fresh)
-        models.harness_settings(self.language, HERE, self.harness_settings,
-                                {model["ollama"]: self._context(model["ollama"]) for model in self.language.values()})
+        models.harness_settings(self.language, HERE, self.harness_settings)
 
     def _fetch_state(self, name, model, missing):
         """What `On this server` says of a model with files not on disk: being fetched, failed, or missing."""
@@ -243,7 +243,11 @@ class ModelNotes:
         if self._ollama_has(tags, tag):
             if model["kind"] != "language":
                 return "yes"
-            length = self._context(tag)
+            asked, _ = lengths = self._context_lengths(tag)
+            length = game.loaded_context(lengths)
+            if length and length < asked:
+                return (f"yes, with a context length of {length}, not the {asked} its `num_ctx` asks for: Ollama loads "
+                        "no more than its weights were trained for" + self._where_it_ran(tag))
             if length:
                 return f"yes, with a context length of {length} (its `num_ctx`)" + self._where_it_ran(tag)
             return (f"yes, but nothing sets its `num_ctx`, so Ollama gives it a context length of {models.OLLAMA_CONTEXT}, "
@@ -385,18 +389,23 @@ class ModelNotes:
         """How long Ollama is asked to keep a chat's or a game's model loaded: None leaves it to Ollama."""
         return self.wait("keep_loaded") or None
 
-    def _context(self, ollama):
-        """The context length a model is loaded with, its Modelfile's num_ctx, asked of Ollama at most
-        every ten minutes (every minute while Ollama cannot be asked, keeping what it said last).
-        None when nothing sets it: Ollama then uses its default, models.OLLAMA_CONTEXT."""
+    def _context_lengths(self, ollama):
+        """What a model's num_ctx asks for and the most its weights were trained for (game.context_lengths),
+        asked of Ollama at most every ten minutes (every minute while Ollama cannot be asked, keeping
+        what it said last)."""
         known = self._contexts.get(ollama)
         if known is None or self.now() >= known[1]:
             try:
                 known = (self.context_of(self.ollama, ollama), self.now() + 600)
             except (OSError, ValueError):
-                known = (known[0] if known else None, self.now() + 60)
+                known = (known[0] if known else (None, None), self.now() + 60)
             self._contexts[ollama] = known
         return known[0]
+
+    def _context(self, ollama):
+        """The context length a model is loaded with (game.loaded_context). None when nothing sets its
+        num_ctx: Ollama then uses its default, models.OLLAMA_CONTEXT."""
+        return game.loaded_context(self._context_lengths(ollama))
 
     def _unload_models(self):
         """This machine holds one large model at a time: free the model server's first."""

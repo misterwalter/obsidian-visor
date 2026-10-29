@@ -442,7 +442,7 @@ class DispatchTest(unittest.TestCase):
         d._loaded = lambda: {}
         d.ollama_command = "ollama"
         d.keep_warm = lambda address, model, seconds: self.kept_warm.append((model, seconds))
-        d.context_of = lambda address, model: 8192
+        d.context_of = lambda address, model: (8192, None)
         return d
 
     def give_image_models(self, *names):
@@ -4312,12 +4312,21 @@ class DispatchTest(unittest.TestCase):
         made = json.load(open(os.path.join(self.state, "harness", "pi", "models.json")))
         self.assertEqual([m["id"] for m in made["providers"]["ollama"]["models"]],
                          ["coder-official", "coder-second", "writer-local"])
-        self.assertEqual({m["contextWindow"] for m in made["providers"]["ollama"]["models"]}, {8192},
-                         "the harness is told the context length Ollama loads the model with")
+        self.assertFalse([m for m in made["providers"]["ollama"]["models"] if "contextWindow" in m],
+                         "visor-run.sh adds the run's own, as Ollama loads the model then")
+
+    def test_a_language_model_trained_for_less_than_its_num_ctx_says_what_ollama_loads(self):
+        self.d._in_ollama = lambda: {"coder-official:latest", "writer-local:latest"}
+        self.d.context_of = lambda address, model: (65536, 40960) if model == "coder-official" else (32768, 262144)
+        self.d.once()
+        read = lambda name: open(os.path.join(self.tasks, "models", name + ".md")).read()
+        self.assertIn("\nOn this server: yes, with a context length of 40960, not the 65536 its `num_ctx` asks for: "
+                      "Ollama loads no more than its weights were trained for\n", read("official"))
+        self.assertIn("\nOn this server: yes, with a context length of 32768 (its `num_ctx`)\n", read("writer"))
 
     def test_a_language_model_whose_num_ctx_nothing_sets_says_so_and_how_to_set_it(self):
         self.d._in_ollama = lambda: {"coder-official:latest", "writer-local:latest"}
-        self.d.context_of = lambda address, model: None
+        self.d.context_of = lambda address, model: (None, 40960)
         path = os.path.join(self.tasks, "models", "writer.md")
         with open(path, "a") as f:
             f.write("\n## Modelfile\n\n```\nFROM base-weights\n```\n")
@@ -4328,9 +4337,6 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("Add a `## Modelfile` section at the end of this note, `FROM coder-official` and "
                       "`PARAMETER num_ctx 65536`", read("official"))
         self.assertIn("Add `PARAMETER num_ctx 65536` to its `## Modelfile`.", read("writer"))
-        made = json.load(open(os.path.join(self.state, "harness", "pi", "models.json")))
-        self.assertEqual({m["contextWindow"] for m in made["providers"]["ollama"]["models"]}, {4096},
-                         "and the harness is told Ollama's default, which is what it loads")
 
     def test_a_model_note_still_being_written_is_left_alone(self):
         path = os.path.join(self.tasks, "models", "official.md")
