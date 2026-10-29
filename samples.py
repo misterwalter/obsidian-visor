@@ -154,11 +154,11 @@ POSE = """**Drawing in a pose.** A figure can be drawn in a pose taken from a ph
 - Poses work with every image model except `chroma`."""
 
 
-def _rows(ctx, *extra):
+def _rows(ctx, *extra, project_row=None):
     """The table of lines a note on a project may have, with the round's own rows."""
     rows = ["| Line | Meaning | If left out |", "|---|---|---|",
-            f"| `Project: <name>` | Which project. Visor knows: {ctx['project_list']}. | The note comes back to you "
-            "with an error. |"]
+            project_row or f"| `Project: <name>` | Which project. Visor knows: {ctx['project_list']}. | The note comes "
+            "back to you with an error. |"]
     rows += list(extra)
     rows += ["| `Model: <model>` | Which model does the work: one from the list below. | The project's own "
              "setting, else the default model in `VISOR.md`. |",
@@ -260,6 +260,30 @@ def write(ctx):
         AFTERWARDS + "\n\nA reply to drafts asks for another round of writing, with what you said; it starts from "
         "the folder as it is then, your edits and the drafts included.", ctx["language"]])
     return _header(dict(ctx, project=folder), "Write: ", canon=True) + guide("How a Write note works", body)
+
+
+def agent(ctx):
+    project_row = (f"| `Project: <name>` | A project to work on, if the errand needs one. Visor knows: "
+                   f"{ctx['project_list']}. On a repository, what it changes goes on a branch of its own and is pushed, "
+                   "as a build's is, and the project's tests are run if it has them; on a folder project, what it "
+                   "writes comes back as drafts. | No project: the agent works in an empty folder of its own. |")
+    body = "\n\n".join([
+        "**An Agent note sends an agent on an errand**: a question, a sum, something to find on the web or on your "
+        "network, something to fetch or make. It works with the shell and whatever the note gives it (`Web:`, "
+        "`LAN:`, `Browse:` and the rest), and answers in the note. Say what you want after `Agent:`, or below the "
+        "boxes. " + COPY,
+        _rows(ctx, BRANCH_ROW, CANON_ROW, project_row=project_row),
+        "**Files.** With no project, the agent starts in an empty folder of its own, deleted when the round ends. "
+        "What it should hand you (a picture, a list, a page it found) it shows: each comes into "
+        "`tasks/media/<this note's name>/` and is embedded in the reply. With a project, what it changes stays in "
+        "the project, and what it shows goes in the project's `shown/` folder. `Repeat: daily` with `Web` ticked "
+        "makes a daily errand, each run starting afresh, with `On repeat:` for what each run is told besides.",
+        CANON, PROJECT_SETTINGS, BOXES, DAILY,
+        AFTERWARDS + "\n\nA reply to an answer sends the agent on the errand again, with what you said.",
+        ctx["language"]])
+    top = "Agent: \nProject: \nWeb: \n\n" + "\n".join(
+        settings.group("Model", list(ctx["models"]), None, ctx["models"])) + "\n\n"
+    return top + guide("How an Agent note works", body)
 
 
 def new_project(ctx):
@@ -732,14 +756,16 @@ def opera_note(ctx):
 
 
 KINDS = {"sample-analysis.md": "analysis", "sample-plan.md": "plan", "sample-build.md": "build",
-         "sample-write.md": "write", "sample-new-project.md": "new project", "sample-chat.md": "chat",
+         "sample-write.md": "write", "sample-agent.md": "agent", "sample-new-project.md": "new project",
+         "sample-chat.md": "chat",
          "sample-image.md": "image", "sample-skeleton.md": "skeleton", "sample-speak.md": "speak",
          "sample-transcribe.md": "transcribe", "sample-edit.md": "edit",
          "sample-character-set.md": "character set", "sample-train.md": "train",
          "sample-scene-image.md": "scene image", "sample-motion.md": "motion", "sample-game.md": "game",
          "sample-new-character.md": "new character", "sample-video.md": "video", "sample-opera.md": "opera"}
 NOTES = {"sample-analysis.md": analysis, "sample-plan.md": plan, "sample-build.md": build,
-         "sample-write.md": write, "sample-new-project.md": new_project, "sample-chat.md": chat_note,
+         "sample-write.md": write, "sample-agent.md": agent, "sample-new-project.md": new_project,
+         "sample-chat.md": chat_note,
          "sample-image.md": image, "sample-skeleton.md": skeleton, "sample-speak.md": speak,
          "sample-transcribe.md": transcribe, "sample-edit.md": edit_note,
          "sample-character-set.md": character_set, "sample-train.md": train_note,

@@ -239,16 +239,20 @@ class Config:
             except OSError as error:
                 self.log(f"{name}: could not keep its config.md: {error}")
 
+    def project_settings(self, project):
+        """A project's settings; for a note that names none (an `Agent:` errand), every setting's default."""
+        return self.projects[project] if project else projects.NONE
+
     def _for_this_note(self, header, project):
         """What a note's run is given, each from the note's own line if it has one, else
         from the project's setting: (thinking, web, chan), as the header would say them."""
-        settings_ = self.projects[project]
+        settings_ = self.project_settings(project)
         return tuple((header[key] or "").strip() or settings_[key] for key in ("thinking", "web", "chan"))
 
     def _reach_for_this_note(self, header, project):
         """What a note's run may reach besides the internet, each from the note's own line if it has one,
         else from the project's setting: (lan, loopback), as written (network.py)."""
-        settings_ = self.projects[project]
+        settings_ = self.project_settings(project)
         return tuple((header[key] or "").strip() or settings_.get(key, "") for key in ("lan", "loopback"))
 
     def folder(self, name):

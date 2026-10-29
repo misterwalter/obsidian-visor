@@ -14,16 +14,32 @@ The first lines of a note say what to do:
 
 | Line | Meaning | If left out |
 |---|---|---|
-| `Project: <name>` | Which project, by its name in the settings. | The note comes back with an error. |
-| `Analysis:` / `Plan:` / `Build:` | The round: answer a question, propose a plan, or make the change. | `Plan:` |
+| `Project: <name>` | Which project, by its name in the settings. | The note comes back with an error; an `Agent:` note works in a folder of its own. |
+| `Analysis:` / `Plan:` / `Build:` / `Agent:` | The round: answer a question, propose a plan, make the change, or run an errand (below). | `Plan:` |
 | `Model: <name>` | Which model: a language model's note in `models/`. | The project's setting, else the default model (VISOR.md). |
 | `Web: yes`, or `- [x] Web` | The run may use the internet, through the VPN tunnel and nothing else. With the tunnel down, the note comes back unrun; with no VPN installed, likewise, unless `VISOR.md` allows going without one. An on/off line typed as `yes` or `no` (`Web`, `Canon only`, `Finish`) is written back as a single box when visor takes the note; left empty, it is the project's setting. | No network at all. |
 | `LAN: yes`, or hosts | The run may reach the local network, directly: all of it, or the hosts listed, by name, address or network, each with a port if only that one (`nas.local, 192.168.1.20:8123, 10.0.0.0/24`). | The project's setting, else none. |
 | `Loopback: yes`, or ports | The run may reach services on the server itself, as `host.internal`: any port, or those listed (`8080, 3000-3010`). Never the model server's. | The project's setting, else none. |
 
 A note replied to and moved back to `inbox/` gets a build round, or another
-analysis round if it was a question. The whole discussion goes with it, and a
-further build carries on from that model's earlier branch.
+analysis round if it was a question, or another errand if it was one. The whole
+discussion goes with it, and a further build carries on from that model's
+earlier branch.
+
+**Errands.** An `Agent:` note sends an agent to do what it says: a question, a
+sum, something to find on the web or the local network, something to fetch or
+make. It is given what the note gives it (`Web:`, `LAN:`, `Loopback:`,
+`Browse:`, `Chan:`), with the shell and its tools (`prompts/agent.md`). With no
+`Project:` line it works in an empty folder of its own, made for the round and
+deleted when it ends (`prompts/scratch.md`, and `-` for the runner's
+`<repo>`): what it should hand over it shows, and that lands in the note's own
+folder in `media/`, as a media job's pictures do, embedded in the reply. A
+pause carries the folder over to the next part. With a project, it works there
+as the project's rounds do: on a repository its changes go on a branch of its
+own, pushed, with a pull request if the project is on GitHub, and the tests
+are run before and after if the project has them (none are needed); on a folder
+project what it writes comes back as drafts. Its answer goes in the note under
+`## Answer`, and with `Repeat:` each run starts afresh.
 
 **Tidying.** As visor takes a note it tidies the top of it for its kind
 (`kinds.py`). A line that does nothing here is marked `UNUSED Project: game`:
@@ -52,8 +68,9 @@ folder of the run's own, bound in at `/run/show` and writable even on a
 read-only round. Afterwards the dispatcher checks each again (a regular file,
 a kind the notes app shows, at most 200 MB and 40 files a round), copies it into
 the project's folder in the notes under `shown/`, named after the note, and
-embeds it in the reply. A round on a folder project has no `show`: its files
-are all in the notes already. An agent that forgets to show what it made is
+embeds it in the reply; an errand with no project's go in the note's own folder
+in `media/`. A round on a folder project has no `show`: its files are all in
+the notes already. An agent that forgets to show what it made is
 covered after it finishes (`autoshow.py`, outside the wall): the files its
 closing message names, of any kind `show` takes, and the pictures, video, sound
 and PDFs it made or changed outside hidden folders, at most ten, none it showed

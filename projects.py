@@ -38,6 +38,10 @@ NOTES = {
 }
 # What a project's runs may reach besides the internet, written as the owner writes them (network.py).
 REACH = network.LINES
+# What a note that names no project (an `Agent:` errand) stands at for each line it leaves out: every
+# setting's default, and no source, tests or model of its own.
+NONE = {"source": None, "folder": False, "tests": "", "model": None, **{key: "" for key in REACH},
+        **{key: choices[0] for key, choices in CHOICES.items()}}
 CHANGES = "## Changes"
 KEPT_CHANGES = 15
 # A project's Model when its notes run on the default model in VISOR.md, not one of its own.

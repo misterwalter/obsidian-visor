@@ -16,7 +16,7 @@ When visor takes a note it tidies the top of it in place (tidy):
   Every line that means something for the kind is added, every time, so that the
   owner, who sees only the notes, always sees every setting there is.
 
-Lines that make a note what it is (`Project:`, `Chat:`, `Image:`), and visor's own
+Lines that make a note what it is (`Project:` on a Plan, `Chat:`, `Image:`), and visor's own
 `Last run:`, are never added and never removed. Each line says all of this of itself, in
 one table (LINES): what it is added as, when it counts, and whether it is shown as a box.
 """
@@ -26,7 +26,7 @@ import re
 
 import settings
 
-ROUNDS = ("analysis", "plan", "build", "write", "chat", "game", "opera")
+ROUNDS = ("analysis", "plan", "build", "write", "agent", "chat", "game", "opera")
 MEDIA_ROUNDS = ("transcribe", "speak", "image", "skeleton", "edit", "character set", "train", "scene image",
                 "motion", "video")
 
@@ -52,21 +52,24 @@ def line(name, default="", when=None, given=False, box=False):
 # A note naming a project visor does not know (yet): which of a repository's lines and a folder's it reads
 # cannot be told, so tidy neither adds them nor marks them.
 UNKNOWN = "unknown"
+# A note naming no project (an `Agent:` errand in a folder of its own): neither a repository's lines nor a folder's count.
+NO_PROJECT = "none"
 
 
 def repository(ctx):
-    """A line for repositories: it counts unless the project is known to be a folder."""
-    return ctx.get("folder") not in (True, UNKNOWN)
+    """A line for repositories: it counts unless the project is known to be a folder, or there is none."""
+    return ctx.get("folder") not in (True, UNKNOWN, NO_PROJECT)
 
 
 def folder(ctx):
-    """A line for folder projects: it counts unless the project is known to be a repository."""
-    return ctx.get("folder") not in (False, UNKNOWN)
+    """A line for folder projects: it counts unless the project is known to be a repository, or there is none."""
+    return ctx.get("folder") not in (False, UNKNOWN, NO_PROJECT)
 
 
 def agent(round_, *more):
-    """A round run by an agent on a project: the round's own line, then what it reads."""
-    return [line(round_.capitalize(), given=True), line("Project", given=True), line("Model"),
+    """A round run by an agent: the round's own line, then what it reads. Only an errand (`Agent:`) may leave
+    out `Project:`, so for it alone the line is added, empty."""
+    return [line(round_.capitalize(), given=True), line("Project", given=round_ != "agent"), line("Model"),
             line("Thinking"), WEB, line("LAN"), line("Loopback"), line("Chan"), line("Chan as"),
             line("Browse")] + list(more)
 
@@ -81,6 +84,7 @@ LINES = {
     "plan": agent("plan", BRANCH, CANON_ONLY),
     "build": agent("build", line("Branch"), line("Tries", "2"), line("Self-directed", "no", box=True)),
     "write": agent("write", line("Canon only", "yes", box=True)),
+    "agent": agent("agent", BRANCH, CANON_ONLY),
     "chat": [line("Chat", given=True), line("Project"), line("Minds", "one narrator", box=True), line("Turns", "6"),
              line("Scene"), line("Model"), line("Thinking"), line("Image"), line("Quality", box=True), line("Speak"),
              WEB, line("LAN"), line("Loopback"), line("Chan")],
@@ -117,7 +121,7 @@ LINES = {
 # line, empty until the owner fills it in, whether the note repeats yet or not; the other kinds have
 # nothing to be told, so there it is marked UNUSED. `Last run:` is visor's, written when a repeat
 # run starts, and never added.
-TOLD_ON_REPEAT = ("analysis", "plan", "build", "write", "chat", "game", "image", "edit", "scene image", "video")
+TOLD_ON_REPEAT = ("analysis", "plan", "build", "write", "agent", "chat", "game", "image", "edit", "scene image", "video")
 # An Opera note is not run again: it becomes its game's page, in opera/.
 for _kind, _lines in LINES.items():
     if _kind == "opera":

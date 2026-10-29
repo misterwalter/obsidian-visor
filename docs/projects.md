@@ -72,9 +72,10 @@ notes, say. In the list of projects it has `folder =` where a repository has
   ending in a number gets a spaced letter, `Story Bible a.md`. A name the owner
   took meanwhile is skipped for the next letter. A file the run deleted is left
   alone. The run's report and the note list what was delivered.
-- **Rounds.** `Write:`, `Analysis:` and `Plan:`. A folder takes no `Build:`, and
-  a repository no `Write:`. A reply to drafts asks for another writing round,
-  which starts from the folder as it is then, the earlier drafts included.
+- **Rounds.** `Write:`, `Analysis:`, `Plan:` and `Agent:`, an errand, whose
+  writing comes back as drafts too. A folder takes no `Build:`, and a repository
+  no `Write:`. A reply to drafts asks for another writing round, which starts
+  from the folder as it is then, the earlier drafts included.
 - **Canon.** A folder's `canon/` holds the files the owner has settled on as
   true; the owner moves files in and out of it, and nothing else does. A round
   is shown `canon/` alone unless its note says `Canon only: no`, and a folder

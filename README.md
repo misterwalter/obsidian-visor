@@ -71,7 +71,8 @@ for the doors.
 - [Running](docs/running.md): watching it, stopping it, and running one task by
   hand.
 - [The dispatcher](docs/dispatcher.md): how a note becomes a run and a reply,
-  its lines, repeating notes, the queue, and talking with an agent while it works.
+  its lines, errands (`Agent:`), repeating notes, the queue, and talking with an
+  agent while it works.
 - [VISOR.md](docs/server-note.md): the server's own note, to steer it from your
   notes.
 - [Projects](docs/projects.md): making one from a note, its settings, and

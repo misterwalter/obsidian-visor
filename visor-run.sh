@@ -5,11 +5,16 @@
 #   visor-run.sh <repo> <task.md> <model> <harness> [options]
 #
 # <repo>        a local clone of the project to work on; each run copies it afresh
-#               (with --folder, a plain folder instead, such as one synced as notes)
+#               (with --folder, a plain folder instead, such as one synced as notes).
+#               `-` for no project, with --agent: the run works in an empty folder of its
+#               own, deleted when it ends, and hands over what it made with `show`
 # <harness>     the agent loop to use: pi (see harness/)
 # --plan-only   the agent may read but not edit; its plan and questions are the output
 # --analysis    the agent may read but not edit; its answer to the task is the output
 # --write       write prose into a folder project; what it writes comes back as drafts
+# --agent       an errand: the agent does what the task asks, and its answer is the output.
+#               On a project, what it changes is kept as a build's is (a branch, pushed),
+#               or on a folder as drafts; the project's tests, if it has them, are run
 # --folder      <repo> is a plain folder, not a repository. Visor keeps the folder's
 #               history itself (folders.py); a run never writes to the folder except
 #               to add drafts when it finishes, and never overwrites a file there
@@ -62,7 +67,9 @@ set -u
 # owner edits the notes from another account. The dispatcher starts runs so; this is for runs by hand.
 umask 002
 
-REPO_SRC="$(realpath "${1:?repo required}")"; TASK="$(realpath "${2:?task file required}")"
+REPO_SRC="${1:?repo required}"; [ "$REPO_SRC" = - ] || REPO_SRC="$(realpath "$REPO_SRC")"
+SCRATCH=no; [ "$REPO_SRC" = - ] && SCRATCH=yes
+TASK="$(realpath "${2:?task file required}")"
 MODEL="${3:?model required}"; HARNESS="${4:?harness required: pi}"; shift 4
 ROUND="build"; NOTES=""; CONTINUE=""; BRANCH=""; FORK=""; TESTS=""; LIVE_LOG=""; FOLDER=no; CANON=no; SETTING=""; THINKING=""; WEB=no; SAFE_SEARCH=moderate; LAN=""; LOOPBACK=""; CHAN=""; CHAN_AS=""; PERSONA=""; DRAW=""; NARRATOR=no; READING=""; SELF=no
 while [ $# -gt 0 ]; do
@@ -70,6 +77,7 @@ while [ $# -gt 0 ]; do
     --plan-only) ROUND="plan" ;;
     --analysis) ROUND="analysis" ;;
     --write) ROUND="write" ;;
+    --agent) ROUND="agent" ;;
     --folder) FOLDER=yes ;;
     --canon) CANON=yes ;;
     --setting) SETTING="$(realpath "$2")"; shift ;;
@@ -159,6 +167,12 @@ say "run $RUN  ($ROUND round)"
 if [ -n "$BRANCH" ] && { [ "$FOLDER" = yes ] || [ "$ROUND" = chat ]; }; then
   say "a branch can be named for a repository only (--branch): a folder and a chat have none"; exit 2
 fi
+if [ "$SCRATCH" = yes ] && { [ "$ROUND" != agent ] || [ "$FOLDER" = yes ] || [ -n "$BRANCH" ] || [ -n "$TESTS" ]; }; then
+  say "no project (- for <repo>) is for an errand (--agent) alone, in a folder of its own: no --folder, --branch or --tests"; exit 2
+fi
+if [ "$SCRATCH" = yes ] && [ -n "$CONTINUE" ] && [[ ! "$CONTINUE" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
+  say "--continue names an earlier run, not a path: $CONTINUE"; exit 2
+fi
 if [ "$SELF" = yes ] && [ "$ROUND" != build ]; then
   say "--self-directed is for a build round, on the agent's own project"; exit 2
 fi
@@ -181,7 +195,7 @@ if [ -n "$READING" ]; then
   export VISOR_READING_DIR="$READING"
 fi
 # Rounds that change files: their work is committed, and for a folder delivered as drafts.
-case "$ROUND" in build|write|chat) WRITES=yes ;; *) WRITES=no ;; esac
+case "$ROUND" in build|write|agent|chat) WRITES=yes ;; *) WRITES=no ;; esac
 if [ "$ROUND" = chat ]; then
   [ -n "$PERSONA" ] && [ -f "$PERSONA" ] || { echo "a chat turn needs --persona FILE" >&2; exit 2; }
   [ -z "$DRAW" ] || [ -n "${VISOR_CONFIG:-}" ] || VISOR_CONFIG="$HOME/.config/visor/visor.conf"
@@ -254,6 +268,18 @@ if [ "$ROUND" = chat ]; then
   fi
   [ -d "$WORK/.git" ] || git -C "$WORK" init --quiet
   CLONE_FROM=""
+elif [ "$SCRATCH" = yes ]; then
+  # No project: a folder of the errand's own, empty, or as the part of the round before this one left it
+  # (--continue), moved here. It is deleted when the round ends. An empty .git, for the wall, as a chat's.
+  if [ -n "$CONTINUE" ] && [ -d "$WORKS/$CONTINUE" ]; then
+    mv "$WORKS/$CONTINUE" "$WORK" || { say "could not move the folder of $CONTINUE to $WORK"; exit 1; }
+    say "carrying on in the folder $CONTINUE left"
+  else
+    [ -z "$CONTINUE" ] || say "WARNING: the folder of $CONTINUE is gone; starting from an empty one"
+    mkdir -p "$WORK"
+  fi
+  [ -d "$WORK/.git" ] || git -C "$WORK" init --quiet
+  CLONE_FROM=""
 elif [ "$FOLDER" = yes ]; then
   # Visor's own history of the folder, brought up to date first: the run clones that,
   # so it starts from the folder exactly as the owner left it.
@@ -269,8 +295,8 @@ if [ -n "$CLONE_FROM" ]; then
 fi
 cd "$WORK" || exit 1
 TARGET=""
-if [ "$ROUND" = chat ]; then
-  :  # no branch: a chat's work is its reply and its memory file
+if [ "$ROUND" = chat ] || [ "$SCRATCH" = yes ]; then
+  :  # no branch: a chat's work is its reply and its memory file, and an errand's with no project its answer
 else
   # The branch this run works on: the one its note named, or one of its own. The
   # same step locks the workspace against a push to any other (take_branch.sh).
@@ -280,7 +306,7 @@ else
   TARGET="$(git branch --show-current)"
 fi
 # Where this run's own work begins, for the checks on it afterwards.
-START="$(git rev-parse HEAD 2>/dev/null || echo none)"
+START="$(git rev-parse --verify --quiet HEAD || echo none)"
 
 # The project's own rules for contributors, whichever name it keeps them under.
 RULES=""
@@ -290,13 +316,17 @@ done
 # A Godot project with none gets visor's defaults (godot/AGENTS-default.md), shown to the agent and never written
 # into the project; its own AGENTS.md always takes their place.
 [ -z "$RULES" ] && [ -f "$WORK/project.godot" ] && [ "$ROUND" != chat ] && RULES="$HERE/godot/AGENTS-default.md"
-[ -n "$RULES" ] || [ "$FOLDER" = yes ] || [ "$ROUND" = chat ] || say "WARNING: no AGENTS.md or CLAUDE.md -- the agent gets no project rules"
+[ -n "$RULES" ] || [ "$FOLDER" = yes ] || [ "$ROUND" = chat ] || [ "$SCRATCH" = yes ] \
+  || say "WARNING: no AGENTS.md or CLAUDE.md -- the agent gets no project rules"
 
 # What kind of project: Godot gets the import step, the test door and its own
 # instructions; anything else runs the test command it was given, inside the wall.
 if [ "$ROUND" = chat ]; then
   KIND="chat"
   ENGINE="a conversation"
+elif [ "$SCRATCH" = yes ]; then
+  KIND="scratch"
+  ENGINE="a folder of its own"
 elif [ "$FOLDER" = yes ]; then
   KIND="folder"
   ENGINE="a folder of notes"
@@ -314,6 +344,12 @@ else
     say "this is not a Godot project, so a build round needs --tests CMD"; exit 1
   fi
 fi
+# Rounds that measure the project's tests, before the agent and after: a build always (`--tests none` says the
+# project has none), and an errand on a repository that has them. The others change no code, or have none.
+TESTED=no
+[ "$ROUND" = build ] && TESTED=yes
+[ "$ROUND" = agent ] && { [ "$KIND" = godot ] || { [ "$KIND" = plain ] && [ -n "$TESTS" ] && [ "$TESTS" != none ]; }; } \
+  && TESTED=yes
 
 if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
 
@@ -341,12 +377,16 @@ if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
       sed '1,/^# Where you are/{/^# Where you are/!d}' "$HERE/prompts/repository.md"
       echo; cat "$HERE/prompts/self-session.md"
     else
-      if [ "$KIND" = folder ]; then cat "$HERE/prompts/folder.md"; else cat "$HERE/prompts/repository.md"; fi
+      case "$KIND" in
+        folder) cat "$HERE/prompts/folder.md" ;;
+        scratch) cat "$HERE/prompts/scratch.md" ;;
+        *) cat "$HERE/prompts/repository.md" ;;
+      esac
       echo
       cat "$HERE/prompts/$ROUND.md"
     fi
   fi
-  if [ "$KIND" = godot ] && [ "$ROUND" = build ]; then
+  if [ "$KIND" = godot ] && [ "$WRITES" = yes ]; then
     echo; cat "$HERE/prompts/godot.md"
   elif [ -n "$TESTS" ]; then
     echo; echo "# Checking your work"
@@ -376,10 +416,22 @@ if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
     echo; cat "$HERE/prompts/chan.md"
     [ "$CHAN" = all ] && cat "$HERE/prompts/chan-post.md"
   fi
-  if [ "$KIND" != chat ]; then
+  if [ "$KIND" = scratch ]; then
+    echo
+    echo "# Your folder"
+    echo "Your folder is at $WORK."
+  elif [ "$KIND" != chat ]; then
     echo
     echo "# This project"
     if [ "$KIND" = folder ]; then echo "The folder is at $WORK."; else echo "The repository is at $WORK ($ENGINE)."; fi
+    # What becomes of an errand's work on a project.
+    if [ "$ROUND" = agent ] && [ "$KIND" = folder ]; then
+      echo "What you write in the folder comes back to the owner as drafts. Files for your own use (a script, a page" \
+           "you fetched) go in /tmp, which is thrown away when the round ends."
+    elif [ "$ROUND" = agent ]; then
+      echo "What you leave changed in the repository is committed, on a branch of its own, for the owner to look" \
+           "over. Files for your own use (a script, a page you fetched) go in /tmp, which is thrown away when the round ends."
+    fi
     if [ "$CANON" = yes ]; then
       echo "This round is shown the project's canon alone: the files in canon/, which the owner has settled on" \
            "as true. Drafts and notes outside it are left out on purpose; do not go looking for them."
@@ -428,7 +480,8 @@ elif [ -n "$FORK" ]; then
   {
     echo "You were paused so that the model could be restarted. Nothing went wrong."
     echo "Carry on from where you stopped; do not start again."
-    echo "The $([ "$KIND" = folder ] && echo folder || echo repository) is now at $WORK, with the same files$([ "$WRITES" = yes ] && echo ", including everything you wrote")."
+    PLACE="The repository"; [ "$KIND" = folder ] && PLACE="The folder"; [ "$KIND" = scratch ] && PLACE="Your folder"
+    echo "$PLACE is now at $WORK, with the same files$([ "$WRITES" = yes ] && echo ", including everything you wrote")."
     echo "Paths above that begin $WORKS/$FORK now begin $WORK."
   } > "$OUT/prompt.txt"
 elif [ "$ROUND" = chat ]; then
@@ -441,7 +494,10 @@ elif [ "$ROUND" = chat ]; then
 else
   {
     cat "$TASK"
-    if [ -n "$CONTINUE" ]; then
+    if [ -n "$CONTINUE" ] && [ "$KIND" = scratch ]; then
+      echo; echo "YOUR FOLDER ALREADY HOLDS WHAT AN EARLIER PART OF THIS ROUND MADE."
+      echo "Carry on from where it got to; the discussion below says where."
+    elif [ -n "$CONTINUE" ]; then
       echo; echo "THIS BRANCH ALREADY HOLDS AN EARLIER ATTEMPT AT THE TASK."
       echo "Build on it. The discussion below says what it got right and what is missing."
     fi
@@ -554,7 +610,8 @@ if [ "$ROUND" != chat ] && [ "$FOLDER" != yes ]; then
   export VISOR_SHOW_DIR="$OUT/shown"
 fi
 WALLED=("$HERE/wall.sh" "$WORK" "$WALL" "$OUT/harness-log" "$ACCESS")
-"${WALLED[@]}" check-wall "$ACCESS" "$NET_GIVEN" "$WORK" "$HOME/.ssh" "$REPO_SRC" "$TASK" "$OUT/run.log" "$HERE/visor-run.sh" \
+HIDDEN=("$HOME/.ssh" "$TASK" "$OUT/run.log" "$HERE/visor-run.sh"); [ "$SCRATCH" = yes ] || HIDDEN+=("$REPO_SRC")
+"${WALLED[@]}" check-wall "$ACCESS" "$NET_GIVEN" "$WORK" "${HIDDEN[@]}" \
   < /dev/null > "$OUT/wall-check.log" 2>&1 \
   || { cat "$OUT/wall-check.log"
        say "WALL CHECK FAILED -- the agent was not started: $(grep '^FAIL' "$OUT/wall-check.log" | cut -c7- | paste -sd';' -)"
@@ -574,7 +631,7 @@ answered() { jq -c 'select(.status == 200)' "$CALLS"; }
 
 # The project's tests. Godot's run outside the wall, inside flatpak's own sandbox;
 # any other project's run inside the wall, since a test is code the agent may have
-# written. Only a build round measures them: the others change nothing.
+# written. Only a build round and an errand on a repository measure them (TESTED).
 run_tests() {
   if [ "$KIND" = godot ]; then
     gut-test "$WORK"
@@ -586,7 +643,7 @@ BEFORE="n/a"
 if [ "$ROUND" = build ] && [ "$TESTS" = none ]; then
   BEFORE="none"
   say "no tests: the project says Tests: none"
-elif [ "$ROUND" = build ]; then
+elif [ "$TESTED" = yes ]; then
   say "baseline tests"
   run_tests > "$OUT/tests-before.log" 2>&1; BEFORE=$?
   say "baseline exit=$BEFORE"
@@ -839,10 +896,13 @@ if [ "$ROUND" = chat ]; then
     mkdir -p "$REPO_SRC/$(dirname "$kept")" && cp "$WORK/$kept" "$tmp" && chmod 664 "$tmp" && mv -f "$tmp" "$REPO_SRC/$kept"
   done
   [ -n "$DRAW" ] && say "pictures drawn: $(grep -c '^media-door: drawn' "$OUT/media-door.log")"
+elif [ "$SCRATCH" = yes ]; then
+  # Nothing to keep: what the owner should have was shown, and the folder goes when the round ends.
+  close_doors
 elif [ "$WRITES" = yes ]; then
   if [ "$ROUND" = build ] && [ "$TESTS" = none ]; then
     AFTER="none"
-  elif [ "$ROUND" = build ]; then
+  elif [ "$TESTED" = yes ]; then
     say "tests after"
     run_tests > "$OUT/tests-after.log" 2>&1; AFTER=$?
   fi
@@ -969,6 +1029,8 @@ fi
   done
   if [ "$ROUND" = chat ]; then
     echo "- turn: $(answered | wc -l) model calls$([ -n "$DRAW" ] && echo "   pictures: $(grep -c '^media-door: drawn' "$OUT/media-door.log")")"
+  elif [ "$SCRATCH" = yes ]; then
+    echo "- folder: its own, $WORK; $([ -n "$PAUSED" ] && echo "kept for the next part" || echo "deleted as the round ended")"
   else
     echo "- branch: $TARGET   workspace: $WORK"
     echo "- pushed: $PUSHED"
@@ -981,7 +1043,7 @@ fi
     cat "$OUT/drafts.md"
     echo
   fi
-  if [ "$WRITES" = yes ] && [ "$ROUND" != chat ]; then
+  if [ "$WRITES" = yes ] && [ "$ROUND" != chat ] && [ "$SCRATCH" != yes ]; then
     echo "## Files changed"
     echo '```'; cat "$OUT/diffstat.txt" 2>/dev/null; echo '```'
     echo
@@ -1000,7 +1062,7 @@ fi
   fi
   # Tests that failed, said here, where the owner reads: the first error, and the end of what they printed.
   failing() { [ "$1" != 0 ] && [ "$1" != none ] && [ "$1" != n/a ]; }
-  if [ "$ROUND" = build ] && { failing "$BEFORE" || failing "$AFTER"; }; then
+  if [ "$TESTED" = yes ] && { failing "$BEFORE" || failing "$AFTER"; }; then
     if failing "$AFTER"; then TESTS_LOG="$OUT/tests-after.log"; else TESTS_LOG="$OUT/tests-before.log"; fi
     echo "## Tests"
     echo
@@ -1037,9 +1099,8 @@ fi
 # The pull request carries the report, the agent's closing message included, and
 # its title says at a glance whether the work is whole.
 if [ "${OPEN_PULL_REQUEST:-0}" = 1 ]; then
-  STATE="visor"
-  [ "$AFTER" = 0 ] || STATE="visor: TESTS FAIL"
-  [ "$AFTER" != none ] || STATE="visor: UNTESTED"
+  # n/a: an errand on a repository with no tests.
+  case "$AFTER" in 0) STATE="visor" ;; none|n/a) STATE="visor: UNTESTED" ;; *) STATE="visor: TESTS FAIL" ;; esac
   [ "$AGENT" = 0 ] || STATE="visor: AGENT FAILED"
   TITLE="[$STATE] $(head -1 "$TASK" | cut -c1-70)"
   if PULL_REQUEST="$("$HERE/open_pr.sh" "$REPO_SRC" "$WORK" "$TITLE" "$OUT/report.md" 2> "$OUT/pull-request.log" | tail -1)" \
@@ -1060,11 +1121,15 @@ if [ -n "$LIVE_LOG" ]; then
   [ -f "$OUT/stopped.txt" ] && OUTCOME="**Stopped**: $(cat "$OUT/stopped.txt")"
   [ -n "$PAUSED" ] && OUTCOME="**Paused**: $PAUSED"
   live_note "
-*$(date +%H:%M)* $OUTCOME · $(( (T1-T0)/60 )) minutes · $(answered | wc -l) model calls$([ "$ROUND" = build ] && echo " · tests after: exit $AFTER · pull request: $PULL_REQUEST")
+*$(date +%H:%M)* $OUTCOME · $(( (T1-T0)/60 )) minutes · $(answered | wc -l) model calls$([ "$TESTED" = yes ] && echo " · tests after: exit $AFTER")$([ "$ROUND" = build ] || [ "$PULL_REQUEST" != none ] && echo " · pull request: $PULL_REQUEST")
 "
   if [ -f "$OUT/drafts.md" ]; then live_note "Drafts:
 $(cat "$OUT/drafts.md")
 "; fi
+fi
+# An errand's own folder goes with the round; a paused part leaves it for the next, which carries on in it.
+if [ "$SCRATCH" = yes ] && [ -z "$PAUSED" ]; then
+  cd / && rm -rf "$WORK"
 fi
 echo "VISOR_RUN_DONE"
 # 75 is the usual code for "try again later": the dispatcher reads it as a pause.

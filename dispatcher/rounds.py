@@ -1,5 +1,6 @@
 """Agent rounds: Plan, Analysis, Build and Write, each run by an agent in the wall (visor-run.sh) on
-a project, in parts, with tries and a review; and what each note's runs have been."""
+a project, in parts, with tries and a review; Agent, an errand, on a project or in a folder of its own;
+and what each note's runs have been."""
 
 import glob
 import hashlib
@@ -31,7 +32,8 @@ from dispatcher.notes import (
 
 # What a note with no job type is told.
 NO_KIND = ("This note has no job type. Its first line says what kind of job it is, and the lines under it how: "
-           "`Plan:`, `Analysis:`, `Build:` or `Write:` with `Project: <name>`; `Chat: <names>`; `Image:`, `Edit:`, "
+           "`Plan:`, `Analysis:`, `Build:` or `Write:` with `Project: <name>`; `Agent:`, with a project or "
+           "without; `Chat: <names>`; `Image:`, `Edit:`, "
            "`Speak:`, `Transcribe:`, `Skeleton:`, `Motion:`, `Character set:`, `Train:`, `Scene image:` or "
            "`Video:`; "
            "`Game:`; or `New project: <name>`. The sample notes in `samples/` (`sample-plan.md` and the others) are each "
@@ -91,43 +93,48 @@ class Rounds:
         # A repeat run starts from the owner's text alone: its earlier answers ask for nothing.
         replied = bool(rest.strip()) and not self.repeat_run
 
-        if not header["project"]:
+        # An errand (`Agent:`) may name no project: it works in a folder of its own.
+        project = (header["project"] or "").strip() or None
+        if not project and header["round"] != "agent":
             return None, None, None, "the note has no `Project:` line, so visor cannot tell which project it is for."
-        if header["project"] not in self.projects:
+        if project and project not in self.projects:
             known = ", ".join(sorted(self.projects)) or "none yet"
-            return None, None, None, f"visor does not know a project called `{header['project']}`. Known: {known}."
+            return None, None, None, f"visor does not know a project called `{project}`. Known: {known}."
 
         # The project's settings as its config.md has them now, whether or not it has settled.
-        try:
-            self.sync_panel(header["project"], settled_only=False)
-        except OSError as error:
-            self.log(f"{header['project']}: could not read its config.md: {error}")
+        if project:
+            try:
+                self.sync_panel(project, settled_only=False)
+            except OSError as error:
+                self.log(f"{project}: could not read its config.md: {error}")
         if header["problems"]:
             return None, None, None, "visor could not read the top of the note: " + " ".join(header["problems"])
-        said_thinking, said_web, said_chan = self._for_this_note(header, header["project"])
-        model = (header["model"] or self._model_of(header["project"])).strip().lower()
+        said_thinking, said_web, said_chan = self._for_this_note(header, project)
+        model = (header["model"] or self._model_of(project)).strip().lower()
         if model not in self.models:
             known = ", ".join(sorted(self.models)) or "none yet"
             return None, None, None, f"`Model: {header['model'] or model}` is not one visor knows: use {known}."
         missing = self._not_in_ollama([model])
         if missing:
             return None, None, None, missing
-        settings = self.projects[header["project"]]
+        settings = self.project_settings(project)
         if replied:
-            # A reply to an answer asks for another look; a reply to a plan or a build asks for a
-            # build, and on a folder for more writing.
-            round_ = "analysis" if header["round"] == "analysis" else ("write" if settings["folder"] else "build")
+            # A reply to an answer asks for another look, and one to an errand for more of it; a reply to a plan or a
+            # build asks for a build, and on a folder for more writing.
+            round_ = (header["round"] if header["round"] in ("analysis", "agent") else
+                      "write" if settings["folder"] else "build")
         else:
             round_ = header["round"] or "plan"
         if round_ == "build" and settings["folder"]:
-            return None, None, None, (f"`{header['project']}` is a folder, not a repository: ask for `Write:` "
+            return None, None, None, (f"`{project}` is a folder, not a repository: ask for `Write:` "
                                       "rather than `Build:`.")
         if round_ == "write" and not settings["folder"]:
-            return None, None, None, (f"`{header['project']}` is a repository: ask for `Build:` there. `Write:` "
+            return None, None, None, (f"`{project}` is a repository: ask for `Build:` there. `Write:` "
                                       "is for folder projects.")
         # Where a line came from, for the reasons below: the note, or the project's settings.
         def where(key):
-            return "" if (header[key] or "").strip() else f" (from `{header['project']}`'s settings, in its config.md)"
+            return ("" if (header[key] or "").strip() or not project else
+                    f" (from `{project}`'s settings, in its config.md)")
         if said_thinking.lower() not in THINKING:
             return None, None, None, (f"`Thinking: {said_thinking}` is not one visor knows: use yes or no, "
                                       "or a level: low, medium or high.")
@@ -153,7 +160,7 @@ class Rounds:
             return None, None, None, (f"`Web: yes`{where('web')} asks for the internet, and there is no way to it: "
                                       f"{why_not}. Nothing was started; move the note back to `inbox/` once there is, "
                                       "or take the line out to run without the internet.")
-        for key, said in zip(("lan", "loopback"), self._reach_for_this_note(header, header["project"])):
+        for key, said in zip(("lan", "loopback"), self._reach_for_this_note(header, project)):
             problem = network.problem(key, said)
             if problem:
                 return None, None, None, problem + where(key)
@@ -190,7 +197,7 @@ class Rounds:
                     or branch.endswith(("/", ".", ".lock"))):
                 return None, None, None, (f"`Branch: {branch}` cannot be a branch's name: use letters, digits, dashes, "
                                           "dots, underscores and slashes.")
-        return round_, model, header["project"], None
+        return round_, model, project, None
 
     # Running
 
@@ -231,15 +238,17 @@ class Rounds:
             return f"handed back {name}: it has no job type"
         if not dry_run:
             # Tidied first, so that a line this kind does not read is marked, not refused; and so that a note handed
-            # back for its project still has every other line. A project visor does not know leaves its own lines be.
-            known = header["project"] in self.projects
+            # back for its project still has every other line. A project visor does not know leaves its own lines be,
+            # as does one left out, but on an errand, which needs none.
+            project = (header["project"] or "").strip()
             self._tidy(path, kinds.kind_of(header),
-                       {"folder": self.projects[header["project"]]["folder"] if known else kinds.UNKNOWN})
+                       {"folder": self.projects[project]["folder"] if project in self.projects else
+                                  kinds.UNKNOWN if project or header["round"] != "agent" else kinds.NO_PROJECT})
         round_, model, project, error = self.plan_for(path, dry_run)
         if dry_run:
             if error:
                 return f"would hand back {name}: {error}"
-            return f"would run a {round_} round on {project} with {model} for {name}"
+            return f"would run a {round_} round on {project or 'a folder of its own'} with {model} for {name}"
         if error:
             kind = kinds.kind_of(header)
             self.hand_back(path, kind, f"{error[0].upper()}{error[1:]}\n\n`sample-{kind.replace(' ', '-')}.md` "
@@ -249,9 +258,9 @@ class Rounds:
         return self._agent_round(path, name, round_, model, project)
 
     def _agent_round(self, path, name, round_, model, project):
-        """A Plan, Analysis, Build or Write round on a project: run in parts (_run_in_parts), tried again
-        while a build breaks tests that passed before it (Tries:), reviewed after a build when asked, and
-        answered in the note. Returns a line for the log."""
+        """A Plan, Analysis, Build or Write round on a project, or an Agent errand on one or in a folder of its
+        own (project None): run in parts (_run_in_parts), tried again while a build breaks tests that passed
+        before it (Tries:), reviewed after a build when asked, and answered in the note. Returns a line for the log."""
         path = move(path, self.folder("working"))
         state = self.load_state(name)
         with open(path, encoding="utf-8") as f:
@@ -331,6 +340,7 @@ class Rounds:
         MAX_PARTS is reached. asked: (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback) as
         the note has them. Returns (run_name, exit_code, result, parts, log, continue_build) of the last part."""
         thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback = asked
+        settings_ = self.project_settings(project)
         parts = []
         resume, fork = "", ""
         retried_for_memory = False
@@ -340,8 +350,9 @@ class Rounds:
                                 "log": log}
             self.save_state(state)
             self.write_status()
-            flags = {"analysis": ["--analysis"], "plan": ["--plan-only"], "build": [], "write": ["--write"]}[round_]
-            if self.projects[project]["folder"]:
+            flags = {"analysis": ["--analysis"], "plan": ["--plan-only"], "build": [], "write": ["--write"],
+                     "agent": ["--agent"]}[round_]
+            if settings_["folder"]:
                 flags += ["--folder"]
             if canon:
                 flags += ["--canon"]
@@ -372,14 +383,16 @@ class Rounds:
                 flags += ["--branch", branch]
             if round_ == "build" and continue_build:
                 flags += ["--continue", continue_build]
-            elif round_ == "write" and parts:
+            elif round_ in ("write", "agent") and parts:
                 # Writing carries on its branch only across a pause: once a round ends, its drafts
-                # are in the folder, and the next round starts from the folder as it is.
+                # are in the folder, and the next round starts from the folder as it is. So does an
+                # errand, on its branch or in its folder of its own.
                 flags += ["--continue", parts[-1]]
-            if self.projects[project]["tests"]:
-                flags += ["--tests", self.projects[project]["tests"]]
+            if settings_["tests"]:
+                flags += ["--tests", settings_["tests"]]
             flags += ["--live-log", log]
-            cmd = [self.runner, self.projects[project]["source"], task_file, self.models[model], HARNESS] + flags
+            # With no project, `-`: the runner gives the errand an empty folder of its own.
+            cmd = [self.runner, settings_["source"] or "-", task_file, self.models[model], HARNESS] + flags
             self.log(f"{name}: {round_} round on {model}, part {len(parts) + 1}: {' '.join(cmd)}")
             # A place for the owner to write to the agent while it works (talk.py).
             if os.path.exists(path):
@@ -455,8 +468,11 @@ class Rounds:
         self.save_state(state)
         append_to_note(path, self._review_section(model, review_run, review_exit, review, review_log))
 
-    def _shown_folder(self, project):
-        """Where the files a run shows go: the project's own folder in the notes, under shown/."""
+    def _shown_folder(self, project, note):
+        """Where the files a run shows go: the project's own folder in the notes, under shown/; for an errand
+        with no project, the note's own folder in media/, as a media job's pictures go."""
+        if not project:
+            return self.media_home(note)
         settings_ = self.projects[project]
         home = settings_["source"] if settings_["folder"] else os.path.join(self.projects_folder, project)
         return os.path.join(home, "shown")
@@ -484,10 +500,11 @@ class Rounds:
                 if why:
                     lines.append(f"- `{name}` was not brought out: {why}.")
                     continue
-                target_dir = self._shown_folder(project)
-                if not os.path.isdir(target_dir):
-                    os.makedirs(target_dir)
-                    os.chmod(target_dir, 0o2775)
+                target_dir = self._shown_folder(project, note)
+                for folder in (os.path.dirname(target_dir), target_dir):
+                    if not os.path.isdir(folder):
+                        os.makedirs(folder)
+                        os.chmod(folder, 0o2775)
                 base, ext = os.path.splitext(re.sub(r"[\[\]#^|\\/:]", "-", name))
                 target, n = f"{stem} {base}{ext}", 2
                 while os.path.exists(os.path.join(target_dir, target)):
@@ -500,13 +517,13 @@ class Rounds:
     def _canon_only(self, header, project):
         """Whether a run on a folder project is shown its canon/ alone: when the note does not
         say `Canon only: no`, and the folder has a canon/ to show."""
-        settings_ = self.projects[project]
+        settings_ = self.project_settings(project)
         wanted = CANON_ONLY.get((header["canon only"] or "yes").strip().lower(), True)
         return bool(settings_["folder"] and wanted and os.path.isdir(os.path.join(settings_["source"], CANON)))
 
     def _canon_said(self, header, project):
-        """What a reply says of what the run was shown, on a folder project: "" on a repository."""
-        if not self.projects[project]["folder"]:
+        """What a reply says of what the run was shown, on a folder project: "" on a repository, or with none."""
+        if not self.project_settings(project)["folder"]:
             return ""
         if self._canon_only(header, project):
             return "shown canon only"
@@ -880,7 +897,7 @@ class Rounds:
 
     def _section(self, round_, model, run_name, exit_code, result, parts=None, log=None, canon="", files=(),
                  attempt="", warning=""):
-        title = {"analysis": "Answer", "plan": "Plan", "build": "Build", "write": "Drafts"}[round_]
+        title = {"analysis": "Answer", "plan": "Plan", "build": "Build", "write": "Drafts", "agent": "Answer"}[round_]
         lines = [f"## {title}, {_stamp()}, {model} model", ""]
         if not run_name:
             try:

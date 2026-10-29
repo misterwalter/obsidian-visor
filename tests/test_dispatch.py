@@ -53,7 +53,9 @@ FAKE_RUNNER = textwrap.dedent('''\
             f"[12:00:00] run {run}  (round)\\n[12:00:01] {os.environ['FAKE_STOPS_EARLY']}\\n")
         print(f"[12:00:00] run {run}  (round)")
         sys.exit(1)
-    build = "--analysis" not in args and "--plan-only" not in args and "--write" not in args
+    build = not any(flag in args for flag in ("--analysis", "--plan-only", "--write", "--agent"))
+    # An errand on a repository keeps its work as a build does; on a folder as drafts; with no project, nowhere.
+    pushes = build or ("--agent" in args and args[0] != "-" and "--folder" not in args)
     exit_code = int(os.environ.get("FAKE_EXIT", "0"))
     paused = n < int(os.environ.get("FAKE_PAUSES", "0"))
     if paused:
@@ -112,7 +114,7 @@ FAKE_RUNNER = textwrap.dedent('''\
                f"- model calls: {os.environ.get('FAKE_CALLS_MADE', '12')}   first prompt: 4000 tokens   largest prompt: 9000 tokens",
                "- model work: 52000 tokens read, 3100 written, 41 minutes",
                f"- tests before: exit {'none' if untested else 0}   tests after: exit {after}",
-               f"- pushed: {'yes, as visor/' + run if build else 'nothing to push'}"]
+               f"- pushed: {'yes, as visor/' + run if pushes else 'nothing to push'}"]
     if paused:
         report += ["- paused: yes"]
     if "--web" in args:
@@ -135,7 +137,7 @@ FAKE_RUNNER = textwrap.dedent('''\
                    "> [!quote]- The tests' last lines", "> ```", "> FAILED (failures=1)", "> ```", ""]
     if os.environ.get("FAKE_POSTS"):
         report += ["## Posts", "", os.environ["FAKE_POSTS"], ""]
-    report += ["## Pull request", "", f"https://example.invalid/pull/{n}" if build and not paused else "none"]
+    report += ["## Pull request", "", f"https://example.invalid/pull/{n}" if pushes and not paused else "none"]
     with open(os.path.join(out, "agent-output.jsonl"), "w") as f:
         f.write(json.dumps({"type": "compaction_end", "result": {"summary": f"Summary from part {n}."}}) + "\\n")
         f.write(json.dumps({"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": f"Working on it, call {n}."}]}}) + "\\n")
@@ -2653,7 +2655,8 @@ class DispatchTest(unittest.TestCase):
             self.assertNotIn("Copy this note", dispatch.note_body(text), name)
         rounds = {name: dispatch.parse_header(text)["round"] for name, text in self.d.samples().items()}
         self.assertEqual(rounds, {"sample-analysis.md": "analysis", "sample-plan.md": "plan", "sample-build.md": "build",
-                                  "sample-write.md": "write", "sample-new-project.md": None, "sample-chat.md": "chat",
+                                  "sample-write.md": "write", "sample-agent.md": "agent",
+                                  "sample-new-project.md": None, "sample-chat.md": "chat",
                                   "sample-image.md": "image", "sample-skeleton.md": "skeleton",
                                   "sample-speak.md": "speak", "sample-transcribe.md": "transcribe",
                                   "sample-edit.md": "edit", "sample-character-set.md": "character set",
@@ -2854,6 +2857,86 @@ class DispatchTest(unittest.TestCase):
         shown = os.path.join(self.tmp.name, "story", "shown")
         self.assertEqual(sorted(os.listdir(shown)), ["a map 2.png", "a map.png"])
         self.assertEqual(open(os.path.join(shown, "a map 2.png")).read(), "two")
+
+    # Agent: errands, with a project or in a folder of their own
+
+    def test_an_errand_with_no_project_runs_in_a_folder_of_its_own_and_is_answered(self):
+        self.note("inbox", "president.md", "Agent: who was the 19th president?\nBranch: x\n- [x] Canon only\n")
+        self.d.once()
+        (call,) = self.calls_made()
+        self.assertEqual(call[0], "-", "no project: the runner makes it a folder of its own")
+        self.assertIn("--agent", call)
+        for flag in ("--folder", "--canon", "--branch", "--tests", "--continue"):
+            self.assertNotIn(flag, call)
+        note = self.read("output", "president.md")
+        self.assertTrue(os.path.exists(os.path.join(self.tasks, "output", "agent", "president.md")))
+        self.assertTrue(note.startswith("Agent: who was the 19th president?\nUNUSED Branch: x\nUNUSED Canon only: yes\n"
+                                        "Project:\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\n"
+                                        "Repeat: no\nOn repeat:\n"), note)
+        self.assertIn("## Answer, ", note)
+        self.assertIn("Answer from coder-official.", note)
+        self.assertNotIn("pull request", note)
+
+    def test_an_errand_s_lines_ask_for_what_it_may_reach_as_any_round_s_do(self):
+        self.note("inbox", "memes.md", "Agent: find me three cocker spaniel memes\nWeb: yes\nLAN: nas.local\nModel: writer\n")
+        self.d.once()
+        (call,) = self.calls_made()
+        self.assertEqual(call[2], "writer-local")
+        self.assertEqual(call[call.index("--lan") + 1], "nas.local")
+        self.assertIn("--web", call)
+        self.note("inbox", "bad.md", "Agent: look around\nLoopback: 80, http\n")
+        self.d.once()
+        self.assertEqual(len(self.calls_made()), 1)
+        self.assertIn("`Loopback: 80, http` has what is not a port: http.", self.read("output", "bad.md"))
+
+    def test_what_an_errand_with_no_project_shows_comes_into_its_own_media_folder(self):
+        self.given("FAKE_SHOWN", [{"spaniel.png": "png", "list.md": "text"}])
+        self.note("inbox", "memes.md", "Agent: find me cocker spaniel memes\n")
+        self.d.once()
+        self.assertEqual(sorted(os.listdir(os.path.join(self.tasks, "media", "memes"))),
+                         ["memes list.md", "memes spaniel.png"])
+        self.assertIn("Shown:\n\n![[memes list.md]]\n![[memes spaniel.png]]\n", self.read("output", "memes.md"))
+
+    def test_an_errand_on_a_project_works_there_and_keeps_its_work_as_the_project_does(self):
+        self.note("inbox", "readme.md", "Project: textgame\nAgent: tidy the readme\n")
+        self.d.once()
+        (call,) = self.calls_made()
+        self.assertEqual(call[0], os.path.join(self.tmp.name, "textgame"))
+        self.assertIn("--agent", call)
+        self.assertEqual(call[call.index("--tests") + 1], "python3 tests.py", "its tests, run if it has them")
+        note = self.read("output", "readme.md")
+        self.assertIn("\nBranch:\n", note, "a repository's lines")
+        self.assertIn("pull request: https://example.invalid/pull/0", note)
+        self.canon()
+        self.note("inbox", "names.md", "Project: story\nAgent: list every name in the story\n")
+        self.d.once()
+        call = self.calls_made()[-1]
+        self.assertIn("--folder", call)
+        self.assertIn("--canon", call)
+        self.assertIn("- [x] Canon only", self.read("output", "names.md"))
+        self.note("inbox", "notests.md", "Project: notests\nAgent: count the files\n")
+        self.d.once()
+        self.assertIn("--agent", self.calls_made()[-1], "no tests needed for an errand")
+
+    def test_a_reply_to_an_errand_sends_it_again_and_a_pause_carries_on_in_its_folder(self):
+        self.note("inbox", "sum.md", "Agent: add up the primes under 100\n\n---\n\n## Answer, earlier\n\n1060.\n\n"
+                                     "## Your reply\n\nAnd under 1000?\n")
+        self.d.once()
+        (call,) = self.calls_made()
+        self.assertIn("--agent", call, "a reply to an errand is more of it")
+        self.assertIn("And under 1000?", call[-1])
+        os.environ.update(FAKE_PAUSES="2")
+        self.note("inbox", "long.md", "Agent: tabulate a million primes\n")
+        self.d.once()
+        first, second = self.calls_made()[1:]
+        self.assertNotIn("--continue", first)
+        self.assertEqual(second[second.index("--continue") + 1], "long-coder-official-pi-run1")
+
+    def test_a_round_other_than_an_errand_still_needs_a_project(self):
+        self.note("inbox", "a.md", "Analysis: what is this?\n")
+        self.d.once()
+        self.assertEqual(self.calls_made(), [])
+        self.assertIn("The note has no `Project:` line", self.read("output", "a.md"))
 
     def test_visor_s_own_programs_are_made_executable_where_a_checkout_lost_that(self):
         fake = os.path.join(self.tmp.name, "checkout")
@@ -4543,7 +4626,7 @@ class DispatchTest(unittest.TestCase):
         # or handed back), it must come out with every line its kind reads (kinds.LINES), at the top.
         self.character("Mara")
         notes = {"analysis": "Project: game\nAnalysis: x\n", "plan": "Project: game\nPlan: x\n",
-                 "build": "Project: game\nBuild: x\n", "write": "Project: story\nWrite: x\n",
+                 "build": "Project: game\nBuild: x\n", "write": "Project: story\nWrite: x\n", "agent": "Agent: x\n",
                  "chat": "Chat: Mara\n\n## You\nHello.\n", "game": "Game:\n\nThe story begins at an inn.\n",
                  "opera": "Opera: x\nCharacters: Mara\n", "new project": "New project: Fresh\n",
                  "new character": "New character: Zed\n"}
@@ -4557,7 +4640,8 @@ class DispatchTest(unittest.TestCase):
             found = [os.path.join(top, name) for top, _, files in os.walk(self.tasks) if name in files]
             self.assertEqual(len(found), 1, f"{kind}: {found}")
             top = dispatch.split_note(dispatch.unflagged(open(found[0]).read()))[0]
-            ctx = {"folder": True} if kind == "write" else {"folder": False} if kind in dispatch.kinds.ROUNDS[:3] else {}
+            ctx = ({"folder": True} if kind == "write" else {"folder": False} if kind in dispatch.kinds.ROUNDS[:3] else
+                   {"folder": dispatch.kinds.NO_PROJECT} if kind == "agent" else {})
             for line in dispatch.kinds.lines(kind, ctx):
                 if line.given:
                     continue

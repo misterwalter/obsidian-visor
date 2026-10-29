@@ -90,12 +90,20 @@ Options for `visor-run.sh`:
   repository. See [Folder projects](projects.md#folder-projects).
 - `--write` a writing round, for a folder project: the agent writes, and what it
   wrote comes back into the folder as drafts.
+- `--agent` an errand: the agent does what the task says, and its answer is the
+  output. On a repository its changes are kept as a build's are, and the tests
+  run only if `--tests` is given; on a folder they come back as drafts. With
+  `-` for the project, it works in an empty folder of its own, deleted when the
+  run ends: `./visor-run.sh - task.md small pi --agent --web`. What it shows is
+  in the run's `shown/` folder.
 - `--canon` with `--folder`: the run is shown the folder's `canon/` alone. See [Folder projects](projects.md#folder-projects).
 - `--setting DIR` with `--chat`: the world the chat is set in, copied into the
   workspace as `setting/` for reading. See [Chats](chats.md).
 - `--notes FILE` the owner's replies to an earlier round, added to the prompt.
 - `--continue RUN` start from the branch an earlier run left, instead of from
   `main`, for a further round on the same work. `RUN` is the earlier run's name.
+  For an errand with no project, carry on in the folder `RUN` left, which a
+  paused run keeps.
 - `--fork RUN` carry on the conversation of `RUN`, an earlier part of the same
   round that was paused, instead of starting a new one. The agent is told only
   to carry on; the task is already in the conversation. pi only. For a build,

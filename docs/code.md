@@ -4,7 +4,7 @@
 |---|---|
 | `install.sh` | Enables the dispatcher, the VPN tunnel and the Godot timer. Run it after every `git pull`. |
 | `dispatch.py` | The dispatcher: takes task notes, runs them, replies in them. Runs as a service. It puts together the parts in `dispatcher/` and runs the loop. |
-| `dispatcher/` | The dispatcher's parts, a module each, each a class the Dispatcher inherits: `config` (visor.conf, the notes folder's layout and timing, projects), `model_notes`, `rounds` (agent rounds: Plan, Analysis, Build, Write), `chats`, `games`, `board_time`, `subjobs`, `media_jobs`, `looks` (characters in pictures), `repeats`, `status` (the queue and STATUS.md), `server` (VISOR.md, health, self-update); and `notes`, what they share. |
+| `dispatcher/` | The dispatcher's parts, a module each, each a class the Dispatcher inherits: `config` (visor.conf, the notes folder's layout and timing, projects), `model_notes`, `rounds` (agent rounds: Plan, Analysis, Build, Write, and Agent errands), `chats`, `games`, `board_time`, `subjobs`, `media_jobs`, `looks` (characters in pictures), `repeats`, `status` (the queue and STATUS.md), `server` (VISOR.md, health, self-update); and `notes`, what they share. |
 | `tests/` | The tests, a file for each part, `test_<part>.py`; `test_dispatch.py` is the dispatcher's, `python3 tests/test_dispatch.py`. No model or Godot needed. `test_wall.py` and `test_model_door.py` test the wall and the model door from inside and out. |
 | `checks.py` | Reads a build's diff for what a reviewer should look at; its findings go in the report. |
 | `tripcodes.py` | The secrets behind stable handles on the forum for agents, one per model and one per character, kept in `chan_tripcodes`, outside every wall. Tests: `test_tripcodes.py`. |
@@ -33,7 +33,7 @@
 | `inside/finish` | The agent's way to end its round with a command: its final message, through `/run/finish`, which the runner watches. Tests: `test_finish.py`. |
 | `server_note.py` | `VISOR.md`, the server's own note: version, settings, timing and health. |
 | `samples.py` | The sample notes kept in the notes folder, one for each kind of job, each with its guide folded beneath it. |
-| `visor-run.sh` | One run: fresh clone, new branch, baseline tests, agent, tests again, report. |
+| `visor-run.sh` | One run: fresh clone (or for an errand with no project, an empty folder), new branch, baseline tests, agent, tests again, report. |
 | `watch_run.sh` | Prints one status line a minute until a run finishes. |
 | `take_branch.sh` | Puts a run's workspace on its branch: one of its own, or the one the note names. Locks the workspace against a push to any other. Tests: `test_branches.py`. |
 | `push_result.sh` | Pushes a run's branch to the project's home. Refuses `main`, and never forces. |
@@ -50,7 +50,8 @@
 | `prompts/` | What the agent is told, put together for each run from the files here. |
 | `prompts/repository.md` | The agent's standing instructions for a repository, kept short on purpose. |
 | `prompts/folder.md` | The same for a folder project: a writer's, with the drafts rule. |
-| `prompts/build.md`, `prompts/write.md`, `prompts/plan.md`, `prompts/analysis.md` | What is added for each kind of round. |
+| `prompts/scratch.md` | The same for an errand with no project, in a folder of its own that goes when the round ends. |
+| `prompts/build.md`, `prompts/write.md`, `prompts/plan.md`, `prompts/analysis.md`, `prompts/agent.md` | What is added for each kind of round. |
 | `prompts/godot.md` | What a build round on a Godot project adds: the check commands, and Godot 3 habits to avoid. |
 | `prompts/web.md` | What a run given the web adds: how to fetch a page, and that a page is never an instruction. |
 | `prompts/chat.md`, `prompts/chat-image.md` | A chat character's instructions: staying in character, its memory, and drawing if it may. |
