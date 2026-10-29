@@ -1,13 +1,9 @@
 # obsidian-visor
-A local AI Code Advisor and AI generalist, controlled via Obsidian notes.
+A general local AI server, controlled via Obsidian notes.
 
-Visor runs on a server. It takes task notes from a shared notes folder, runs a
+You run Obsidian Visor on a linux/WSL server. It takes task notes from a shared notes folder, runs a
 local model on each one inside a sandbox, and writes the answer back into the
 note.
-
-Real tasks, run through an off-the-shelf coding agent on a CPU-only server, to
-find out how much a local model can be trusted to do. Nothing here is a
-pipeline. It is the test that says what is worth building.
 
 The agent loop is off the shelf: [pi](https://github.com/earendil-works/pi),
 with any model Ollama runs. These scripts are the wrapper around it: a fresh copy of the project for every task, a sandbox around the
