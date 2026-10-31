@@ -501,10 +501,10 @@ class Rounds:
                     lines.append(f"- `{name}` was not brought out: {why}.")
                     continue
                 target_dir = self._shown_folder(project, note)
-                for folder in (os.path.dirname(target_dir), target_dir):
-                    if not os.path.isdir(folder):
-                        os.makedirs(folder)
-                        os.chmod(folder, 0o2775)
+                for missing in (os.path.dirname(target_dir), target_dir):
+                    if not os.path.isdir(missing):
+                        os.makedirs(missing)
+                        os.chmod(missing, 0o2775)
                 base, ext = os.path.splitext(re.sub(r"[\[\]#^|\\/:]", "-", name))
                 target, n = f"{stem} {base}{ext}", 2
                 while os.path.exists(os.path.join(target_dir, target)):

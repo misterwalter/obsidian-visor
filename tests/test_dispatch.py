@@ -3052,6 +3052,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("self-update: install.sh: the rules engine was not installed", self.logged)
         again = self.fresh()
         self.assertEqual(again.version["install"], said, "kept across the restart")
+        again.opera_python = os.path.join(self.tmp.name, "nowhere", "bin", "python")   # not this machine's
         again.sync_server_note()
         note = self.server_note()
         self.assertIn("> [!warning] After that update, `install.sh` could not do everything\n"
