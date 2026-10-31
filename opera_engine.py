@@ -69,7 +69,8 @@ def view(game):
 
 
 def draw(game, out, said, orders=False):
-    svg = Renderer(game).render(incl_orders=orders)
+    # Each province carries its three-letter code, the one orders are written in ("A PAR - BUR").
+    svg = Renderer(game).render(incl_orders=orders, incl_abbrev=True)
     svg = re.sub(r"<!DOCTYPE[^>]*>", "", svg, count=1)
     if said:
         svg = svg.replace(f">{game.get_current_phase()}<", f">{said}<")

@@ -132,6 +132,7 @@ class OperaGamesTest(unittest.TestCase):
         with open(os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901 Spring.svg")) as f:
             spring = f.read()
         self.assertIn("Spring 1901", spring, "the map says the phase as the game shows it")
+        self.assertIn(">PAR</text>", spring, "each province carries the code its orders use")
         self.assertNotIn("<!DOCTYPE", spring)
         history = self.page(os.path.join(self.tasks, "opera", "Grand", "history.md"))
         self.assertIn("## Spring 1901", history)

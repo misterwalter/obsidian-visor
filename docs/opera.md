@@ -38,7 +38,8 @@ is said, with what is possible.
 **The folder in the notes**, `opera/<game>/`: the note, now the game's page,
 with the map, who holds what, what is new, and **Your move** (the owner's
 messages, orders and Ready, Propose a draw, Accept the draw); `maps/`, one map a
-phase, redrawn with its orders once resolved; `talk/`, a note a conversation;
+phase, redrawn with its orders once resolved, each province labelled with the
+code its orders use (`PAR`, `BUR`); `talk/`, a note a conversation;
 `memory/`, the notebooks; `history.md`. In a game the owner plays, `talk/` holds
 only their own conversations and the table's, and `memory/` nothing, until the
 game ends; the live log says what happened and never what was said.
