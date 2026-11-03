@@ -70,9 +70,9 @@ class Status:
             items.append(item("turn", "yours", path, f"{_link(path)}, the turn you asked for",
                               *open_(os.path.dirname(path)), how="asked", game=name))
         operas = self._opera_work()
-        for class_, name, path, said, last in operas:
+        for class_, name, path, said, last, power in operas:
             if class_ == "yours":
-                items.append(item("opera", "yours", path, said, *open_(os.path.dirname(path)), game=name))
+                items.append(item("opera", "yours", path, said, *open_(os.path.dirname(path)), game=name, power=power))
         for job in self._subjobs()["jobs"]:
             ready, why = self._subjob_ready(job)
             items.append(item("subjob", "subjob", job, self._subjob_said(job), ready, why))
@@ -92,10 +92,10 @@ class Status:
             for last, name, ready, why in visits:
                 later[how].append(item("board", how, name, f"{name}'s visit to the board", ready, why, last=last,
                                        how=how))
-        for class_, name, path, said, last in operas:
+        for class_, name, path, said, last, power in operas:
             if class_ == IDLE:
                 later[IDLE].append(item("opera", IDLE, path, said, *open_(os.path.dirname(path)), how=IDLE, game=name,
-                                        last=last))
+                                        last=last, power=power))
         memories = [item("memory", IDLE, path, f"{_link(path)}, its memory", *open_(os.path.dirname(path)), how=IDLE,
                          game=name)
                     for name, path in self._games_to_summarise()]
@@ -128,7 +128,7 @@ class Status:
             elif what == "board":
                 message = self.board_visit(target, work["how"])
             elif what == "opera":
-                message = self.opera_step(work["game"], target)
+                message = self.opera_step(work["game"], target, work.get("power"))
             else:
                 message = self.run_subjob(target)
         except Exception:

@@ -26,7 +26,11 @@ and notebook included).
 a character's talk or orders, a sealed round delivered, the phase resolved, or a
 character's page of what they remember. A character's step is idle work and
 gives way to anything new in `inbox/`; what the owner's Ready lets happen is
-theirs. Each character is asked with their persona, the front page of their own
+theirs. Every character whose answer is due is in the queue at once, each in
+the place the round took when it became due, so a round's answers run one after
+another instead of waiting a turn of the line each; characters on one model go
+together, so it loads once. What needs no model (a round delivered, the phase
+resolved) is done straight after the answer that made it possible. Each character is asked with their persona, the front page of their own
 memory (as it is then), the game's rules, the end year and how a win is shared,
 the board, what was said to them, what happened last phase and how their orders
 were read, and their private notebook, which they write out whole each time. They

@@ -409,7 +409,10 @@ class Operas:
         return lines, needs
 
     def _opera_work(self):
-        """The games' next steps that can be taken: [(class, name, page, said, last)]."""
+        """The games' steps that can be taken now: [(class, name, page, said, last, power)]. Every character
+        whose answer is due is in line at once, each its own piece of work, all in the place the round took
+        in the line when it became due (last), so a game's round does not wait a turn of the line for each
+        answer. power is None for a step that needs no model."""
         found = []
         for name, page in self.operas():
             state = self._opera_load(name)
@@ -422,43 +425,71 @@ class Operas:
                 continue
             title = f"[[{name}]]"
             if step[0] in ("talk", "orders", "recap"):
-                power = self._opera_next(state, step[1])
                 doing = {"talk": "talks", "orders": "gives orders", "recap": "writes what they remember of it"}[step[0]]
-                said = f"{title}, {state['players'][power]} ({opera.country(power)}) {doing}"
-                class_ = IDLE
-            else:
-                said = f"{title}, " + {"deliver": "a round of talk delivered", "orders now": "talk over: orders",
-                                       "resolve": "the moves resolved"}[step[0]]
-                class_ = "yours" if state["you"] and state["you"] not in state["out"] else IDLE
-            found.append((class_, name, page, said, state.get("last", "")))
+                since = state["due"]["since"] if state.get("due") else state.get("last", "")
+                for power in self._opera_in_turn(state, step[1]):
+                    found.append((IDLE, name, page, f"{title}, {state['players'][power]} ({opera.country(power)}) "
+                                                    f"{doing}", since, power))
+                continue
+            said = f"{title}, " + {"deliver": "a round of talk delivered", "orders now": "talk over: orders",
+                                   "resolve": "the moves resolved"}[step[0]]
+            class_ = "yours" if state["you"] and state["you"] not in state["out"] else IDLE
+            found.append((class_, name, page, said, state.get("last", ""), None))
         return found
 
-    def _opera_next(self, state, powers):
-        """Of the characters who may answer now, one on the model that answered last, if any: a model
-        loaded once does a round's worth."""
+    def _opera_in_turn(self, state, powers):
+        """The characters who may answer now, those on one model together, the model that answered last
+        first: a model loaded once does all its characters' answers."""
         def model_of(power):
             try:
                 return (self.sync_character(state["players"][power], settled_only=False)[0].get("model") or "").lower()
             except OSError:
                 return ""
-        return next((p for p in powers if model_of(p) == state.get("last_model")), powers[0])
+        models_ = {p: model_of(p) for p in powers}
+        return sorted(powers, key=lambda p: (models_[p] != state.get("last_model"), models_[p]))
 
     # A step
 
-    def opera_step(self, name, page):
-        """One step of a game: whichever comes next (opera.next_step)."""
+    def opera_step(self, name, page, power=None):
+        """One piece of a game's work: the answer of the character `power` (or, without one, whichever step
+        comes next), then at once the steps it made possible that need no model, so they do not wait a
+        turn of the line: a round of talk delivered, talk closed, the phase resolved."""
+        said, went_on = self._opera_one_step(name, page, power)
+        done = [said] if said else []
+        while went_on:
+            state = self._opera_load(name)
+            if not state or opera.next_step(state)[0] not in ("deliver", "orders now", "resolve"):
+                break
+            said, went_on = self._opera_one_step(name, page)
+            if said:
+                done.append(said.removeprefix(f"opera {name}: "))
+        return "; ".join(done) or None
+
+    def _opera_one_step(self, name, page, power=None):
+        """One step of a game, whichever comes next (opera.next_step), a character's answer that of `power`
+        if given: (what was done, whether it went well)."""
         state = self._opera_load(name)
         if not state:
-            return None
+            return None, False
         places = opera.Places(state["view"]["names"])
         step = opera.next_step(state)
+        if step[0] in ("talk", "orders", "recap"):
+            if power is None:
+                power = self._opera_in_turn(state, step[1])[0]
+            elif power not in step[1]:
+                return None, False  # answered already, or no longer due
+        elif power is not None:
+            return None, False  # the game has moved on: what is due now is in line in its own right
+        if "due" not in state:  # a new game, or one from before: what is due became due when it last moved
+            state["due"] = {"key": [step[0], state["view"]["phase"], (state["talk"] or {}).get("round")],
+                            "since": state.get("last", "")}
         state["last"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.now()))
         log = self.live_log(name + ".md", "opera")
         os.makedirs(os.path.dirname(log), exist_ok=True)
         secret = state["you"] is not None
         try:
             if step[0] in ("talk", "orders", "recap"):
-                said = self._opera_answer(name, state, step[0], self._opera_next(state, step[1]), places, log, secret)
+                said = self._opera_answer(name, state, step[0], power, places, log, secret)
             elif step[0] == "deliver":
                 round_ = state["talk"]["round"]
                 count = len(state["pending"])
@@ -470,36 +501,41 @@ class Operas:
             elif step[0] == "resolve":
                 said = self._opera_resolve(name, state, places)
             else:
-                return None
+                return None, False
         except game.Stopped:
-            return f"opera {name}: gave way to a note in inbox/"
+            return f"opera {name}: gave way to a note in inbox/", False
         except GameGone:
-            return self._opera_gone(name)
+            return self._opera_gone(name), False
         except (game.GameError, media.MediaError, OSError, ValueError) as error:
             if not os.path.isfile(page):
-                return self._opera_gone(name)
+                return self._opera_gone(name), False
             state["failed_at"] = self.now()
             state["problem"] = str(error).strip().splitlines()[0] if str(error).strip() else error.__class__.__name__
             self._opera_save(name, state)
             try:
                 self._opera_write(name, state)
             except GameGone:
-                return self._opera_gone(name)
+                return self._opera_gone(name), False
             self._opera_save(name, state)
             livelog.append(log, f"*{time.strftime('%H:%M')}* **Could not:** {state['problem']}\n\n")
-            return f"opera {name}: a step failed: {state['problem']}"
+            return f"opera {name}: a step failed: {state['problem']}", False
         if not os.path.isfile(page):
-            return self._opera_gone(name)
+            return self._opera_gone(name), False
         state.pop("failed_at", None)
         state.pop("problem", None)
+        # When what comes next became due: its answers keep that place in the line however many go before.
+        after = opera.next_step(state)
+        due = [after[0], state["view"]["phase"], (state["talk"] or {}).get("round")]
+        if (state.get("due") or {}).get("key") != due:
+            state["due"] = {"key": due, "since": state["last"]}
         self._opera_save(name, state)
         livelog.append(log, f"*{time.strftime('%H:%M')}* {said}\n\n")
         try:
             self._opera_write(name, state)
         except GameGone:
-            return self._opera_gone(name)
+            return self._opera_gone(name), False
         self._opera_save(name, state)
-        return f"opera {name}: {said}"
+        return f"opera {name}: {said}", True
 
     def _opera_gone(self, name):
         """A step that ended after the game's page went: thrown away, and the game forgotten."""

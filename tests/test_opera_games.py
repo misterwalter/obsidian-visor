@@ -260,6 +260,23 @@ class OperaGamesTest(unittest.TestCase):
         with open(os.path.join(self.tasks, "output", "opera", "Old.md")) as f:
             self.assertIn("as `Mara (Turkey)`", f.read())
 
+    def test_every_answer_due_is_in_line_at_once_each_keeping_its_place(self):
+        self.start("Opera:\nCharacters: " + ", ".join(CAST) + "\nCommunication: Silence\n")
+        line = lambda: [i for i in self.d.work_queue() if i["what"] == "opera"]
+        first = line()
+        self.assertEqual(sorted(i["power"] for i in first), sorted(opera.POWERS), "all seven orders in line")
+        self.d.once()
+        rest = line()
+        self.assertEqual(len(rest), 6)
+        self.assertEqual({i["last"] for i in rest}, {first[0]["last"]}, "the rest keep their place in the line")
+        for _ in range(6):
+            said = self.d.once()
+        self.assertIn("Spring 1901 resolved", said, "resolved straight after the last answer, not a turn later")
+        self.assertEqual(self.state_of()["view"]["phase"], "F1901M")
+        fall = line()
+        self.assertEqual(len(fall), 7)
+        self.assertGreater(fall[0]["last"], first[0]["last"], "the next round joins the line when it became due")
+
     # Where a game is kept, and how one ends
 
     def folder(self, name="Grand"):
