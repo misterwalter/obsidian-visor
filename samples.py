@@ -750,6 +750,12 @@ def opera_note(ctx):
         "writes a page of what they remember of it into their own memory, as a game they played, with a line on "
         "its front page. Until then the game never touches their memory, and what they remember elsewhere they "
         "bring to the table.",
+        "**Ending it.** At the very bottom of the page, apart from the boxes of a turn, **End the game early** "
+        "stops a game, a misconfigured one say: nobody wins, nobody remembers it, and everything hidden is shown. "
+        "**Continue the game** carries it on, hidden again. A game that is over has **Delete this game**. "
+        "Deleting the game's folder yourself deletes it too; moving the folder out of `opera/` keeps what you "
+        "could see of it, and the game stops. Its secret record is the folder's hidden `.visor/`, which the notes "
+        "app does not show and Obsidian Sync never copies.",
         "**The rules engine** is the `diplomacy` package, in a Python environment of its own on the server "
         "(`install.sh` sets it up). Until it is there, an Opera note comes back saying so."])
     return "\n".join(lines) + "\n" + guide("How an Opera note works", body)

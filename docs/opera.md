@@ -18,8 +18,9 @@ anything, `Start` or `Press` included. `sample-opera.md` has every line.
 `diplomacy` package's (AGPL), in a Python environment of its own that
 `install.sh` makes (`opera_python`). Visor never imports it: `opera_engine.py`
 runs in that Python, walled like the media tools, one command at a time, on the
-game's own folder in the state folder, `opera/<game>/` (`game.json`, the
-package's saved game; `state.json`, everything else).
+game's hidden record, `.visor/` in the game's folder in the notes (`game.json`,
+the package's saved game; `state.json`, everything else, every secret message
+and notebook included).
 
 **A game moves a step at a time** (`dispatcher/operas.py`, `opera.next_step`):
 a character's talk or orders, a sealed round delivered, the phase resolved, or a
@@ -40,12 +41,29 @@ with the map, who holds what, what is new, and **Your move** (the owner's
 messages, orders and Ready, Propose a draw, Accept the draw); `maps/`, one map a
 phase, redrawn with its orders once resolved, each province labelled with the
 code its orders use (`PAR`, `BUR`); `talk/`, a note a conversation;
-`memory/`, the notebooks; `history.md`. In a game the owner plays, `talk/` holds
-only their own conversations and the table's, and `memory/` nothing, until the
-game ends; the live log says what happened and never what was said.
+`memory/`, the notebooks; `history.md`; and `.visor/`, the game itself, which
+the notes app does not show (its name starts with a dot) and Obsidian Sync never
+copies to the owner's devices. In a game the owner plays, `talk/` holds only
+their own conversations and the table's, and `memory/` nothing, until the game
+ends; the live log says what happened and never what was said.
+
+**Ending a game.** The page's last section, `## Ending the game`, is kept apart
+from the boxes of a turn. While a game runs it has **End the game early**: the
+game stops where it is, nobody wins, nobody writes what they remember of it, and
+in a game the owner plays every conversation and notebook is shown. A game ended
+early has **Continue the game**, which carries it on from there and hides the
+others' talk and notebooks again. Any game that is over (a win, a draw, the end
+year, or ended early) has **Delete this game**, which deletes its folder and
+everything in it. A game whose page is gone is forgotten: its `.visor/` is taken
+away, and the folder with it once nothing else is in it. So deleting the folder
+in the notes deletes the game, and moving it out of `opera/` keeps what the
+owner could see of it, as a record that no longer plays; to keep everything, end
+the game first. A step running when the page goes is thrown away, not written
+back.
 
 **Leaving the table.** A country with no units and no centres is out. Its
 character, and every character when the game ends, writes a page of what they
 remember of it in their own memory, `memory/Opera - <game>.md`, framed as a game,
 with a line under `## Games` on their memory's front page. The game writes
-nothing else into a character's memory.
+nothing else into a character's memory, and nothing at all for a game ended
+early.

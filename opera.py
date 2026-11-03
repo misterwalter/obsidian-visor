@@ -801,6 +801,11 @@ YOUR_MOVE = "## Your move"
 READY = re.compile(r"^\s*[-*]\s+\[([ xX])\]\s+Ready\b", re.MULTILINE)
 PROPOSE = re.compile(r"^\s*[-*]\s+\[([ xX])\]\s+Propose a draw\b", re.MULTILINE)
 ACCEPT = re.compile(r"^\s*[-*]\s+\[([ xX])\]\s+Accept the draw\b", re.MULTILINE)
+# The page's last section, apart from the boxes of a normal turn.
+ENDING = "## Ending the game"
+END_EARLY = re.compile(r"^\s*[-*]\s+\[([ xX])\]\s+End the game early\b", re.MULTILINE)
+GO_ON = re.compile(r"^\s*[-*]\s+\[([ xX])\]\s+Continue the game\b", re.MULTILINE)
+DELETE = re.compile(r"^\s*[-*]\s+\[([ xX])\]\s+Delete this game\b", re.MULTILINE)
 TO = re.compile(r"^###\s+To\s+(.+?)\s*$")
 ORDER_LINE = re.compile(r"^((?:[AF] [^:\n]+?)|(?:Build|Disband) \d+)(?: \(dislodged\))?:[ \t]*(.*)$")
 MARK = re.compile(r"\s+[✓✗]\s.*$")
@@ -864,6 +869,29 @@ def read_form(text):
     return {"to": said, "orders": orders}, ticked(READY), ticked(PROPOSE), ticked(ACCEPT)
 
 
+def read_ending(text):
+    """What the owner ticked under the page's Ending the game: (end early, continue, delete)."""
+    section = re.search(r"^## Ending the game[ \t]*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    body = section.group(1) if section else ""
+    ticked = lambda pattern: bool((m := pattern.search(body)) and m.group(1) != " ")
+    return ticked(END_EARLY), ticked(GO_ON), ticked(DELETE)
+
+
+def ending(state):
+    """The page's Ending the game: ending a game early, carrying on one that was, and deleting one that is
+    over. Kept apart from Your move, so none is ticked by mistake on a normal turn."""
+    over, you = state["over"], state["you"]
+    lines = ["", ENDING, ""]
+    if not over:
+        shown = ", and every conversation and notebook is shown" if you else ""
+        return lines + ["- [ ] End the game early: it stops where it is, nobody wins, and the characters will "
+                        f"not remember it{shown}"]
+    if over.get("how") == "early":
+        hidden = ", and the others' talk and notebooks are hidden again" if you else ""
+        lines += [f"- [ ] Continue the game: it goes on from where it stopped{hidden}", ""]
+    return lines + ["- [ ] Delete this game: its folder and everything in it, for good"]
+
+
 def owner_orders(state, places):
     """The owner's order lines read (read_order): ([(label, written, order or None, what to say)], all taken)."""
     power = state["you"]
@@ -904,11 +932,16 @@ def page(state, places, map_file, waiting_on=(), news=()):
     if state["over"]:
         over = state["over"]
         winners = over.get("winners") or []
-        how = {"solo": f"**{country(winners[0])} won it outright** ({state['players'][winners[0]] or 'you'}).",
-               "draw": f"**A draw, agreed by everyone left:** the win is shared {len(winners)} ways.",
-               "end": f"**The end year came:** the win is shared {len(winners)} ways."}.get(over.get("how"), "")
-        lines += [how, "", "Sharing the win: " + ", ".join(f"{country(p)} ({state['players'][p] or 'you'})"
-                                                         for p in winners), ""]
+        how = over.get("how")
+        if how == "early":
+            lines += [f"**Ended early, in {phase_said(over['phase'], start)}:** nobody won, and the characters "
+                      "will not remember it.", ""]
+        else:
+            lines += [{"solo": f"**{country(winners[0])} won it outright** ({state['players'][winners[0]] or 'you'}).",
+                       "draw": f"**A draw, agreed by everyone left:** the win is shared {len(winners)} ways.",
+                       "end": f"**The end year came:** the win is shared {len(winners)} ways."}.get(how, ""), "",
+                      "Sharing the win: " + ", ".join(f"{country(p)} ({state['players'][p] or 'you'})"
+                                                      for p in winners), ""]
     else:
         left = years_left(phase, state["ends"], start)
         who = f"**You play {country(you)}.** " if you else "**Seven characters play this one by themselves.** "
@@ -925,10 +958,12 @@ def page(state, places, map_file, waiting_on=(), news=()):
     if state["read"].get(you) and not state["over"]:
         lines += ["### How your last orders were read", ""] + [f"- {line}" for line in state["read"][you]] + [""]
     lines += [YOUR_MOVE, ""]
-    done = lambda: "\n".join(lines) + "\n"
+    done = lambda: "\n".join(lines + ending(state)) + "\n"
     waiting = f" Waiting for: {', '.join(waiting_on)}." if waiting_on else ""
     if state["over"] or not you or you in state["out"]:
-        lines += ["Nothing: " + ("the game is over." if state["over"] else "you are watching." + waiting)]
+        over = state["over"]
+        lines += ["Nothing: " + (("the game was ended early." if over.get("how") == "early" else "the game is over.")
+                                 if over else "you are watching." + waiting)]
         return done()
     talk, form = state["talk"], state["form"]
     if talk and not talk.get("open") and you in talk["written"]:

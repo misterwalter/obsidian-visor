@@ -260,6 +260,140 @@ class OperaGamesTest(unittest.TestCase):
         with open(os.path.join(self.tasks, "output", "opera", "Old.md")) as f:
             self.assertIn("as `Mara (Turkey)`", f.read())
 
+    # Where a game is kept, and how one ends
+
+    def folder(self, name="Grand"):
+        return os.path.join(self.tasks, "opera", name)
+
+    def tick(self, page, label):
+        self.write_page(page, f"- [ ] {label}", f"- [x] {label}")
+
+    def status(self):
+        return self.page(os.path.join(self.tasks, "STATUS.md"))
+
+    def sync_deletes(self, name="Grand"):
+        """What Obsidian Sync does on the server when the owner deletes a game's folder: the notes it
+        knows go, and what it never syncs, the hidden files, stays behind, holding the folders up."""
+        for root, dirs, files in os.walk(self.folder(name)):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for file in files:
+                if not file.startswith("."):
+                    os.remove(os.path.join(root, file))
+        open(os.path.join(self.folder(name), ".Grand.md.visor-tmp"), "w").close()
+
+    def test_a_game_is_kept_whole_in_its_own_folder_its_record_hidden(self):
+        self.start("Opera:\nCharacters: " + ", ".join(CAST) + "\nCommunication: Silence\n")
+        record = os.path.join(self.folder(), ".visor")
+        self.assertTrue(os.path.exists(os.path.join(record, "state.json")))
+        self.assertTrue(os.path.exists(os.path.join(record, "game.json")), "the rules engine's game is there too")
+        self.assertFalse(os.path.exists(os.path.join(self.state, "opera")), "nothing of it in visor's state folder")
+
+    def test_a_game_whose_page_is_gone_is_forgotten_and_its_folder_tidied_away(self):
+        self.start("Opera:\nCharacters: " + ", ".join(CAST) + "\nCommunication: Silence\n")
+        self.d.once()
+        self.sync_deletes()
+        self.d.once()
+        self.assertFalse(os.path.exists(self.folder()), "the record, visor's leftovers and the empty folders went")
+        self.assertIn("opera Grand: its page is gone, so visor has forgotten the game", self.logged)
+        self.assertNotIn("Grand", self.status())
+        said, _ = self.start("Opera:\nCharacters: " + ", ".join(CAST) + "\nCommunication: Silence\n")
+        self.assertIn("started the Opera game Grand", said, "the name is free again")
+        # A folder the owner keeps something of their own in stays, with that in it.
+        os.remove(os.path.join(self.folder(), "Grand.md"))
+        with open(os.path.join(self.folder(), "my notes.md"), "w") as f:
+            f.write("Mara lied about Munich.\n")
+        self.d.once()
+        self.assertEqual(sorted(os.listdir(self.folder())), ["history.md", "maps", "my notes.md"],
+                         "the record and the empty talk/ went; the notes it still holds stay")
+
+    def test_a_step_running_when_the_page_goes_is_thrown_away(self):
+        _, page = self.start("Opera:\nCharacters: " + ", ".join(CAST) + "\nCommunication: Silence\n")
+        plain = self.narrate
+        def narrate(*args, **kwargs):
+            if os.path.exists(page):
+                self.sync_deletes()  # the owner deletes the game while a character answers
+            return plain(*args, **kwargs)
+        self.d.narrate = narrate
+        said = self.d.once()
+        self.assertIn("its page went while a step ran, so the step was thrown away and the game forgotten", said)
+        self.assertFalse(os.path.exists(self.folder()), "never written back")
+
+    def test_games_kept_in_the_state_folder_before_move_in_beside_their_notes(self):
+        self.start("Opera:\nCharacters: " + ", ".join(CAST) + "\nCommunication: Silence\n")
+        before = os.path.join(self.state, "opera")
+        os.makedirs(before)
+        os.rename(os.path.join(self.folder(), ".visor"), os.path.join(before, "grand"))
+        # And one whose folder the owner deleted under the old layout: it came back empty.
+        os.makedirs(os.path.join(before, "gone"))
+        with open(os.path.join(before, "gone", "state.json"), "w") as f:
+            json.dump({"name": "Gone"}, f)
+        os.makedirs(os.path.join(self.folder("Gone"), "maps"))
+        self.d.once()
+        self.assertTrue(os.path.exists(os.path.join(self.folder(), ".visor", "state.json")))
+        self.assertIn("opera Grand: its record moved in beside its notes, to .visor/", self.logged)
+        self.assertFalse(os.path.exists(before))
+        self.assertFalse(os.path.exists(self.folder("Gone")), "the empty folder went with its record")
+        self.run_until(lambda: self.state_of()["view"]["phase"] != "S1901M")
+
+    def test_ending_early_shows_everything_and_carrying_on_hides_it_again(self):
+        _, page = self.start("Opera:\nCharacters: " + ", ".join(CAST[:6]) + "\nYou: Austria\nEnds: 1902\n")
+        self.run_until(lambda: opera.next_step(self.state_of())[0] == "wait")
+        self.tick(page, "Ready: send these")
+        self.run_until(lambda: self.state_of()["talk"] and self.state_of()["talk"]["round"] == 2
+                       and opera.next_step(self.state_of())[0] == "wait")
+        text = self.page(page)
+        self.assertIn("## Ending the game\n\n- [ ] End the game early:", text)
+        self.assertGreater(text.index("## Ending the game"), text.index("## Your move"), "apart, at the bottom")
+        talk = os.path.join(self.folder(), "talk")
+        theirs = lambda: [t for t in os.listdir(talk) if "Austria" not in t and t != "Everyone.md"]
+        self.assertEqual(theirs(), [])
+        asked = len(self.asked)
+        self.tick(page, "End the game early")
+        self.d.once()
+        state = self.state_of()
+        self.assertEqual(state["over"], {"how": "early", "winners": [], "phase": "S1901M"})
+        text = self.page(page)
+        self.assertIn("**Ended early, in Spring 1901:** nobody won, and the characters will not remember it.", text)
+        self.assertIn("- [ ] Continue the game:", text)
+        self.assertIn("- [ ] Delete this game:", text)
+        self.assertNotIn("End the game early", text)
+        self.assertTrue(theirs(), "every conversation shown")
+        self.assertTrue(os.listdir(os.path.join(self.folder(), "memory")), "and every notebook")
+        self.assertIn("[[Grand]]: Opera, ended early", self.status())
+        self.assertIsNone(self.d.once(), "nothing more to do")
+        self.assertEqual(len(self.asked), asked, "nobody wrote what they remember")
+        self.assertFalse(os.path.exists(os.path.join(self.tasks, "characters", "Mara", "memory", "Opera - Grand.md")))
+        self.tick(page, "Continue the game")
+        self.d.once()
+        self.assertIsNone(self.state_of()["over"])
+        self.assertEqual(theirs(), [], "the others' talk hidden again")
+        self.assertFalse(os.path.exists(os.path.join(self.folder(), "memory")), "and the notebooks")
+        self.assertIn("- [ ] End the game early:", self.page(page))
+        self.assertEqual(opera.next_step(self.state_of()), ("wait", "your messages"), "it goes on from there")
+
+    def test_a_game_that_is_over_can_be_deleted_and_one_ended_early_carried_on_to_its_end(self):
+        _, page = self.start("Opera: a quick one\nCharacters: " + ", ".join(CAST) + "\nCommunication: Silence\n"
+                             "Ends: 1901\n")
+        text = self.page(page)
+        self.assertIn("- [ ] End the game early: it stops where it is, nobody wins, and the characters will not "
+                      "remember it\n", text, "nothing hidden to show in a game they play by themselves")
+        self.tick(page, "End the game early")
+        self.d.once()
+        self.assertEqual(self.state_of()["over"]["how"], "early")
+        self.tick(page, "Continue the game")
+        self.d.once()
+        self.run_until(lambda: self.state_of()["over"] and not self.state_of()["recap_due"])
+        self.assertEqual(self.state_of()["over"]["how"], "end")
+        self.assertTrue(os.path.exists(os.path.join(self.tasks, "characters", "Mara", "memory", "Opera - Grand.md")),
+                        "a game carried on to its end is remembered")
+        text = self.page(page)
+        self.assertNotIn("Continue the game", text)
+        self.tick(page, "Delete this game")
+        self.d.once()
+        self.assertFalse(os.path.exists(self.folder()))
+        self.assertIn("opera Grand: deleted, as its page asked", self.logged)
+        self.assertNotIn("Grand", self.status())
+
 
 if __name__ == "__main__":
     unittest.main()

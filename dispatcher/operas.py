@@ -6,15 +6,19 @@ phase resolved. Each step is a piece of work in the queue (work_queue): a charac
 work, and gives way to anything new in inbox/; what the owner's Ready lets happen is theirs, and goes
 first. What the owner writes in a game's page is read each pass (sync_operas).
 
-What is secret stays out of the notes: the game itself (the rules engine's game.json and the state:
-every message, notebook and order) is in visor's state folder. The folder in the notes shows what its
-reader may see: in a game only characters play, everything as it happens; in one the owner plays,
-their own conversations and the table's, and the rest once the game is over.
+A game is its folder, and the folder is all of it. The game itself (the rules engine's game.json and
+the state: every message, notebook and order) is kept beside the notes, hidden, in the folder's
+.visor/: the notes app does not show a folder whose name starts with a dot, and Obsidian Sync never
+copies one. The rest of the folder shows what its reader may see: in a game only characters play,
+everything as it happens; in one the owner plays, their own conversations and the table's, and the
+rest once the game is over. A game whose page is gone is forgotten (tidy_operas): the owner deleted
+it, or moved it out of opera/ to keep what they can see of it.
 """
 
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 
@@ -25,13 +29,18 @@ import media
 import models
 import opera
 
-from dispatcher.notes import copy_in, HERE, IDLE, move, slug, split_note, unflagged, write_file
+from dispatcher.notes import copy_in, HERE, IDLE, move, split_note, unflagged, write_file
 
 ENGINE = os.path.join(HERE, "opera_engine.py")
 MAPS, TALK, NOTEBOOKS, HISTORY = "maps", "talk", "memory", "history.md"
+RECORD = ".visor"  # the game itself, in its folder: hidden from the notes app and from Obsidian Sync
 RETRY = 1800  # a step that failed is tried again after this long, or when the page changes
 # What a page's name in the notes may not hold.
 UNSAFE = re.compile(r'[\\/:*?"<>|#^\[\]]')
+
+
+class GameGone(Exception):
+    """The game's page is no longer there: the owner deleted the game, or moved it out of opera/."""
 
 
 class Operas:
@@ -53,7 +62,21 @@ class Operas:
         return found
 
     def _opera_dir(self, name):
-        return os.path.join(self.state_dir, "opera", slug(name + ".md"))
+        return os.path.join(self.opera_folder, name, RECORD)
+
+    def _opera_page(self, name):
+        return os.path.join(self.opera_folder, name, name + ".md")
+
+    def _opera_subfolder(self, name, sub):
+        """One of the game's folders in the notes, made again if the owner took it away; GameGone if the
+        game's page is gone, so nothing is written back into a game the owner deleted."""
+        if not os.path.isfile(self._opera_page(name)):
+            raise GameGone(name)
+        folder = os.path.join(self.opera_folder, name, sub)
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+            os.chmod(folder, 0o2775)
+        return folder
 
     def _opera_file(self, name):
         return os.path.join(self._opera_dir(name), "state.json")
@@ -104,7 +127,7 @@ class Operas:
             owner_text = split_note(unflagged(f.read()))[0]
         setup, problems = opera.read_setup(owner_text, known, time.localtime(self.now()).tm_year)
         folder = os.path.join(self.opera_folder, name)
-        if os.path.exists(folder) or os.path.exists(self._opera_dir(name)):
+        if os.path.exists(folder):
             problems.insert(0, f"there is already a game called `{name}`, in `opera/{name}/`. Give this note a "
                                "name of its own and move it back to `inbox/`.")
         if not problems:
@@ -127,11 +150,11 @@ class Operas:
             self.hand_back(path, "opera", "Visor could not start this game: " + " ".join(problems)
                            + "\n\n`sample-opera.md` shows how an Opera note works.")
             return f"handed back {note}: {problems[0]}"
-        for where in (self.opera_folder, folder, os.path.join(folder, MAPS), os.path.join(folder, TALK)):
+        for where in (self.opera_folder, folder, os.path.join(folder, MAPS), os.path.join(folder, TALK),
+                      self._opera_dir(name)):
             if not os.path.isdir(where):
                 os.makedirs(where)
                 os.chmod(where, 0o2775)
-        os.makedirs(self._opera_dir(name), exist_ok=True)
         state = opera.new_state(name, setup, players, self._engine(name, "new"))
         path = move(path, folder)
         self._opera_draw(name, state)
@@ -147,7 +170,7 @@ class Operas:
         """The map of the phase as it stands, into the game's maps/."""
         phase = state["view"]["phase"]
         self._engine(name, "draw", {"out": "map.svg", "said": opera.phase_said(phase, state["start"])})
-        target = os.path.join(self.opera_folder, name, MAPS, self._map_file(name, phase, state["start"]))
+        target = os.path.join(self._opera_subfolder(name, MAPS), self._map_file(name, phase, state["start"]))
         copy_in(os.path.join(self._opera_dir(name), "map.svg"), target)
 
     def _put(self, path, text):
@@ -167,9 +190,11 @@ class Operas:
 
     def _opera_write(self, name, state, drafts=True):
         """The game's page, its conversations, notebooks and history, as their reader may see them. drafts:
-        keep what the owner has written in the page and visor has not taken in, as they left it."""
+        keep what the owner has written in the page and visor has not taken in, as they left it. GameGone if
+        the page is gone: a game the owner deleted is never written back."""
         folder = os.path.join(self.opera_folder, name)
-        page = os.path.join(folder, name + ".md")
+        page = self._opera_page(name)
+        talk_folder = self._opera_subfolder(name, TALK)
         places = opera.Places(state["view"]["names"])
         you = state["you"]
         secret = you is not None and not state["over"]
@@ -194,24 +219,40 @@ class Operas:
         self._put(page, text)
         state["written"] = text
         for (a, b), messages in opera.conversations(state["messages"]).items():
-            if secret and you not in (a, b) and a != opera.EVERYONE:
-                continue
             title = "Everyone" if a == opera.EVERYONE else f"{opera.country(a)} and {opera.country(b)}"
-            self._put(os.path.join(folder, TALK, title + ".md"), opera.talk_note(a, b, messages, state["start"]))
+            path = os.path.join(talk_folder, title + ".md")
+            if secret and you not in (a, b) and a != opera.EVERYONE:
+                # Hidden again, after a game ended early was carried on.
+                if os.path.exists(path):
+                    os.remove(path)
+                continue
+            self._put(path, opera.talk_note(a, b, messages, state["start"]))
+        notebooks = os.path.join(folder, NOTEBOOKS)
         if not secret and state["notebooks"]:
-            os.makedirs(os.path.join(folder, NOTEBOOKS), exist_ok=True)
+            notebooks = self._opera_subfolder(name, NOTEBOOKS)
             for power, notebook in state["notebooks"].items():
                 who = state["players"][power]
-                self._put(os.path.join(folder, NOTEBOOKS, f"{who}.md"),
+                self._put(os.path.join(notebooks, f"{who}.md"),
                           f"# {who}'s notebook, as {opera.country(power)}\n\n{notebook}\n")
+        elif secret and os.path.isdir(notebooks):
+            for who in state["players"].values():
+                if who and os.path.exists(os.path.join(notebooks, f"{who}.md")):
+                    os.remove(os.path.join(notebooks, f"{who}.md"))
+            try:
+                os.rmdir(notebooks)
+            except OSError:
+                pass  # the owner keeps something of their own there
         self._put(os.path.join(folder, HISTORY), opera.history_note(state, places))
 
     def sync_operas(self):
-        """Each pass: what the owner wrote in the page of a game they play, once they leave it alone:
-        messages sent, orders read and written back with how each was read, Ready taken."""
+        """Each pass: games whose page is gone forgotten (tidy_operas); then what the owner wrote in each
+        game's page, once they leave it alone. Under Ending the game, in any game: End the game early,
+        Continue the game, Delete this game. In a game they play: messages sent, orders read and written
+        back with how each was read, Ready taken."""
+        self.tidy_operas()
         for name, page in self.operas():
             state = self._opera_load(name)
-            if not state or not state["you"] or state["over"]:
+            if not state:
                 continue
             try:
                 with open(page, encoding="utf-8") as f:
@@ -220,11 +261,85 @@ class Operas:
                 continue
             if text == state.get("written") or not self.settled(page, "settle_game"):
                 continue
-            said = self._opera_take(name, state, text)
-            self._opera_write(name, state, drafts=False)
+            end, go_on, delete = opera.read_ending(split_note(unflagged(text))[1])
+            over = state["over"]
+            if delete and over:
+                shutil.rmtree(os.path.join(self.opera_folder, name), ignore_errors=True)
+                self.log(f"opera {name}: deleted, as its page asked")
+                continue
+            if end and not over:
+                state["over"] = {"how": "early", "winners": [], "phase": state["view"]["phase"]}
+                state["recap_due"] = []  # nobody remembers a game that was ended early
+                said = "ended early, as its page asked: nobody won, and nobody will remember it"
+            elif go_on and over and over.get("how") == "early":
+                state["over"] = None
+                said = "carried on, as its page asked"
+            elif state["you"] and not over:
+                said = self._opera_take(name, state, text)
+            elif end or go_on or delete:
+                said = None  # a box that does nothing now: written back unticked
+            else:
+                continue
+            try:
+                self._opera_write(name, state, drafts=False)
+            except GameGone:
+                continue  # tidied away next pass
             self._opera_save(name, state)
             if said:
                 self.log(f"opera {name}: {said}")
+
+    def tidy_operas(self):
+        """Games kept where visor kept them before, in its state folder, move in beside their notes; and a
+        game whose page is gone (deleted, or moved out of opera/) is forgotten: its hidden record taken
+        away, and with it what visor left in its folder, so the folder goes too once nothing else is in it."""
+        before = os.path.join(self.state_dir, "opera")
+        if os.path.isdir(before):
+            for entry in sorted(os.listdir(before)):
+                kept = os.path.join(before, entry)
+                try:
+                    with open(os.path.join(kept, "state.json"), encoding="utf-8") as f:
+                        name = json.load(f).get("name") or ""
+                except (OSError, ValueError):
+                    name = ""
+                if name and os.path.isfile(self._opera_page(name)) and not os.path.exists(self._opera_dir(name)):
+                    shutil.move(kept, self._opera_dir(name))
+                    os.chmod(self._opera_dir(name), 0o2775)
+                    self.log(f"opera {name}: its record moved in beside its notes, to {RECORD}/")
+                    continue
+                shutil.rmtree(kept, ignore_errors=True)
+                if name and not name.startswith(".") and os.path.isdir(os.path.join(self.opera_folder, name)):
+                    self._opera_forget(name)
+                self.log(f"opera {name or entry}: its page is gone, so visor has forgotten the game")
+            try:
+                os.rmdir(before)
+            except OSError:
+                pass
+        try:
+            names = os.listdir(self.opera_folder)
+        except FileNotFoundError:
+            return
+        for name in names:
+            if not name.startswith(".") and os.path.isdir(self._opera_dir(name)) \
+                    and not os.path.isfile(self._opera_page(name)):
+                self._opera_forget(name)
+                self.log(f"opera {name}: its page is gone, so visor has forgotten the game")
+
+    def _opera_forget(self, name):
+        """A game's hidden record, and what visor left in its folder (unfinished copies of its notes, and
+        folders left empty), taken away. What the owner has there of their own stays."""
+        folder = os.path.join(self.opera_folder, name)
+        shutil.rmtree(self._opera_dir(name), ignore_errors=True)
+        for root, _, files in os.walk(folder, topdown=False):
+            for file in files:
+                if file.startswith(".") and file.endswith(".visor-tmp"):
+                    try:
+                        os.remove(os.path.join(root, file))
+                    except OSError:
+                        pass
+            try:
+                os.rmdir(root)
+            except OSError:
+                pass  # something else is in it
 
     def _opera_take(self, name, state, text):
         """What the owner wrote, taken into the game. Returns what was done, or None."""
@@ -278,8 +393,8 @@ class Operas:
                 continue
             link = f"[[{name}]]"
             if state["over"]:
-                lines.append(f"- {link}: Opera, over" + (", the players writing what they remember of it"
-                                                         if state["recap_due"] else ""))
+                lines.append(f"- {link}: Opera, " + ("ended early" if state["over"].get("how") == "early" else "over")
+                             + (", the players writing what they remember of it" if state["recap_due"] else ""))
                 continue
             step = opera.next_step(state)
             said = f"- {link}: Opera, {opera.phase_said(state['view']['phase'], state['start'])}"
@@ -358,21 +473,38 @@ class Operas:
                 return None
         except game.Stopped:
             return f"opera {name}: gave way to a note in inbox/"
+        except GameGone:
+            return self._opera_gone(name)
         except (game.GameError, media.MediaError, OSError, ValueError) as error:
+            if not os.path.isfile(page):
+                return self._opera_gone(name)
             state["failed_at"] = self.now()
             state["problem"] = str(error).strip().splitlines()[0] if str(error).strip() else error.__class__.__name__
             self._opera_save(name, state)
-            self._opera_write(name, state)
+            try:
+                self._opera_write(name, state)
+            except GameGone:
+                return self._opera_gone(name)
             self._opera_save(name, state)
             livelog.append(log, f"*{time.strftime('%H:%M')}* **Could not:** {state['problem']}\n\n")
             return f"opera {name}: a step failed: {state['problem']}"
+        if not os.path.isfile(page):
+            return self._opera_gone(name)
         state.pop("failed_at", None)
         state.pop("problem", None)
         self._opera_save(name, state)
         livelog.append(log, f"*{time.strftime('%H:%M')}* {said}\n\n")
-        self._opera_write(name, state)
+        try:
+            self._opera_write(name, state)
+        except GameGone:
+            return self._opera_gone(name)
         self._opera_save(name, state)
         return f"opera {name}: {said}"
+
+    def _opera_gone(self, name):
+        """A step that ended after the game's page went: thrown away, and the game forgotten."""
+        self._opera_forget(name)
+        return f"opera {name}: its page went while a step ran, so the step was thrown away and the game forgotten"
 
     def _opera_memory(self, who):
         try:
@@ -435,7 +567,7 @@ class Operas:
         orders = {p: state["orders"].get(p, []) for p in living}
         reply = self._engine(name, "process", {"orders": orders, "orders_map": "orders.svg",
                                                "said": opera.phase_said(resolved, start)})
-        target = os.path.join(self.opera_folder, name, MAPS, self._map_file(name, resolved, start))
+        target = os.path.join(self._opera_subfolder(name, MAPS), self._map_file(name, resolved, start))
         copy_in(os.path.join(self._opera_dir(name), "orders.svg"), target)
         view = reply["view"]
         state["view"] = view
