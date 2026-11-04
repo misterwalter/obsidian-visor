@@ -8,6 +8,7 @@ import re
 import shutil
 
 import kinds
+import retention
 import schedule
 import settings
 
@@ -80,6 +81,8 @@ def parse_header(owner_text):
                 header[key] = value
         elif not header[key]:
             header[key] = value
+    if retention.problem(header.get(retention.KEY)):
+        header["problems"].append(retention.problem(header[retention.KEY]) + ".")
     return header
 
 

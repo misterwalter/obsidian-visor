@@ -33,7 +33,10 @@ COPY = ("Copy this note into `inbox/` under a name of your own and fill it in. I
         "`UNUSED` (or taken out, if it was empty), and a line it reads that you left out is added with "
         "what it stands at. An empty line, `Model:`, means the project's or the character's own setting. "
         "`Repeat: daily`, `Repeat: monday, 07:00` or `Repeat: idle` makes it run again and again: see "
-        "\"Repeating notes\" below.")
+        "\"Repeating notes\" below. `Retain Logs (days):` is how long this note's logs are kept after its last "
+        "run, a whole number of days: its live log in `logs/`, and the record of each run on the server. "
+        "Left empty, its project's setting or `VISOR.md`'s; visor clears them nightly. The note, its answers "
+        "and what it made are never deleted, nor what a chat or a game carries on from.")
 
 DAILY = """**Repeating notes.** A note's `Repeat:` line says whether it runs again, and when:
 

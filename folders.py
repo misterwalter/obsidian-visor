@@ -67,6 +67,9 @@ def snapshot(folder, canon=False):
         os.makedirs(HISTORIES, exist_ok=True)
         git("init", "--quiet", "--bare", "--initial-branch", "main", repo)
         git("--git-dir", repo, "config", "core.bare", "false")
+    # No log of where its branches pointed (the reflog): the history itself is the record (retention.py).
+    git("--git-dir", repo, "config", "core.logAllRefUpdates", "false")
+    shutil.rmtree(os.path.join(repo, "logs"), ignore_errors=True)  # what one kept before
     # Written every time, so that a history made before a rule was added follows it too.
     with open(os.path.join(repo, "info", "exclude"), "w") as f:
         f.write(CANON_EXCLUDE if canon else EXCLUDE)

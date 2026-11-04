@@ -20,6 +20,7 @@ the owner's to make where they read what it means, and nothing at all where ther
 import re
 
 import board
+import retention
 import settings
 import sources
 
@@ -60,9 +61,16 @@ TIMING = (
      "not every pass."),
 )
 DEFAULTS = {setting: recommended for _, setting, recommended, _, _, _ in TIMING}
+# How long logs are kept, in days (retention.py): (line, setting, lowest, highest, what it does).
+RETAIN = (retention.LINE, "retain_logs", 0, retention.MOST,
+          "How long logs are kept after a note's last run, unless the note or its project says otherwise: its "
+          "live log in `logs/`, and the record of each run on the server. Also how long visor's own log is kept, "
+          "in `logs/visor/`, a file a day. Visor clears what is due nightly, at its first quiet moment after "
+          "3 in the morning, and says in its own log what it cleared. A note, its answers and what it made are "
+          "never deleted, nor what a chat or a game carries on from.")
 DIRECT = "Allow non-VPN web traffic"
 KEYS = ("auto-update", "update now", "pause", "restart", "default model", "review", "reviewer", "safe search",
-        DIRECT.lower()) + tuple(line.lower() for line, *_ in TIMING)
+        DIRECT.lower(), retention.KEY) + tuple(line.lower() for line, *_ in TIMING)
 # DuckDuckGo's levels of safe search, and what each does.
 SAFE_SEARCH = board.SAFE_SEARCH_SAYS
 # A server's on/off settings: (the box, the setting it is).
@@ -102,13 +110,14 @@ def network(state, allowed):
     return lines
 
 
-def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None):
+def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=()):
     """The note, whole. said: the settings as they stand ({"auto", "paused", "default_model",
     "review", "reviewer", "direct"} and each
     TIMING setting). version: {"commits": [(when, message, hash)],
     "behind": [(when, message, hash)], "last": text}. health: lines. reading: (the sources,
     what visor found in each, problems with the section) for `## Browse` (sources.render).
-    net: the VPN's state for `## Network` ({"installed", "up", "proxy"})."""
+    net: the VPN's state for `## Network` ({"installed", "up", "proxy"}). logs: a line for each log on this
+    server, for `## Logs`."""
     net = net or {"installed": True, "up": False, "proxy": ""}
     lines = ["# Visor", "",
              "This server's version, settings and health. Tick or untick a box to change a setting: one on its "
@@ -154,6 +163,11 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
               "is not taken, and what was set before stays.", ""]
     for line, setting, recommended, low, high, what in TIMING:
         lines += [f"{line}: {said[setting]}", "", f"{what} Recommended: {recommended}. From {low} to {high}.", ""]
+    line, setting, low, high, what = RETAIN
+    lines += ["## Logs", "", f"{line}: {said.get(setting, retention.DEFAULT)}", "", f"{what} From {low} to {high}.", "",
+              "Every log on this server, where it is, and how long it is kept:", ""]
+    lines += list(logs) or ["- (listed when health is next checked)"]
+    lines += [""]
     lines += [sources.render(*reading)]
     lines += ["## Health", ""] + (list(health) or ["- (checked every ten minutes)"]) + [""]
     return "\n".join(lines)
@@ -184,6 +198,15 @@ def read(text, said, models):
                 actions.add(key)
             continue
         if key in dict(SWITCHES) and key in switched:
+            continue
+        if key == retention.KEY:
+            line, setting, low, high, _ = RETAIN
+            value = entry["value"].strip()
+            if value.isdigit() and low <= int(value) <= high:
+                found[setting] = int(value)
+            elif value:
+                problems.append(f"`{line}: {value}` must be a whole number of days from {low} to {high}. "
+                                f"Kept: {said.get(setting, retention.DEFAULT)}.")
             continue
         if key in timing:
             line, setting, low, high = timing[key]

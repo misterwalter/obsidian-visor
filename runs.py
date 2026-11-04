@@ -10,9 +10,9 @@ has already used.
 
 A run is kept while a note it was for is anywhere in the notes folder, since a later
 round can carry on from it: a build from its workspace, a chat from its conversation.
-Once no note claims it (the note deleted, or the run started by hand), it is deleted a
-day later. The day lets a note be away a while (a sync, a move), and leaves a run made
-by hand there to look at.
+Once no note claims it (the note deleted, or the run started by hand), it is deleted after
+VISOR.md's Retain Logs (days), and never sooner than a day: the day lets a note be away a
+while (a sync, a move), and leaves a run made by hand there to look at.
 
     runs.py name NOTE MODEL HARNESS WORK RESULTS   make a new run's results folder; print its name
 """
@@ -72,8 +72,8 @@ def claimed(states, notes):
     return found
 
 
-def sweep(work, results, claimed_, unclaimed, now):
-    """Delete the runs no note has claimed for KEEP_UNCLAIMED seconds. unclaimed: {run: when it
+def sweep(work, results, claimed_, unclaimed, now, keep=KEEP_UNCLAIMED):
+    """Delete the runs no note has claimed for `keep` seconds. unclaimed: {run: when it
     was first found unclaimed}, as the last sweep left it. Returns (unclaimed as it is now, the
     runs deleted, the runs that could not be)."""
     on_disk = set()
@@ -86,7 +86,7 @@ def sweep(work, results, claimed_, unclaimed, now):
     left, deleted, stuck = {}, [], []
     for run in sorted(on_disk - claimed_):
         since = unclaimed.get(run, now)
-        if now - since < KEEP_UNCLAIMED:
+        if now - since < keep:
             left[run] = since
         elif remove(os.path.join(work, run)) and remove(os.path.join(results, run)):
             deleted.append(run)

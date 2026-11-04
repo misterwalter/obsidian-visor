@@ -291,7 +291,8 @@ else
   CLONE_FROM="$REPO_SRC"
 fi
 if [ -n "$CLONE_FROM" ]; then
-  git clone --quiet "$CLONE_FROM" "$WORK" || { say "clone failed"; exit 1; }
+  # No reflog in the workspace: its history is the record, and the workspace goes with the run's logs.
+  git clone --quiet -c core.logAllRefUpdates=false "$CLONE_FROM" "$WORK" || { say "clone failed"; exit 1; }
 fi
 cd "$WORK" || exit 1
 TARGET=""

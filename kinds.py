@@ -24,6 +24,7 @@ one table (LINES): what it is added as, when it counts, and whether it is shown 
 import collections
 import re
 
+import retention
 import settings
 
 ROUNDS = ("analysis", "plan", "build", "write", "agent", "chat", "game", "opera")
@@ -122,6 +123,11 @@ LINES = {
 # nothing to be told, so there it is marked UNUSED. `Last run:` is visor's, written when a repeat
 # run starts, and never added.
 TOLD_ON_REPEAT = ("analysis", "plan", "build", "write", "agent", "chat", "game", "image", "edit", "scene image", "video")
+# Every kind of note that writes a log says how long it is kept (retention.py); left empty, the project's
+# setting or VISOR.md's. A New project note writes none.
+for _kind, _lines in LINES.items():
+    if _kind != "new project":
+        _lines.append(line(retention.LINE))
 # An Opera note is not run again: it becomes its game's page, in opera/.
 for _kind, _lines in LINES.items():
     if _kind == "opera":

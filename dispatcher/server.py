@@ -339,7 +339,7 @@ class Server:
         """The settings VISOR.md shows and steers, as they stand."""
         said = {"auto": self.self_update, "paused": self.paused, "default_model": self.default_model,
                 "review": self.review, "reviewer": self.reviewer, "direct": self.allow_direct,
-                "safe_search": self.safe_search}
+                "safe_search": self.safe_search, "retain_logs": self.retain_logs}
         said.update({setting: self.wait(setting) for setting in server_note.DEFAULTS})
         return said
 
@@ -361,6 +361,8 @@ class Server:
         self.safe_search = said.get("safe_search", self.safe_search)
         if "live_log_every" in said:
             self.live_log_every = str(said["live_log_every"])
+        if "retain_logs" in said:
+            self.retain_logs = int(said["retain_logs"])
         self.timing.update({setting: said[setting] for setting in server_note.DEFAULTS
                             if setting in said and setting != "live_log_every"})
         if said.get("last_update"):
@@ -375,7 +377,7 @@ class Server:
     def reading_folders(self, name):
         """Where a source is: its folder, or for visor-logs, visor's log and the live logs."""
         if name == sources.BUILT_IN:
-            return [self.log_path, self.logs]
+            return [self.logs]
         return [sources.resolve(self.reading[name]["where"], sources.vault_of(self.tasks))]
 
     def reading_described(self, name):
@@ -430,12 +432,14 @@ class Server:
             self.version["commits"] = self._commits("-3", "HEAD")
         if self.health_at is None or self.now() - self.health_at >= self.wait("health_every"):
             self.health, self.health_at = self._health(), self.now()
+            self.logs_said = self._logs_said()
         if self._reading_looked != (json.dumps(self.reading, sort_keys=True), self.health_at):
             self._look_at_reading()
         installed = self.vpn_installed()
         fresh = server_note.render(self._server_said(), self.version, self.health, models, self._server_problems,
                                    (self.reading, self.reading_found, self._reading_problems),
-                                   {"installed": installed, "up": installed and self.vpn_up(), "proxy": self.vpn_proxy})
+                                   {"installed": installed, "up": installed and self.vpn_up(), "proxy": self.vpn_proxy},
+                                   getattr(self, "logs_said", ()))
         if fresh != text:
             write_file(path, fresh)
         self._server_written = fresh
@@ -516,8 +520,11 @@ class Server:
                 unclaimed = json.load(f)
         except (OSError, ValueError):
             unclaimed = {}
+        # A run no note claims goes after VISOR.md's Retain Logs, and never sooner than a day, which lets a
+        # note be away a while (a sync, a move).
+        keep = max(self.retain_logs, 1) * 86400
         unclaimed, deleted, stuck = runs.sweep(self.work, self.results, runs.claimed(states, notes), unclaimed,
-                                               self.now())
+                                               self.now(), keep)
         write_file(path, json.dumps(unclaimed, indent=2))
         if deleted:
             self.log(f"deleted {len(deleted)} run{'s' if len(deleted) != 1 else ''} no note claims any more: "

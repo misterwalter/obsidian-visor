@@ -11,7 +11,7 @@ journal: Journal | my personal journal
 a name, the folder (in the vault, or a full path), and after `|` what it is,
 which the agent is told. Visor looks in each and writes under it what it found
 (`✓ 1,412 notes named by date, 2019-04-02 to 2026-10-24`), or why it cannot read
-it. `visor-logs` is always there: `dispatch.log` and the live logs in `logs/`.
+it. `visor-logs` is always there: visor's own log (`logs/visor/`) and the live logs in `logs/`.
 
 **Nothing can be changed.** For each part of a run, visor copies each source's
 text files (`sources.stage`) into a folder of the run's own, and the wall shows

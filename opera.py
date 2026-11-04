@@ -25,6 +25,7 @@ import json
 import random
 import re
 
+import retention
 import settings
 
 COUNTRIES = ("Austria", "England", "France", "Germany", "Italy", "Russia", "Turkey")
@@ -35,7 +36,7 @@ SAID = {press: word for word, press in COMMUNICATION.items()}
 ROUNDS = 2                 # talk rounds a phase, sealed
 FIRST_YEAR = 1901          # the engine's first year; a game shown from another adds the difference
 EVERYONE = "EVERYONE"
-KEYS = ("opera", "characters", "you", "start", "ends", "communication")
+KEYS = ("opera", "characters", "you", "start", "ends", "communication", retention.KEY)
 SEASONS = {"S": "Spring", "F": "Fall", "W": "Winter"}
 NOTEBOOK_WORDS = 300
 WIN = 18

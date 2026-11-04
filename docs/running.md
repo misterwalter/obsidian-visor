@@ -15,8 +15,13 @@ journalctl --user -u visor-dispatch -f
 - `dispatch.py status` prints what is running, what is waiting and what ran
   last: the same as `STATUS.md`. `once --dry-run` says what it would do next.
   Both only read.
-- `journalctl -f` follows the dispatcher's log until Ctrl-C; `-u` names the
-  service. The same lines are kept in `~/.local/state/visor/dispatch.log`.
+- `journalctl -f` follows what the service itself prints until Ctrl-C; `-u`
+  names the service. That is little: visor's log is in the notes, in
+  `logs/visor/`, a file a day, and the service prints only what it cannot write
+  there (before it has read its settings, or while the notes folder is away).
+  What goes wrong in the journal, Ollama's errors included, is copied into
+  visor's log as it happens. VISOR.md's `## Logs` lists every log on the server
+  and how long each is kept.
 
 In a shell entered by switching user, `systemctl --user` may say it cannot
 reach the bus. Run `export XDG_RUNTIME_DIR=/run/user/$(id -u)` first.

@@ -23,6 +23,7 @@ import os
 import re
 
 import network
+import retention
 import settings
 
 # What a project can be told, beyond where it is. The first choice of each is the default.
@@ -40,7 +41,7 @@ NOTES = {
 REACH = network.LINES
 # What a note that names no project (an `Agent:` errand) stands at for each line it leaves out: every
 # setting's default, and no source, tests or model of its own.
-NONE = {"source": None, "folder": False, "tests": "", "model": None, **{key: "" for key in REACH},
+NONE = {"source": None, "folder": False, "tests": "", "model": None, retention.KEY: "", **{key: "" for key in REACH},
         **{key: choices[0] for key, choices in CHOICES.items()}}
 CHANGES = "## Changes"
 KEPT_CHANGES = 15
@@ -110,6 +111,10 @@ def load(path):
             raise ValueError(f"{path}: [{section}] needs either source (a repository) or folder (a plain folder)")
         project = {"source": source or folder, "folder": bool(folder), "tests": entry.get("tests", ""),
                    "model": (entry.get("model") or "").strip().lower() or None}
+        if (entry.get(retention.KEY) or "").strip():
+            if retention.problem(entry[retention.KEY]):
+                raise ValueError(f"{path}: [{section}] {retention.problem(entry[retention.KEY])}")
+            project[retention.KEY] = entry[retention.KEY].strip()
         project.update({key: entry.get(key, "") for key in REACH})
         for key, choices in CHOICES.items():
             value = (entry.get(key) or choices[0]).strip().lower()
@@ -128,7 +133,7 @@ def save(path, projects):
         project = projects[name]
         lines.append(f"[project {name}]")
         lines.append(("folder = " if project["folder"] else "source = ") + project["source"])
-        for key in ("tests", "model") + tuple(CHOICES) + tuple(REACH):
+        for key in ("tests", "model") + tuple(CHOICES) + tuple(REACH) + (retention.KEY,):
             if project.get(key):
                 lines.append(f"{key} = {project[key]}")
         lines.append("")
@@ -182,6 +187,11 @@ def panel(name, project, models, default_model, remote="", godot=False, problems
                   "sandbox: before and after every build. Left empty, visor looks for one the first time it "
                   "builds (pytest, unittest, npm, cargo, go or make) and writes here what it found. "
                   "`Tests: none` builds without tests, and then nothing checks a build.", ""]
+    lines += [f"{retention.LINE}: {project.get(retention.KEY) or ''}".rstrip(), "",
+              "How long the logs of this project's notes are kept after each note's last run, in days: their "
+              "live logs in `logs/`, and the record of each run on the server. Left empty, `VISOR.md`'s. A "
+              "note's own line wins. Visor clears them nightly; a note, its answers and what it made are never "
+              "deleted.", ""]
     lines += [CHANGES, ""] + (list(changes)[-KEPT_CHANGES:] or ["Nothing yet."]) + [""]
     return "\n".join(lines)
 
@@ -194,8 +204,15 @@ def read_panel(text, project, models):
     choices = dict(CHOICES, model=(DEFAULT,) + tuple(models))
     standing = dict(project, model=own_model(project, models))
     wanted, problems = {}, []
-    for entry in settings.scan(top, tuple(choices) + ("tests",) + tuple(REACH))[0]:
+    for entry in settings.scan(top, tuple(choices) + ("tests", retention.KEY) + tuple(REACH))[0]:
         key = entry["key"]
+        if key == retention.KEY:
+            value = entry["value"].strip()
+            if retention.problem(value):
+                problems.append(f"{retention.problem(value)}. Kept: {project.get(key) or 'empty'}.")
+            elif entry["boxes"] is None:
+                wanted[key] = value
+            continue
         if key == "tests":
             if not project["folder"] and entry["boxes"] is None:
                 wanted[key] = entry["value"].strip().strip("`").strip()
@@ -224,7 +241,7 @@ def read_panel(text, project, models):
         if wanted.get(key, standing.get(key)) == standing.get(key):
             wanted[key] = "yes" if on else "no"
     # In the note's own order, whichever way each was read.
-    order = ["model"] + list(CHOICES) + list(REACH) + ["tests"]
+    order = ["model"] + list(CHOICES) + list(REACH) + ["tests", retention.KEY]
     changed = {key: wanted[key] for key in sorted(wanted, key=lambda k: order.index(k) if k in order else len(order))
                if wanted[key] != (standing.get(key) or "")}
     earlier = [line for line in listed.splitlines() if re.match(r"^- \d{4}-", line)]

@@ -119,6 +119,30 @@ cannot find and stops.
 
 To update by hand, `git pull` and `./install.sh` again. With auto-update on, visor does both itself ([Running](running.md)).
 
+## The system's journal
+
+Visor keeps its own log in the notes, and nothing about the server's work only
+on the server. Two things it cannot set itself, because they are the system's:
+how the system's journal keeps what Ollama and visor's own services print, and
+whether visor may read Ollama's part of it. Both are once, by an administrator:
+
+```bash
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nStorage=volatile\nRuntimeMaxUse=50M\n' | sudo tee /etc/systemd/journald.conf.d/visor.conf
+sudo systemctl restart systemd-journald
+sudo usermod -aG systemd-journal AGENT_ACCOUNT
+```
+
+- The first three keep the journal in memory only, at most 50 MB, gone when the
+  server restarts: enough to see what just went wrong, and nothing kept. This
+  is the whole machine's journal, not only visor's.
+- The last lets visor's account read Ollama's lines, which it copies into its
+  own log when they say something went wrong. It takes effect at its next login
+  (a restart of the server, with lingering on).
+
+VISOR.md's `## Logs` says how the journal keeps things here, and whether visor
+can read Ollama's part.
+
 ## Sharing the notes with your own account
 
 The notes are written by two accounts: visor's, and whichever one brings your

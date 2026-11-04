@@ -305,7 +305,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("--plan-only", call)
         self.assertNotIn("--notes", call, "a fresh task has nothing to add")
         note = self.read("output", "task.md")
-        self.assertTrue(note.startswith("Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nBranch:\nRepeat: no\nOn repeat:\nMake the thing.\n"),
+        self.assertTrue(note.startswith("Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nBranch:\nRetain Logs (days):\nRepeat: no\nOn repeat:\nMake the thing.\n"),
                         "the owner's text is kept, with the lines a Plan reads added to its top")
         self.assertIn("## Plan, ", note)
         self.assertIn("official model", note)
@@ -317,7 +317,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "task.md", "Project: game\nMake the thing.\n")
         self.d.once()
         with open(self.calls_made()[0][1]) as f:
-            self.assertEqual(f.read(), "Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nBranch:\nRepeat: no\nOn repeat:\nMake the thing.\n")
+            self.assertEqual(f.read(), "Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nBranch:\nRetain Logs (days):\nRepeat: no\nOn repeat:\nMake the thing.\n")
 
     def test_an_analysis_question_gets_an_analysis_round(self):
         self.note("inbox", "q.md", "Project: textgame\nModel: official\nAnalysis: why is it slow?\n")
@@ -2873,7 +2873,7 @@ class DispatchTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.tasks, "output", "agent", "president.md")))
         self.assertTrue(note.startswith("Agent: who was the 19th president?\nUNUSED Branch: x\nUNUSED Canon only: yes\n"
                                         "Project:\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\n"
-                                        "Repeat: no\nOn repeat:\n"), note)
+                                        "Retain Logs (days):\nRepeat: no\nOn repeat:\n"), note)
         self.assertIn("## Answer, ", note)
         self.assertIn("Answer from coder-official.", note)
         self.assertNotIn("pull request", note)
@@ -3745,21 +3745,21 @@ class DispatchTest(unittest.TestCase):
         self.journal()
         self.note("inbox", "diary.md", "Project: game\nModel: official\nBrowse: journal\nAnalysis: x\n")
         self.d.once()
-        os.makedirs(self.d.logs, exist_ok=True)
-        with open(self.d.log_path, "a") as f:
-            f.write("[2026-10-25 10:00:00] started\n")
+        os.makedirs(os.path.join(self.d.logs, "visor"), exist_ok=True)
+        with open(os.path.join(self.d.logs, "visor", "2026-10-25.md"), "a") as f:
+            f.write("**10:00:00** started\n")
         for note in ("diary.md", "plain.md"):
             with open(self.d.live_log(note, "official"), "a") as f:
                 f.write("## 2026-10-25 10:00 · analysis round\n")
         self.note("inbox", "slow.md", "Project: game\nModel: official\nBrowse: visor-logs\nAnalysis: why slow?\n")
         self.d.once()
         given = self.reading_of(1)["files"]
-        self.assertIn(os.path.join("visor-logs", "logs", "plain - official.md"), given)
-        self.assertNotIn(os.path.join("visor-logs", "logs", "diary - official.md"), given)
-        self.assertIn(os.path.join("visor-logs", "dispatch.log"), given)
+        self.assertIn(os.path.join("visor-logs", "plain - official.md"), given)
+        self.assertNotIn(os.path.join("visor-logs", "diary - official.md"), given)
+        self.assertIn(os.path.join("visor-logs", "visor", "2026-10-25.md"), given, "visor's own log")
         self.note("inbox", "both.md", "Project: game\nModel: official\nBrowse: visor-logs, journal\nAnalysis: x\n")
         self.d.once()
-        self.assertIn(os.path.join("visor-logs", "logs", "diary - official.md"), self.reading_of(2)["files"])
+        self.assertIn(os.path.join("visor-logs", "diary - official.md"), self.reading_of(2)["files"])
 
     def test_visor_md_says_how_long_a_game_waits_after_a_tick(self):
         self.d.once()
@@ -3902,6 +3902,8 @@ class DispatchTest(unittest.TestCase):
         self.assertTrue(dispatch.Dispatcher(self.config, self.state, log=self.logged.append).review)
 
     def test_runs_no_note_claims_are_deleted_a_day_after_between_jobs(self):
+        self.d.retain_logs = 1  # VISOR.md's Retain Logs (days): a run no note claims waits that long, at least a day
+        self.d.clear_logs = lambda force=False: None  # the nightly clearing is test_logs.py's
         self.note("inbox", "kept.md", "Project: game\nModel: official\nPlan: x\n")
         self.d.once()
         self.note("inbox", "deleted.md", "Project: game\nModel: official\nPlan: y\n")
@@ -4684,7 +4686,7 @@ class DispatchTest(unittest.TestCase):
         note = self.read("output", "a.md")
         self.assertTrue(note.startswith("Project: story\nModel: official\nWrite: five\nUNUSED Branch: tidy\n"
                                         "UNUSED Voice: bf_emma\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\n"
-                                        "- [x] Canon only\n\nRepeat: no\nOn repeat:\n\nDarker.\n"), note)
+                                        "- [x] Canon only\n\nRetain Logs (days):\nRepeat: no\nOn repeat:\n\nDarker.\n"), note)
         self.assertEqual(call[2], "coder-official")
         self.assertNotIn("--thinking", call, "an empty line is the project's setting, which is none")
 

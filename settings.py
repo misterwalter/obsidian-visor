@@ -50,7 +50,7 @@ def box_setting(name, names):
 
 
 # Any setting's shape, a name visor may not know: `Colour: blue`, or a group's title.
-ANY_KEY = re.compile(r"^\s*(UNUSED\s+)?([A-Za-z][A-Za-z0-9 _'-]{0,30}?)\s*(?:(:)\s*(.*?))?\s*$")
+ANY_KEY = re.compile(r"^\s*(UNUSED\s+)?([A-Za-z][A-Za-z0-9 _'()-]{0,30}?)\s*(?:(:)\s*(.*?))?\s*$")
 
 
 def _settings_follow(lines, start, key_line, names):

@@ -64,6 +64,7 @@ from dispatcher.board_time import BoardTime  # noqa: E402
 from dispatcher.chats import Chats  # noqa: E402
 from dispatcher.config import Config, ConfigError  # noqa: E402
 from dispatcher.games import Games  # noqa: E402
+from dispatcher.logs import Logs, TOOL_LOGS  # noqa: E402
 from dispatcher.looks import Looks  # noqa: E402
 from dispatcher.media_jobs import MediaJobs  # noqa: E402
 from dispatcher.model_notes import ModelNotes  # noqa: E402
@@ -93,7 +94,7 @@ PAUSED = "waiting: paused in VISOR.md, taking no new notes"
 
 
 class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Subjobs, MediaJobs, Looks, Repeats,
-                 Status, Server):
+                 Status, Server, Logs):
     """Visor: one of these takes the notes and runs what they ask, one at a time (once, serve). Each
     part is a class of its own in dispatcher/; their methods share this object's settings and state."""
 
@@ -102,8 +103,8 @@ class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Su
         self.state_dir = state_dir
         self.tasks_state = os.path.join(state_dir, "tasks")
         os.makedirs(self.tasks_state, exist_ok=True)
-        self.log_path = os.path.join(state_dir, "dispatch.log")
         self.log = log or self._log_to_file
+        self._journal_at, self.logs_said, self.tool_logs = None, [], TOOL_LOGS
         self.other_run_active = other_run_active or _a_run_is_going
         self.holding_lock = False  # true while this dispatcher's own job has the run lock
         self.repeat_run = False     # true while a repeating note runs: it starts from the owner's text alone
@@ -119,13 +120,18 @@ class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Su
         self.reading, self.reading_found, self._reading_problems, self._reading_looked = {}, {}, [], None
         self.server_state = os.path.join(state_dir, "server.json")
         self._server_set(self._server_kept())
+        self._upkeep(self.move_old_log)
         make_runnable(self.log)
 
     def _log_to_file(self, message):
-        line = f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] {message}"
-        print(line, flush=True)
-        with open(self.log_path, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        """Visor's log, in the notes (logs/visor/, dispatcher/logs.py). Only what cannot be written there, before
+        the settings are read or while the notes folder is away, goes to the service's own output instead."""
+        try:
+            if not hasattr(self, "logs"):
+                raise OSError("no notes folder yet")
+            self.write_visor_log(message)
+        except OSError:
+            print(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] {message}", flush=True)
 
     # The loop
 
@@ -301,6 +307,8 @@ class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Su
         if self.pruned_at is None or self.now() - self.pruned_at >= PRUNE_EVERY:
             self.pruned_at = self.now()
             self._upkeep(self.prune_runs)
+        self._upkeep(self.watch_journals)
+        self._upkeep(self.clear_logs)
         return last_update
 
 

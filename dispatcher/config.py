@@ -14,6 +14,7 @@ import game
 import media
 import models
 import projects
+import retention
 import server_note
 
 from dispatcher.notes import (
@@ -74,6 +75,10 @@ class Config:
         # Live logs: what each run is doing, readable in the notes while it goes.
         self.logs = visor.get("logs", os.path.join(self.tasks, "logs"))
         self.live_log_every = visor.get("live_log_every", "60")
+        # How long logs are kept after a note's last run, in days, unless the note or its project says
+        # otherwise (retention.py). VISOR.md shows it, and changes it there.
+        said = retention.days(visor.get("retain_logs", ""))
+        self.retain_logs = retention.DEFAULT if said is None else said
         # The VPN tunnel's proxy on this machine: where a run given the web is led, and nowhere else.
         self.vpn_proxy = visor.get("vpn_proxy", "127.0.0.1:25344")
         # The owner's forum for agents: its address, and the words kept out of posts.
@@ -193,7 +198,8 @@ class Config:
         changed, problems, listed = ({}, [], []) if text is None else projects.read_panel(text, project, models)
         for key, value in changed.items():
             was = projects.own_model(project, models) if key == "model" else project.get(key) or "nothing"
-            label = projects.REACH[key][0] if key in projects.REACH else key.capitalize()
+            label = (projects.REACH[key][0] if key in projects.REACH else
+                     retention.LINE if key == retention.KEY else key.capitalize())
             listed.append(f"- {_stamp()}: {label}, {was} → {value or 'nothing'}")
             self.log(f"{name}: {key} {was} -> {value or 'nothing'}, from its config.md")
             project[key] = value

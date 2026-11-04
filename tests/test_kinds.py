@@ -19,7 +19,7 @@ class KindsTest(unittest.TestCase):
         tidied = kinds.tidy(note, "image")
         self.assertEqual(tidied, "Image: a fox in snow\nUNUSED Project: game\n- [x] Full quality\n\n"
                                  "Model:\nSize:\nCount: 1\nSeed:\nSteps:\nNegative:\nPose:\nPose from:\nPose parts: body\n"
-                                 "Pose strength: 0.8\n- [ ] Fix hands\n- [ ] Finish\n\nCharacters:\nRepeat: no\nOn repeat:\n\n"
+                                 "Pose strength: 0.8\n- [ ] Fix hands\n- [ ] Finish\n\nCharacters:\nRetain Logs (days):\nRepeat: no\nOn repeat:\n\n"
                                  "Rain, wide shot.\n")
         self.assertEqual(kinds.tidy(tidied, "image"), tidied, "a tidy note stays as it is")
 
@@ -34,15 +34,15 @@ class KindsTest(unittest.TestCase):
 
     def test_an_empty_line_or_an_unticked_group_another_kind_reads_is_taken_out(self):
         note = "Speak:\nProject:\nWeb\n- [ ] yes\n- [ ] no\nVoice: bf_emma\n\nRead this.\n"
-        self.assertEqual(kinds.tidy(note, "speak"), "Speak:\nVoice: bf_emma\nSpeed: 1.0\nLanguage:\nRepeat: no\n\nRead this.\n")
+        self.assertEqual(kinds.tidy(note, "speak"), "Speak:\nVoice: bf_emma\nSpeed: 1.0\nLanguage:\nRetain Logs (days):\nRepeat: no\n\nRead this.\n")
 
     def test_a_ticked_group_another_kind_reads_is_marked_on_its_title(self):
         note = "Transcribe: ![[memo.m4a]]\nCanon only\n- [x] yes\n- [ ] no\nLanguage: en\n"
         tidied = kinds.tidy(note, "transcribe")
         self.assertEqual(tidied, "Transcribe: ![[memo.m4a]]\nUNUSED Canon only\n- [x] yes\n- [ ] no\n\nLanguage: en\n"
-                                 "Repeat: no\n")
+                                 "Retain Logs (days):\nRepeat: no\n")
         self.assertEqual([e["key"] for e in settings.scan(tidied, kinds.WORDS, top_only=True)[0]],
-                         ["transcribe", "language", "repeat"])
+                         ["transcribe", "language", "retain logs (days)", "repeat"])
 
     def test_a_second_line_for_one_setting_is_marked_since_only_the_first_counts(self):
         note = "Project: story\nWrite: five\nModel: writer\nModel: official\n"
@@ -71,7 +71,7 @@ class KindsTest(unittest.TestCase):
         self.assertIn("\n- [ ] Full quality", tidied, "visor never takes the prefix off: the default comes back")
 
     def test_a_note_with_no_settings_gets_them_at_the_top_and_its_body_is_untouched(self):
-        self.assertEqual(kinds.tidy("Just some words.\n", "transcribe"), "Language:\nRepeat: no\n\nJust some words.\n")
+        self.assertEqual(kinds.tidy("Just some words.\n", "transcribe"), "Language:\nRetain Logs (days):\nRepeat: no\n\nJust some words.\n")
         body = "Plan: x\nProject: p\n\nThe prose starts here.\nModel: this is prose, not a setting\n"
         self.assertTrue(kinds.tidy(body, "plan").endswith("\n\nThe prose starts here.\nModel: this is prose, not a setting\n"))
 

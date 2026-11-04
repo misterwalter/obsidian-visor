@@ -21,6 +21,7 @@ import re
 
 import board
 import network
+import retention
 import schedule
 import settings
 
@@ -56,7 +57,7 @@ PLAIN = ("speak", "reference", "lora", "boards") + tuple(network.LINES)
 def blank(model):
     """A new character's settings: the given language model, and nothing else allowed."""
     return dict({key: choices[0] for key, choices in CHOICES.items()}, model=model, image="no", speak="no",
-                reference="", lora="", boards="", lan="", loopback="", **{"board time": "no"})
+                reference="", lora="", boards="", lan="", loopback="", **{"board time": "no", retention.KEY: ""})
 
 
 def render(name, character, models, image_models, problems=()):
@@ -92,7 +93,11 @@ def render(name, character, models, image_models, problems=()):
               "`board-log.md`, `board.md` (their own notes), `threads/` and `finds/`. It says when, as a note's "
               "`Repeat:` does: `daily`, `monday, friday, 18:00`, `idle` (whenever the server has nothing else to "
               "do), or `no` (only in a chat that asks). `Boards:` names the boards they visit, `/mind/, /env/`; "
-              "left empty, every board. `Web`, ticked, lets them search the web there too.", ""]
+              "left empty, every board. `Web`, ticked, lets them search the web there too.", "",
+              f"{retention.LINE}: {character.get(retention.KEY) or ''}".rstrip(), "",
+              "How long the logs of their board visits are kept after the last one, in days: the live log in "
+              "`logs/`, and the record of each visit on the server. Left empty, `VISOR.md`'s. Visor clears them "
+              "nightly; what they did, in their folder, is theirs and never cleared.", ""]
     lines += [f"Speak: {character['speak']}", "",
               "`Speak:` is the voice their turns are read aloud in, from the list in `sample-speak.md`, "
               "such as `bf_emma`, or a voice of their own mixed from several, `(25 af_heart 75 am_david)`; "
@@ -129,7 +134,7 @@ def read(text, standing, models, image_models):
                      looks="" if looks.strip() == LOOKS_HINT else looks.strip())
     choices = dict(CHOICES, model=tuple(models), image=("no",) + tuple(image_models))
     problems = []
-    entries = settings.scan(top, tuple(choices) + PLAIN + ("board time",))[0]
+    entries = settings.scan(top, tuple(choices) + PLAIN + ("board time", retention.KEY))[0]
     # A setting shown as a box (Full quality) and also typed as a line: the line, when it is the change.
     typed = {e["key"]: e["value"].strip().lower() for e in entries if e["boxes"] is None and not e.get("toggle")}
     for entry in entries:
@@ -146,6 +151,13 @@ def read(text, standing, models, image_models):
                 problems.append(f"Under `Board time`, {problem} Kept: {standing.get(key)}.")
             else:
                 character[key] = value or "no"
+            continue
+        if key == retention.KEY:
+            value = entry["value"].strip()
+            if retention.problem(value):
+                problems.append(f"{retention.problem(value)}. Kept: {standing.get(key) or 'empty'}.")
+            elif entry["boxes"] is None:
+                character[key] = value
             continue
         if key in network.LINES:
             value = entry["value"].strip().strip("`").strip()

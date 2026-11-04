@@ -28,8 +28,8 @@ with open(browse.__file__, encoding="utf-8") as _f:
 
 HEADING = "## Browse"
 BUILT_IN = "visor-logs"
-BUILT_IN_SAYS = ("visor's own records: its log of what it did and decided (dispatch.log), and the live log "
-                 "of each note's runs (logs/)")
+BUILT_IN_SAYS = ("visor's own records: its log of what it did and decided (logs/visor/, a file a day), and "
+                 "the live log of each note's runs (logs/)")
 # One source a line: a name, the folder, and after `|` what it is.
 LINE = re.compile(r"^\s*(?:[-*+]\s+)?([A-Za-z0-9][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$")
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
