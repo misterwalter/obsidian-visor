@@ -354,6 +354,18 @@ TESTED=no
 
 if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
 
+# visor's own commands this run has (inside/): said in its instructions (bin/commands-said), and set up below.
+# A chat talks and draws in its own ways; a folder project's files are all in the owner's notes already.
+TALKS=no; [ "$ROUND" != chat ] && TALKS=yes
+SHOWS=no; [ "$TALKS" = yes ] && [ "$FOLDER" != yes ] && SHOWS=yes
+COMMANDS=()
+[ "$SHOWS" = yes ] && COMMANDS+=(show)
+[ "$TALKS" = yes ] && COMMANDS+=(tell finish)
+[ -n "$READING" ] && COMMANDS+=(browse)
+[ -n "$CHAN" ] && COMMANDS+=(chan)
+[ -n "$DRAW" ] && COMMANDS+=(image)
+[ "$KIND" = godot ] && COMMANDS+=(godot)
+
 # Standing instructions go in the system prompt, because a harness keeps that
 # whole when it summarises a long conversation. The first message does not
 # survive a summary, and an agent that has lost the test command invents one.
@@ -387,6 +399,8 @@ if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
       cat "$HERE/prompts/$ROUND.md"
     fi
   fi
+  # The commands, said together and early: they are not in the model's list of tools, where it looks first.
+  [ ${#COMMANDS[@]} -gt 0 ] && { echo; bash "$HERE/bin/commands-said" "${COMMANDS[@]}"; }
   if [ "$KIND" = godot ] && [ "$WRITES" = yes ]; then
     echo; cat "$HERE/prompts/godot.md"
   elif [ -n "$TESTS" ]; then
@@ -529,7 +543,7 @@ export VISOR_HARNESS_SETTINGS="$WALL/harness"   # what wall.sh gives the harness
 # The owner's messages while the agent works: the dispatcher writes them in talk/, the model door
 # puts them in the conversation, and what the agent tells the owner comes out through told/.
 TALK=""
-if [ "$ROUND" != chat ]; then
+if [ "$TALKS" = yes ]; then
   TALK="$OUT/talk"
   mkdir -p "$TALK" "$OUT/told" "$OUT/finish"
   export VISOR_TELL_DIR="$OUT/told"
@@ -615,7 +629,7 @@ doors_open || { say "the doors did not open: $(for door in "${DOOR_LOGS[@]}"; do
 # What the agent shows the owner (inside/show) lands here; the dispatcher copies it into the notes.
 # A chat has its own ways of showing, so it gets no such folder; nor does a folder project, whose
 # files are all in the owner's notes already.
-if [ "$ROUND" != chat ] && [ "$FOLDER" != yes ]; then
+if [ "$SHOWS" = yes ]; then
   mkdir -p "$OUT/shown"
   export VISOR_SHOW_DIR="$OUT/shown"
 fi

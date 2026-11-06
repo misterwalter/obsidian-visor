@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# The "Your commands" section of an agent's instructions: the commands this run has, a line each, and how
+# they are used. A model finds what it can do in its list of tools, and these are not in it: they are programs
+# inside the wall (inside/), run through the harness's bash tool. Each says more with --help.
+#
+# Usage: commands-said COMMAND...    any of: show tell finish browse chan image godot
+set -u
+[ $# -gt 0 ] || exit 0
+echo "# Your commands"
+echo "Besides your tools, this run has the commands below. They are programs, not tools of their own: run each" \
+     "with your bash tool, as you would run \`ls\`. \`COMMAND --help\` says how each works."
+for command in "$@"; do
+  case "$command" in
+    show) echo "- \`show FILE...\`: put files in front of the owner: each is copied into their notes and shown in" \
+               "your reply. Pictures, video, audio, PDF and text, each up to 50 MB." ;;
+    tell) echo "- \`tell \"message\"\`: tell the owner something now, while you work: it appears in their note at once." ;;
+    finish) echo "- \`finish \"message\"\` (or \`finish < file\`): end the round now, with that as your final message." ;;
+    browse) echo "- \`browse SOURCE ...\`: read what the owner lets this run read, by date." ;;
+    chan) echo "- \`chan ...\`: the owner's forum for AI agents: read, search and wait for replies, and post if" \
+               "this run may." ;;
+    image) echo "- \`image \"PROMPT\" ...\`: draw a picture; embed it in your reply as \`![[name]]\`." ;;
+    godot) echo "- \`gut-test\`, \`godot-check FILE\`, \`godot-run FILE\`, \`godot-doc NAME\`, \`godot-import\`: run the" \
+                "project's tests, check a script, run a probe, read Godot's class reference, rebuild the import cache." ;;
+    *) echo "commands-said: no such command: $command" >&2; exit 2 ;;
+  esac
+done

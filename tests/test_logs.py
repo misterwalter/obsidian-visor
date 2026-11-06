@@ -50,8 +50,11 @@ class LogsTest(unittest.TestCase):
         os.makedirs(self.state)
         with open(os.path.join(self.state, "starters.json"), "w") as f:
             json.dump(["dreamshaper", "looker", "pix2pix", "small"], f)
-        # A fixed day, 04:00 local time: after the nightly clearing's hour.
-        self.clock = time.mktime(time.strptime("2026-11-04 04:00", "%Y-%m-%d %H:%M"))
+        # 04:00 local time, after the nightly clearing's hour, two days from now: always later than the files'
+        # change times, which a test cannot set back, so what it writes is settled.
+        day = time.strftime("%Y-%m-%d", time.localtime(time.time() + 2 * DAY))
+        self.clock = time.mktime(time.strptime(day + " 04:00", "%Y-%m-%d %H:%M"))
+        self.today = day
         self.d = self.fresh()
 
     def fresh(self, log=None):
@@ -175,7 +178,7 @@ class LogsTest(unittest.TestCase):
         for note in ("drop", "keep", "zero"):
             self.assertTrue(os.path.exists(os.path.join(self.tasks, "output", "agent", f"{note}.md")), "notes stay")
         self.assertEqual(os.listdir(os.path.join(self.tasks, "logs", "visor")),
-                         ["2026-11-04.md"], "visor's log past 30 days goes")
+                         [self.today + ".md"], "visor's log past 30 days goes")
         self.assertEqual(os.listdir(os.path.join(self.root, "godot", "Game", "logs")), [], "the tools' own, nightly")
         state = self.d.load_state("drop.md")
         self.assertEqual((state["runs"], state["last_build"]), ([], {}), "its next round starts afresh")

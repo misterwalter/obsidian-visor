@@ -4,6 +4,7 @@
 #
 # --only FILE   run only the test files whose name contains FILE
 # --test NAME   run only the test functions whose name contains NAME
+[ "${1:-}" = --help ] && { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0; }  # its header, above, says how
 set -u
 here="$(dirname "$(realpath "$0")")"
 case "${1:-}" in

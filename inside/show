@@ -7,6 +7,7 @@
 # Pictures, video, audio, PDF and text: what the notes app shows. Each file up to
 # 50 MB. A file is copied as it is when `show` runs; showing it again after a change
 # shows the new one beside the old.
+[ "${1:-}" = --help ] && { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0; }  # its header, above, says how
 set -u
 OUT=/run/show
 LIMIT=$((50 * 1024 * 1024))
@@ -19,7 +20,9 @@ for file in "$@"; do
   fi
   case "${file,,}" in
     *.png|*.jpg|*.jpeg|*.gif|*.webp|*.mp4|*.webm|*.mov|*.mp3|*.wav|*.ogg|*.m4a|*.flac|*.pdf|*.md|*.txt|*.csv|*.json|*.log) ;;
-    *) echo "show: $file: only pictures, video, audio, PDF and text can be shown" >&2; status=1; continue ;;
+    *) echo "show: $file: only pictures, video, audio, PDF and text can be shown: png, jpg, jpeg, gif, webp," \
+            "mp4, webm, mov, mp3, wav, ogg, m4a, flac, pdf, md, txt, csv, json, log. Save it as one of those first." >&2
+       status=1; continue ;;
   esac
   if [ "$(stat -c %s "$file")" -gt "$LIMIT" ]; then
     echo "show: $file is over 50 MB" >&2; status=1; continue

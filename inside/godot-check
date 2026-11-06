@@ -2,6 +2,7 @@
 # Check one script (.gd) or shader (.gdshader) for errors, without running the
 # tests. Exit status 0 means it compiled. Errors are printed with file and line.
 # Usage: godot-check <file>
+[ "${1:-}" = --help ] && { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0; }  # its header, above, says how
 set -u
 [ $# -eq 1 ] || { echo "usage: godot-check <file>" >&2; exit 2; }
 exec "$(dirname "$(realpath "$0")")/door-request" "check $1"

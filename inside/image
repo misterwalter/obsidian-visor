@@ -11,6 +11,7 @@
 # --count draws up to 8, each from the next seed. --pose names
 # a skeleton image in the library. --as says whose picture it is, when one writer plays
 # several characters; without it the picture is the speaker's own.
+[ "${1:-}" = --help ] && { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0; }  # its header, above, says how
 set -u
 DOOR=/run/visor/media.sock
 [ -S "$DOOR" ] || { echo "image: nobody here may draw" >&2; exit 2; }

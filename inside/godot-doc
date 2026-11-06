@@ -3,6 +3,7 @@
 #   godot-doc Node2D            its own methods, properties, signals and constants, and what it inherits
 #   godot-doc Node2D look       the members whose name holds "look", in Node2D and what it inherits
 #   godot-doc look_at           the classes that have a member called look_at
+[ "${1:-}" = --help ] && { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0; }  # its header, above, says how
 set -u
 [ $# -ge 1 ] && [ $# -le 2 ] || { echo "usage: godot-doc CLASS | godot-doc CLASS WORD | godot-doc WORD" >&2; exit 2; }
 exec "$(dirname "$(realpath "$0")")/door-request" "doc $*"
