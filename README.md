@@ -1,9 +1,7 @@
 # obsidian-visor
 A general local AI server, controlled via Obsidian notes.
 
-You run Obsidian Visor on a linux/WSL server. It takes task notes from a shared notes folder, runs a
-local model on each one inside a sandbox, and writes the answer back into the
-note.
+Obsidian Visor runs on a linux (or WSL) server, within a synced obsidian notes journal. It takes task notes from a shared notes folder, runs sandboxed local models to accomplish your aims, and returns logs, answers, and generated media via notes and synced files. The entire process is controlled via obsidian sync, which cuts the knot on a lot of security questions. However no software is 100% secure, even less so when agents are involved, so you should keep your head attached while using this.
 
 The agent loop is off the shelf: [pi](https://github.com/earendil-works/pi),
 with any model Ollama runs. These scripts are the wrapper around it: a fresh copy of the project for every task, a sandbox around the
