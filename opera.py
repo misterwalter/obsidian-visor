@@ -560,6 +560,10 @@ def rules(state, power, who, character, memory):
               "each, five a fifth, so fewer survivors means a bigger share. Anyone may propose a draw with their "
               "orders; if everyone left accepts it at the next moves, the game ends then, shared the same way. A "
               "country with no units and no supply centres is out.",
+              "You must be agressive to win. You must take territory to win. Playing passive is almost never a good idea,"
+              " and leaving neutral territory uncaptured is almost always a waste. Alliances should have a purpose,",
+              " and often hold up best when they are built around a specific goal such as eliminating a specific player or taking over a region together.",
+              " Be mindful of how other players are advancing, and how you are advancing. You generally want to have more resources at the end of every year. ",
               "", press, "",
               f"You keep a notebook, private: no one else reads it. Each time you answer, write it out whole again: "
               f"what you plan, who promised what, whom you trust and whom you suspect. At most {NOTEBOOK_WORDS} words.",
