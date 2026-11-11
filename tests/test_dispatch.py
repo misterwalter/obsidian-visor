@@ -6,6 +6,7 @@ Godot, no network.
     python3 tests/test_dispatch.py
 """
 
+import collections
 import datetime
 import fcntl
 import fnmatch
@@ -26,9 +27,9 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 import dispatch  # noqa: E402
+import kinds  # noqa: E402
 import testmodels  # noqa: E402
 # Self-update reads where visor is in its own module: the tests stand in a checkout there.
-import dispatcher.looks as visor_looks  # noqa: E402
 import dispatcher.server as visor_server  # noqa: E402
 from dispatcher.notes import flagged  # noqa: E402
 
@@ -2684,17 +2685,30 @@ class DispatchTest(unittest.TestCase):
                 f.write(b"picture")
         return folder
 
-    def stand_in(self, made, seen, key="edit"):
-        """A stand-in for media.edit or media.generate: records what it was asked, makes pictures."""
-        def fake(settings, options, *rest, on_image=None, prompts=None, each=None, sources=None, half=False, **_):
+    def stand_in(self, made, seen, key="edit", between=None):
+        """A stand-in for media.edit or media.generate: records what it was asked, makes pictures. Given a plan
+        (a character set), it asks it for each picture as media.edit does, and calls between(n) after the nth."""
+        def fake(settings, options, *rest, on_image=None, each=None, plan=None, half=False, **_):
             job = rest[-1] if rest else _["job"]
+            prompts = sources = None
+            if plan:
+                prompts, sources = [], []
+                while (this := plan(len(prompts) + 1)) is not None:
+                    prompts.append(this[0])
+                    sources.append(this[1])
+                    self.made(job, f"{key}{len(seen) + 1}-{len(prompts) - 1}.png")
+                    if on_image:
+                        on_image(os.path.join(job, f"{key}{len(seen) + 1}-{len(prompts) - 1}.png"), 6 + len(prompts),
+                                 len(prompts))
+                    if between:
+                        between(len(prompts))
             seen.append(dict(options, pictures=rest[0] if len(rest) == 2 else None, prompts=prompts, each=each,
                              sources=sources, half=half))
-            n = len(prompts) if prompts else len(each) if each else int(options.get("count") or 1)
+            n = len(prompts) if prompts is not None else len(each) if each else int(options.get("count") or 1)
             files = []
             for i in range(n):
                 files.append(self.made(job, f"{key}{len(seen)}-{i}.png"))
-                if on_image:
+                if on_image and not plan:
                     on_image(files[-1], 7 + i, i + 1)
             return {"files": files, "seeds": [7 + i for i in range(n)],
                     "spec": {"name": "quick-edit", "steps": 4, "fast": True, "seed": 7, "width": 1024, "height": 1024,
@@ -2761,7 +2775,6 @@ class DispatchTest(unittest.TestCase):
                 mock.patch.object(dispatch.vision, "same_person", lambda *a: next(verdicts)):
             self.d.once()
         (asked,) = seen
-        self.assertEqual(os.path.basename(asked["pictures"][0]), "side.png", "her Reference: picture")
         self.assertEqual([[os.path.basename(p) for p in these] for these in asked["sources"]], [["side.png"]] * 3,
                          "Source count: 1, and she has a Reference:")
         self.assertEqual(len(asked["prompts"]), 3)
@@ -2770,10 +2783,10 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(len(os.listdir(os.path.join(folder, "candidates", "rejected"))), 1)
         note = self.read("output", "set.md")
         self.assertIn("looker does not see Mara: moved to `candidates/rejected/`", note)
-        self.assertIn("3 pictures, from `side.png`, their Reference: picture", note)
-        self.assertIn("the built-in 12 variations, drawn at random", note)
+        self.assertIn("3 pictures, from [[side.png]], their Reference: picture", note)
+        self.assertIn("from 12 variations, each drawn at random from the least used so far", note)
 
-    def set_asked(self, note, *names, reference=None):
+    def set_asked(self, note, *names, reference=None, between=None):
         """A character set run on Mara, whose looks/ holds names: what media.edit was asked, and the reply."""
         self.character("Mara", "A ferry pilot.")
         self.looks("Mara", *names)
@@ -2781,34 +2794,92 @@ class DispatchTest(unittest.TestCase):
             self.d._set_character_line("Mara", "Reference", reference)
         self.note("inbox", "set.md", note)
         seen = []
-        with mock.patch.object(dispatch.media, "edit", self.stand_in(None, seen)):
+        with mock.patch.object(dispatch.media, "edit", self.stand_in(None, seen, between=between)):
             self.d.once()
         (asked,) = seen
         return asked, self.read("output", "set.md")
 
-    def test_a_character_set_draws_its_variations_at_random_without_repeats_and_its_seed_draws_them_again(self):
+    @staticmethod
+    def variations_in(asked):
+        return [p.split("picture 1, ", 1)[1].split(". Keep", 1)[0] for p in asked["prompts"]]
+
+    def test_a_character_set_note_is_given_the_built_in_variations_ticked_to_untick_and_add_to(self):
+        asked, note = self.set_asked("Character set: Mara\nCount: 2\n", "front.png")
+        top = "Variations:\n" + "".join(f"- [x] {v}\n" for v in kinds.VARIATIONS)
+        self.assertIn(top, note, "every one written in, ticked, for the owner to untick and add to")
+        self.assertLess(note.index("Repeat: no"), note.index("Variations:"), "below the short lines")
+        emptied, note = self.set_asked("Character set: Mara\nCount: 2\nVariations:\n\nMy own words.\n", "front.png")
+        self.assertIn(top, note, "a list of nothing is given them again")
+        self.assertIn("My own words.", note)
+
+    def test_a_character_set_draws_its_variations_at_random_from_the_least_used_and_its_seed_draws_them_again(self):
         asked, note = self.set_asked("Character set: Mara\nCount: 12\nSeed: 5\n", "front.png")
-        used = [p.split("picture 1, ", 1)[1].split(". Keep", 1)[0] for p in asked["prompts"]]
-        builtin = list(visor_looks.VARIATIONS)
+        used = self.variations_in(asked)
+        builtin = list(kinds.VARIATIONS)
         self.assertEqual(sorted(used), sorted(builtin), "all twelve, once each")
         self.assertNotEqual(used, builtin, "not in the list's order")
         self.assertEqual(asked["seed"], "5")
-        self.assertIn(f"*{used[0]}* · from `front.png`", note, "each picture says what it was asked for")
+        self.assertIn(f"*{used[0]}* · from [[front.png]]", note, "each picture says what it was asked for")
         again, _ = self.set_asked("Character set: Mara\nCount: 12\nSeed: 5\n", "front.png")
         self.assertEqual(again["prompts"], asked["prompts"], "the same seed, the same draw")
         other, _ = self.set_asked("Character set: Mara\nCount: 12\nSeed: 6\n", "front.png")
         self.assertNotEqual(other["prompts"], asked["prompts"])
 
-    def test_a_character_set_s_own_variations_replace_the_built_in_ones(self):
-        asked, note = self.set_asked("Character set: Mara\nCount: 5\n\n## Variations\n- lying on a bed, reading\n"
-                                     "- serving drinks in a crowded tavern\n1. eating a pear\n\nA note to myself.\n",
-                                     "front.png")
-        used = [p.split("picture 1, ", 1)[1].split(". Keep", 1)[0] for p in asked["prompts"]]
-        self.assertEqual(len(used), 5)
-        self.assertEqual(set(used), {"lying on a bed, reading", "serving drinks in a crowded tavern",
-                                     "eating a pear"}, "each item of the list is one; the note's other text is not")
-        self.assertIn("your own 3 variations, drawn at random", note)
-        self.assertIn("5 pictures, from `front.png`, the one picture in `looks/`", note)
+    def test_a_character_set_uses_the_ticked_variations_each_as_often_as_the_others(self):
+        asked, note = self.set_asked("Character set: Mara\nCount: 8\n\nVariations:\n- [x] lying on a bed, reading\n"
+                                     "- [ ] seen from the front\n- [x] serving drinks in a crowded tavern\n"
+                                     "- [x] eating a pear\n- [x] eating a pear\n\nA note to myself.\n", "front.png")
+        used = self.variations_in(asked)
+        self.assertEqual(len(used), 8)
+        counts = collections.Counter(used)
+        self.assertEqual(set(counts), {"lying on a bed, reading", "serving drinks in a crowded tavern",
+                                       "eating a pear"}, "the ticked ones only, and the note's other text is not one")
+        self.assertLessEqual(max(counts.values()) - min(counts.values()), 1,
+                             "the least used each time: none twice before all once, a doubled one no more often")
+        self.assertIn("from 3 variations, each drawn at random", note)
+        self.assertIn("8 pictures, from [[front.png]], the one picture in `looks/`", note)
+
+    def test_a_character_set_with_every_variation_unticked_comes_back_undrawn(self):
+        self.character("Mara", "A ferry pilot.")
+        self.looks("Mara", "front.png")
+        self.note("inbox", "set.md", "Character set: Mara\nVariations:\n- [ ] seen from the front\n")
+        seen = []
+        with mock.patch.object(dispatch.media, "edit", self.stand_in(None, seen)):
+            self.d.once()
+        self.assertEqual(seen, [])
+        self.assertIn("every variation under `Variations:` is unticked", self.read("output", "set.md"))
+
+    def rewrite_working(self, old, new):
+        path = os.path.join(self.d.folder("working"), "set.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn(old, text)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text.replace(old, new))
+
+    def test_a_running_character_set_reads_its_variations_and_count_again_before_each_picture(self):
+        def between(n):
+            if n == 1:
+                self.rewrite_working("Count: 2", "Count: 3")
+                self.rewrite_working("- [x] lying on a bed\n", "- [x] lying on a bed\n- [x] eating a pear\n")
+        asked, note = self.set_asked("Character set: Mara\nCount: 2\nVariations:\n- [x] lying on a bed\n",
+                                     "front.png", between=between)
+        used = self.variations_in(asked)
+        self.assertEqual(used[:2], ["lying on a bed", "eating a pear"], "the one added, as used least, next")
+        self.assertEqual(len(used), 3, "Count: raised while it ran")
+        self.assertIn("`Variations:` or `Count:` changed while it ran", note)
+        log = open(self.d.live_log("set.md", "character set")).read()
+        self.assertIn("1: ![[Mara candidate ", log)
+        self.assertIn(" · *lying on a bed* · from [[front.png]]", log, "what each was, as it comes")
+
+    def test_a_running_character_set_stops_when_every_variation_is_unticked(self):
+        def between(n):
+            self.rewrite_working("- [x] lying on a bed", "- [ ] lying on a bed")
+        asked, note = self.set_asked("Character set: Mara\nCount: 4\nVariations:\n- [x] lying on a bed\n",
+                                     "front.png", between=between)
+        self.assertEqual(len(asked["prompts"]), 1)
+        self.assertIn("It stopped after 1 of 4: every variation under `Variations:` was unticked.", note)
+        self.assertIn("- [ ] lying on a bed", note, "the owner's change kept")
 
     def test_a_character_set_goes_by_source_count_pictures_drawn_for_each_the_reference_first(self):
         asked, note = self.set_asked("Character set: Mara\nCount: 6\nSource count: 2\n- [x] Half-size sources\n",
@@ -2818,8 +2889,9 @@ class DispatchTest(unittest.TestCase):
         self.assertTrue(all(these[0] == "front.png" and len(these) == 2 and these[1] != "front.png" for these in drawn))
         self.assertGreater(len({these[1] for these in drawn}), 1, "drawn afresh for each picture")
         self.assertTrue(asked["half"])
-        self.assertIn("each going by 2 of the 4 pictures in `looks/`, drawn at random for it, `front.png` (their "
+        self.assertIn("each going by 2 of the 4 pictures in `looks/`, drawn at random for it, [[front.png]] (their "
                       "Reference:) always first, at half size", note)
+        self.assertIn(f"· from [[front.png]], [[{drawn[0][1]}]]", note, "each one's sources, linked by name")
 
     def test_a_character_set_with_no_reference_draws_every_source_and_says_when_looks_has_too_few(self):
         asked, note = self.set_asked("Character set: Mara\nCount: 8\nSource count: 3\n", "bed.png", "drinks.png")

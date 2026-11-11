@@ -14,7 +14,10 @@ When visor takes a note it tidies the top of it in place (tidy):
   when left out. Where that comes from elsewhere (a project's or a character's
   config.md, the model's own size) the line is added empty, which means just that.
   Every line that means something for the kind is added, every time, so that the
-  owner, who sees only the notes, always sees every setting there is.
+  owner, who sees only the notes, always sees every setting there is;
+- a list (a Character set's `Variations:`) is a line with a box under it for each item, every
+  ticked one counting. It is added with its own items, all ticked, below the other lines, and
+  added again in place of one that lists nothing at all.
 
 Lines that make a note what it is (`Project:` on a Plan, `Chat:`, `Image:`), and visor's own
 `Last run:`, are never added and never removed. Each line says all of this of itself, in
@@ -35,7 +38,8 @@ MEDIA_ROUNDS = ("transcribe", "speak", "image", "skeleton", "edit", "character s
 class Line(collections.namedtuple("Line", "name default when given box")):
     """One line a kind reads, and all there is to know of it:
     - name, as written in a note;
-    - default, what it is added as when the note leaves it out ("" for an empty line);
+    - default, what it is added as when the note leaves it out ("" for an empty line); for a list,
+      a tuple of its items, each added as a ticked box;
     - when, given what visor knows of the note, whether it counts for it (None: always);
     - given: written by the owner or by visor, never added: the line that makes a note what it
       is (`Chat:`, `Project:` on a Plan), or visor's own record (`Last run:`);
@@ -48,6 +52,28 @@ class Line(collections.namedtuple("Line", "name default when given box")):
 
 def line(name, default="", when=None, given=False, box=False):
     return Line(name, default, when, given, box)
+
+
+def is_list(l):
+    return isinstance(l.default, tuple)
+
+
+# What a character set asks for when the note does not say: the same person, seen otherwise. Its note's
+# `Variations:` is filled in with these, and the owner unticks, adds and words them as they like.
+VARIATIONS = (
+    "seen from the front, a calm expression, soft even light, a plain light background",
+    "seen from the left side, in profile, a plain background",
+    "seen from the right side at three quarters, smiling, daylight",
+    "seen from slightly above, looking up, a neutral expression",
+    "a close-up of the face and shoulders, laughing, warm light",
+    "standing, the whole body in view, relaxed, outdoors in daylight",
+    "sitting on a chair, the whole body in view, indoors, evening light",
+    "in different clothes, plain and everyday, a plain background",
+    "seen from behind at three quarters, looking back over the shoulder",
+    "a serious expression, hard light from one side, a dark background",
+    "walking, caught mid-step, a street behind",
+    "in a coat and scarf, outdoors on a grey day",
+)
 
 
 # A note naming a project visor does not know (yet): which of a repository's lines and a folder's it reads
@@ -104,7 +130,8 @@ LINES = {
     "edit": [line("Edit", given=True), line("Negative"), line("Model"), line("Count", "1"), line("Seed"),
              QUALITY, line("Characters")],
     "character set": [line("Character set", given=True), line("Negative"), line("Model"), line("Count", "8"),
-                      line("Source count", "1"), line("Half-size sources", "no", box=True), line("Seed"), QUALITY],
+                      line("Source count", "1"), line("Half-size sources", "no", box=True), line("Seed"), QUALITY,
+                      line("Variations", VARIATIONS)],
     "train": [line("Train", given=True), line("Model"), line("Steps", "600"), line("Rank", "16"), line("Size")],
     "scene image": [line("Scene image", given=True), line("Negative"), line("Model"), line("Edit model"),
                     line("Rounds", "3"), line("Count", "4"), line("Seed"), QUALITY,
@@ -136,11 +163,15 @@ for _kind, _lines in LINES.items():
     if _kind in TOLD_ON_REPEAT and not any(l.key == "on repeat" for l in _lines):
         _lines.append(line("On repeat"))
     _lines.append(line("Last run", given=True))
+    # A list goes below the short lines, which would be lost under it.
+    _lines.sort(key=is_list)
 # Lines a note may hold anywhere in the owner's text: written below it, they are moved up into its
 # top, where settings are read (tidy).
 STRAYS = ("repeat", "on repeat")
 # Every setting a note may have that is not a round. The rounds are header words too.
 KEYS = tuple(dict.fromkeys(l.key for lines in LINES.values() for l in lines if l.key not in ROUNDS + MEDIA_ROUNDS))
+# The lines read as lists: every ticked box under them, not the one choice of a group (dispatcher/notes.py).
+LISTS = tuple(dict.fromkeys(l.key for lines in LINES.values() for l in lines if is_list(l)))
 WORDS = KEYS + ROUNDS + MEDIA_ROUNDS
 
 
@@ -261,18 +292,29 @@ def tidy(text, kind, ctx=None):
         if key in also:
             continue
         if key in wanted and key not in seen:
+            if is_list(wanted[key]) and not entry["boxes"] and not entry["value"].strip():
+                # A list that lists nothing: written again with its own items.
+                drop.update(range(entry["first"], entry["last"] + 1))
+                continue
             seen.add(key)
             continue
         if says_something(entry):
             mark.add(entry["first"])
         else:
             drop.update(range(entry["first"], entry["last"] + 1))
-    last = max((e["last"] for e in entries if e["first"] not in drop), default=-1)
+    kept = [e for e in entries if e["first"] not in drop]
+    last = max((e["last"] for e in kept), default=-1)
+    # A line left out goes under the last line, but above a list the owner wrote there, which would hide it.
+    short = max((e["last"] for e in kept if e["key"] not in LISTS), default=last)
     # The model a line left out stands at, when the caller knows it (an image job's default): written
     # in, so that the note shows which model draws it.
     defaults = {key: value for key, value in (ctx or {}).items() if key in wanted and value}
-    missing = [f"{l.name}: {defaults.get(l.key, l.default)}".rstrip() for l in wanted.values()
-               if not l.given and l.key not in seen]
+    missing = {at: [] for at in (short, last)}
+    for l in wanted.values():
+        if not l.given and l.key not in seen:
+            missing[last if is_list(l) else short].append(
+                "\n".join([f"{l.name}:"] + [f"- [x] {item}" for item in l.default]) if is_list(l) else
+                f"{l.name}: {defaults.get(l.key, l.default)}".rstrip())
     toggled = {e["first"]: e for e in entries if e.get("toggle")}
     out = []
     for i, row in enumerate(rows):
@@ -285,9 +327,9 @@ def tidy(text, kind, ctx=None):
             out.append(f"{settings.UNUSED}{name}: {toggled[i]['value']}")
         else:
             out.append(re.sub(r"^(\s*)", r"\1" + settings.UNUSED, row, count=1) if i in mark else row)
-        if i == last:
-            out += missing
-            missing = []
+        if i in missing:
+            out += missing.pop(i)
+    missing = [row for at in missing.values() for row in at]
     if missing:
         # A note with no settings at all yet: they go at the top.
         out = missing + ([""] if out and out[0].strip() else []) + out

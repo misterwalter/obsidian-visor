@@ -58,12 +58,19 @@ def split_note(text):
 
 def parse_header(owner_text):
     """What the top of a note says: project, model, round and the rest, each a `Key: value`
-    line or a group of tick boxes. Missing ones are None. header["problems"] lists
+    line or a group of tick boxes, and a list (kinds.LISTS) the items ticked under it. Missing
+    ones are None. header["problems"] lists
     anything that could not be read, such as a group with several boxes ticked."""
     header = dict.fromkeys(HEADER_KEYS + CHAT_PERMISSIONS + ("round", "round text"))
     header["problems"] = []
     for entry in settings.scan(owner_text, HEADER_WORDS, top_only=True)[0]:
         key, value = entry["key"], entry["value"].strip()
+        if key in kinds.LISTS:
+            # A list: every ticked box under it, or what its line says as one item; [] when nothing is ticked.
+            if header[key] is None:
+                header[key] = ([choice for on, choice in entry["boxes"] if on] if entry["boxes"] is not None else
+                               [value] if value else [])
+            continue
         if entry["boxes"] is not None:
             value, problem = settings.choose(entry["boxes"])
             if problem:

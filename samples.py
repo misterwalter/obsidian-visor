@@ -546,15 +546,19 @@ def character_set(ctx):
         "the ones that are them into `looks/`. With a vision model, visor moves the ones that do not look like "
         "them into `candidates/rejected/` first. Each set starts from what `looks/` holds, so sets build on sets, "
         "and a LoRA is trained from it. " + COPY,
-        "**Each picture is one variation, drawn at random** from a built-in dozen (from the side, from behind, "
-        "sitting, walking, in a coat...), without repeats until all have been used. To choose your own, list them "
-        "under a heading `## Variations` below the top, one a line, such as `- lying on a bed, reading` or "
-        "`- serving drinks in a crowded tavern`: then only yours are used. The reply says under each picture "
-        "which variation it was and which pictures it went by.",
+        "**Each picture is one of the ticked `Variations:`**, drawn at random from those used least so far, so "
+        "none comes twice before every ticked one has come once. Visor fills the list in with a dozen of its own "
+        "(from the side, from behind, sitting, walking, in a coat...): untick the ones you do not want, and add "
+        "your own as boxes under them, such as `- [x] lying on a bed, reading` or `- [x] serving drinks in a "
+        "crowded tavern`, one under another. A note with every one unticked comes back without drawing; one "
+        "whose `Variations:` lists nothing, or is taken out, is given the dozen again. **While it runs**, visor "
+        "reads the note again before each picture: a variation ticked, unticked or added, or `Count:` changed, "
+        "counts from the next picture on. The reply says under each picture which variation it was and links "
+        "the pictures it went by.",
         "| Line | Meaning | If left out |\n|---|---|---|\n"
         "| `Character set: <name>` | Whose pictures. | |\n"
         "| `Model:` | The edit model. | The one marked default. |\n"
-        "| `Count:` | How many pictures, up to 48. | 8 |\n"
+        "| `Count:` | How many pictures, up to 48. Raised or lowered while it runs, it makes that many. | 8 |\n"
         "| `Source count:` | How many pictures from `looks/` each one goes by, 1 to 3, drawn at random for "
         "each: their `Reference:` picture first, when they have one. More is truer to them, and each one "
         "more makes every picture slower. | 1 |\n"
@@ -562,8 +566,11 @@ def character_set(ctx):
         "the pictures made stay full size. | Unticked |\n"
         "| `Negative:` | What the pictures must not have, such as bunny ears. It counts only with `Quality: "
         "full`. | |\n"
-        "| `Seed:` | Where to start: the same seed draws the same variations and pictures again. | A random one. |\n"
-        "| `Quality` | As on an Edit note. | fast |",
+        "| `Seed:` | Where to start: the same seed draws the same variations and pictures again, unless the list "
+        "or `Count:` is changed while it runs. | A random one. |\n"
+        "| `Quality` | As on an Edit note. | fast |\n"
+        "| `Variations:` | What each picture asks for, a box each: every ticked one is used. | Visor's dozen, all "
+        "ticked. |",
         LOOKS, CPU, DAILY, ctx["edits"]])
     return "Character set: \n\n" + guide("How a Character set note works", body)
 

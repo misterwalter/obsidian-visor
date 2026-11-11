@@ -73,13 +73,20 @@ models, and the job's scratch folder (`~/.local/state/visor/media/<job>/`).
   picture is the one edited; the others, and `Characters:` references, are what
   it goes by.
 - `Character set: Mara` edits her `looks/` pictures into new ones, into
-  `looks/candidates/`. Each is one variation (angle, pose, expression, light,
-  clothes), drawn at random without repeats from the note's own `## Variations`
-  list, or else from a built-in dozen (`dispatcher/looks.py`, `VARIATIONS`). Each
-  goes by `Source count:` pictures drawn at random from `looks/` (1 to 3, her
-  `Reference:` first when she has one); `Half-size sources` reads them at half
-  the pixels (`source_megapixels` in `edit_graph`) while the picture made keeps
-  the first one's full size. The job's seed fixes both draws. With a vision model
+  `looks/candidates/`. Each is one of the note's ticked `Variations:` (angle,
+  pose, expression, light, clothes, or anything the owner writes), drawn at random
+  from those the run has used least. `Variations:` is a list, a box an item, every
+  ticked one counting (`kinds.LISTS`); tidying fills it in with a built-in dozen
+  (`kinds.VARIATIONS`) where the note leaves it out or lists nothing, and a note
+  with every one unticked comes back undrawn. Each picture goes by `Source count:`
+  pictures drawn at random from `looks/` (1 to 3, her `Reference:` first when she
+  has one); `Half-size sources` reads them at half the pixels (`source_megapixels`
+  in `edit_graph`) while the picture made keeps the first one's full size. The
+  job's seed fixes both draws. `media.edit` asks the job for each picture as it
+  comes (`plan`), and the job reads the note in `working/` again each time, so a
+  variation ticked, unticked or added, or `Count:` changed, counts from the next
+  picture on; with every one unticked, it stops there. The reply and the live log
+  give each picture's variation and link its sources by name. With a vision model
   (`vision.py`, `Kind: vision`) each is compared with the first picture it went
   by, and those that are not her go to `candidates/rejected/`. The owner moves the
   good ones into `looks/`.

@@ -770,17 +770,24 @@ class MediaTest(unittest.TestCase):
                 media.edit(self.settings, options, pictures, self.job)
             self.assertIn(said, str(caught.exception))
 
-    def test_a_character_set_is_one_edit_for_each_prompt(self):
+    def test_a_character_set_is_asked_for_each_picture_as_it_comes(self):
         self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
         self.edit_files()
         ref = os.path.join(self.tmp.name, "front.png")
         self.write(ref, "png")
-        seen = []
-        result = media.edit(self.settings, {"seed": "1"}, [ref], self.job, prompts=["from the left", "smiling"],
-                            on_image=lambda path, seed, n: seen.append((n, seed)))
+        seen, asked = [], []
+        def plan(n):
+            asked.append((n, len(seen)))
+            return ({1: "from the left", 2: "smiling"}[n], [ref]) if n <= 2 else None
+        media.edit(self.settings, {"seed": "1"}, [], self.job, plan=plan,
+                   on_image=lambda path, seed, n: seen.append((n, seed)))
         self.assertEqual(seen, [(1, 1), (2, 2)])
+        self.assertEqual(asked, [(1, 0), (2, 1), (3, 2)], "each asked for once the one before it is made")
         prompts = [json.loads(l)["positive"]["inputs"]["prompt"] for l in open(os.path.join(self.job, "graphs.jsonl"))]
         self.assertEqual(prompts, ["from the left", "smiling"])
+        with self.assertRaises(media.MediaError) as caught:
+            media.edit(self.settings, {"seed": "1"}, [], self.job, plan=lambda n: None)
+        self.assertIn("nothing to make", str(caught.exception))
 
     def test_a_character_set_goes_by_pictures_of_its_own_for_each_prompt_and_reads_them_at_half_size(self):
         self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
@@ -788,8 +795,9 @@ class MediaTest(unittest.TestCase):
         bed, drinks, front = (os.path.join(self.tmp.name, n) for n in ("bed.png", "drinks.jpg", "front.png"))
         for picture in (bed, drinks, front):
             self.write(picture, "png")
-        media.edit(self.settings, {"seed": "1"}, [front], self.job, prompts=["lying down", "serving"],
-                   sources=[[front, bed], [front, drinks]], half=True)
+        planned = [("lying down", [front, bed]), ("serving", [front, drinks])]
+        media.edit(self.settings, {"seed": "1"}, [], self.job, plan=lambda n: planned[n - 1] if n <= 2 else None,
+                   half=True)
         graphs = [json.loads(l) for l in open(os.path.join(self.job, "graphs.jsonl"))]
         self.assertEqual([[g[f"picture{i}"]["inputs"]["image"] for i in (1, 2)] for g in graphs],
                          [["source1.png", "source2.png"], ["source1.png", "source3.jpg"]], "each picture copied in once")

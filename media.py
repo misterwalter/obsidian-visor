@@ -1492,17 +1492,21 @@ def _edit_weights(settings, spec):
     return weights
 
 
-def edit(settings, options, pictures, job, on_image=None, prompts=None, each=None, sources=None, half=False):
+def edit(settings, options, pictures, job, on_image=None, each=None, plan=None, half=False):
     """Edit pictures[0] by the note's instruction, going by up to two more pictures. Count:
-    of them, from Seed: up; with prompts, one edit for each prompt instead (a character set),
-    and with sources besides, a list of pictures for each prompt in place of pictures (the
-    character set's own draw from looks/); with each, a list of pictures, each of them edited in
-    turn in place of pictures[0], by the same instruction and going by the same others (characters
-    edited into what a note drew). half: the pictures it goes by at half size, the picture made
-    at full size. All on one start of ComfyUI, which loads the edit model once. on_image(path,
-    seed, n) as each is done. Returns {"files", "spec", "seeds"}."""
-    spec = edit_spec(dict(options, prompt=options.get("prompt") or (prompts or [""])[0]),
-                     settings.edit_models, settings.default_edit)
+    of them, from Seed: up. With each, a list of pictures, each of them edited in turn in place
+    of pictures[0], by the same instruction and going by the same others (characters edited into
+    what a note drew). With plan instead, a character set: plan(n) is asked before each picture
+    what the nth is, (prompt, its pictures) in place of the note's and pictures, or None when
+    there are no more; so what the owner changes in the note while it runs counts from the next
+    picture on. half: the pictures it goes by at half size, the picture made at full size. All on
+    one start of ComfyUI, which loads the edit model once. on_image(path, seed, n) as each is done.
+    Returns {"files", "spec", "seeds"}."""
+    first = plan(1) if plan else None
+    if plan and first is None:
+        raise MediaError("there is nothing to make.")
+    spec = edit_spec(dict(options, prompt=first[0]) if first else options, settings.edit_models, settings.default_edit)
+    pictures = first[1] if first else pictures
     if not pictures:
         raise MediaError("there is no picture to edit: embed it in the note, `![[picture.png]]`, with the file "
                          "somewhere in `tasks/`.")
@@ -1512,19 +1516,26 @@ def edit(settings, options, pictures, job, on_image=None, prompts=None, each=Non
             spec["source_megapixels"] = 0.5
     os.makedirs(os.path.join(job, "input"), exist_ok=True)
     names = []
-    for i, picture in enumerate(pictures[:3], start=1):
+    for i, picture in enumerate([] if plan else pictures[:3], start=1):
         names.append(f"picture{i}{os.path.splitext(picture)[1].lower()}")
         shutil.copyfile(picture, os.path.join(job, "input", names[-1]))
-    if prompts and sources:
-        # Each picture copied in once, under a name of its own, however many prompts go by it.
+    if plan:
+        # Each picture copied in once, under a name of its own, however many go by it.
         copied = {}
-        for these in sources:
-            for picture in these:
-                if picture not in copied:
-                    copied[picture] = f"source{len(copied) + 1}{os.path.splitext(picture)[1].lower()}"
-                    shutil.copyfile(picture, os.path.join(job, "input", copied[picture]))
-        jobs = [(p, spec["seed"] + i, [copied[s] for s in these[:3]])
-                for i, (p, these) in enumerate(zip(prompts, sources))]
+        def planned():
+            n, this = 1, first
+            while this is not None:
+                prompt, these = this
+                for picture in these:
+                    if picture not in copied:
+                        copied[picture] = f"source{len(copied) + 1}{os.path.splitext(picture)[1].lower()}"
+                        shutil.copyfile(picture, os.path.join(job, "input", copied[picture]))
+                yield prompt, spec["seed"] + n - 1, [copied[p] for p in these[:3]]
+                if os.path.exists(os.path.join(job, "stop")):
+                    return  # not asked for the next when stopped
+                n += 1
+                this = plan(n)
+        jobs = planned()
     elif each:
         # Each picture in turn as picture 1, the others as they are.
         firsts = []
@@ -1532,8 +1543,6 @@ def edit(settings, options, pictures, job, on_image=None, prompts=None, each=Non
             firsts.append(f"each{k}{os.path.splitext(picture)[1].lower()}")
             shutil.copyfile(picture, os.path.join(job, "input", firsts[-1]))
         jobs = [(spec["prompt"], spec["seed"], [first] + names[1:]) for first in firsts]
-    elif prompts:
-        jobs = [(p, spec["seed"] + i, names) for i, p in enumerate(prompts)]
     else:
         jobs = [(spec["prompt"], spec["seed"] + i, names) for i in range(spec["count"])]
     files, seeds = [], []

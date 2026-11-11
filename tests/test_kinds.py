@@ -11,6 +11,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 import kinds  # noqa: E402
 import settings  # noqa: E402
+from dispatcher import notes  # noqa: E402
 
 
 class KindsTest(unittest.TestCase):
@@ -138,6 +139,24 @@ class KindsTest(unittest.TestCase):
         self.assertNotIn("one narrator", chat)
         self.assertIn("- [ ] GitHub", kinds.tidy("New project: x\nGitHub: no\n", "new project"))
         self.assertIn("GitHub: me/x", kinds.tidy("New project: x\nGitHub: me/x\n", "new project"), "a repository's name stays")
+
+    def test_a_list_is_added_with_its_items_ticked_below_the_other_lines_and_again_when_it_lists_nothing(self):
+        items = "".join(f"- [x] {v}\n" for v in kinds.VARIATIONS)
+        tidied = kinds.tidy("Character set: Mara\n\nWords.\n", "character set")
+        self.assertIn("Repeat: no\nVariations:\n" + items + "\nWords.\n", tidied)
+        self.assertEqual(kinds.tidy(tidied, "character set"), tidied)
+        self.assertIn("Repeat: no\nVariations:\n" + items, kinds.tidy("Character set: Mara\nVariations:\n",
+                                                                       "character set"))
+        own = kinds.tidy("Character set: Mara\nVariations:\n- [x] lying on a bed\n- [ ] eating\n\nWords.\n",
+                         "character set")
+        self.assertIn("Repeat: no\nVariations:\n- [x] lying on a bed\n- [ ] eating\n\nWords.\n", own,
+                      "the owner's own, with the lines left out above it, not lost below it")
+        self.assertNotIn("seen from the front", own)
+        header = notes.parse_header(own)
+        self.assertEqual(header["variations"], ["lying on a bed"], "every ticked one, not one choice of a group")
+        self.assertEqual(header["problems"], [])
+        self.assertEqual(notes.parse_header("Character set: Mara\nVariations: eating\n")["variations"], ["eating"])
+        self.assertEqual(notes.parse_header("Character set: Mara\nVariations:\n- [ ] eating\n")["variations"], [])
 
     def test_every_kind_s_lines_are_header_words(self):
         self.assertEqual(kinds.kind_of({"new project": "", "round": None}), "new project")

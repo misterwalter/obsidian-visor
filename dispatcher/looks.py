@@ -1,6 +1,7 @@
 """Characters in pictures: their looks/ folder, reference picture and LoRA, and the jobs built on
 them: edits, character sets, training a LoRA, and scenes that refine themselves."""
 
+import collections
 import os
 import random
 import re
@@ -8,41 +9,24 @@ import shutil
 import time
 
 import characters
+import kinds
 import livelog
 import media
 import models
 import vision
 
-from dispatcher.notes import _stamp, copy_in, note_body, PICTURES, write_file
+from dispatcher.notes import (_stamp, copy_in, drop_guide, note_body, parse_header, PICTURES,
+                              split_note, write_file)
 
 
-# What a character set asks for, in turn: the same person, seen otherwise.
-VARIATIONS = (
-    "seen from the front, a calm expression, soft even light, a plain light background",
-    "seen from the left side, in profile, a plain background",
-    "seen from the right side at three quarters, smiling, daylight",
-    "seen from slightly above, looking up, a neutral expression",
-    "a close-up of the face and shoulders, laughing, warm light",
-    "standing, the whole body in view, relaxed, outdoors in daylight",
-    "sitting on a chair, the whole body in view, indoors, evening light",
-    "in different clothes, plain and everyday, a plain background",
-    "seen from behind at three quarters, looking back over the shoulder",
-    "a serious expression, hard light from one side, a dark background",
-    "walking, caught mid-step, a street behind",
-    "in a coat and scarf, outdoors on a grey day",
-)
+def _ticked(variations):
+    """A character set's variations, each once, the empty ones left out."""
+    return list(dict.fromkeys(v.strip() for v in variations if v.strip()))
 
 
-def _variations_of(owner_text):
-    """A character set note's own variations: the list items under its `## Variations` heading, one each, up to
-    the next heading; any other text there is the owner's own. [] when it has none."""
-    text = re.sub(r"%%.*?%%", "", owner_text, flags=re.DOTALL)
-    found = re.search(r"^#{1,6}[ \t]*Variations[ \t]*:?[ \t]*$(.*?)(?=^#{1,6}[ \t]|\Z)", text,
-                      flags=re.MULTILINE | re.DOTALL | re.IGNORECASE)
-    if not found:
-        return []
-    items = (re.match(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.*)$", line) for line in found.group(1).splitlines())
-    return [item.group(1).strip() for item in items if item and item.group(1).strip()]
+def _linked(pictures):
+    """Pictures as links by name: the notes app follows them, and keeps them up to date as they are moved."""
+    return ", ".join(f"[[{os.path.basename(p)}]]" for p in pictures)
 
 
 class Looks:
@@ -194,9 +178,11 @@ class Looks:
         return "\n".join(lines) + "\n"
 
     def _media_character_set(self, name, header, owner_text, job, earlier=""):
-        """New pictures of a character from the pictures in their looks/, as candidates for looks/: each in a
-        variation drawn at random (the note's own `## Variations`, else VARIATIONS), going by `Source count:`
-        pictures drawn at random for it, their Reference: picture first when they have one."""
+        """New pictures of a character from the pictures in their looks/, as candidates for looks/: each in one of
+        the note's ticked `Variations:`, drawn at random from those this run has used least, going by `Source
+        count:` pictures drawn at random for it, their Reference: picture first when they have one. Before each
+        picture the note is read again, so a variation ticked, unticked or added, or `Count:` changed, while it
+        runs counts from the next picture on."""
         who, character = self._character_named(header["round text"], "Character set")
         reference = self._reference(who, character)
         if not reference:
@@ -213,17 +199,10 @@ class Looks:
         if seed and not seed.isdigit():
             raise media.MediaError(f"`Seed: {seed}` must be a whole number.")
         seed = int(seed) if seed else random.randrange(2**32)
-        draw = random.Random(seed)  # the same Seed: draws the same variations and sources again
-        own = _variations_of(owner_text)
-        variations = own or list(VARIATIONS)
-        chosen, pool = [], []
-        for _ in range(int(count)):
-            if not pool:
-                pool = list(variations)
-                draw.shuffle(pool)
-            chosen.append(pool.pop())
-        prompts = [f"The same person as in picture 1, {v.rstrip('.')}. Keep their face, hair, build and skin exactly "
-                   "as in picture 1." for v in chosen]
+        variations = _ticked(header["variations"] if header["variations"] is not None else kinds.VARIATIONS)
+        if not variations:
+            raise media.MediaError("every variation under `Variations:` is unticked: tick at least one, or add "
+                                   "your own as `- [x] ...`.")
         folder, pictures = self._looks(who)
         # Their Reference: picture, when the line names one that is there, goes first in every draw.
         line = (character.get("reference") or "").strip()
@@ -232,12 +211,35 @@ class Looks:
                   or {}).get("kind") in models.SINGLE_FILE_EDITS
         others = [p for p in pictures if p != named]
         each = 1 if single else min(int(wanted), len(others) + (1 if named else 0))
-        sources = []
-        for _ in chosen:
-            if named:
-                sources.append([named] + draw.sample(others, each - 1))
-            else:
-                sources.append(draw.sample(others, each))
+        draw = random.Random(seed)  # the same Seed: draws the same variations and sources again
+        used = collections.Counter()
+        chosen, sources = [], []
+        asked = {"variations": variations, "count": int(count), "changed": False, "stopped": None}
+        path = os.path.join(self.folder("working"), name)
+
+        def plan(n):
+            """The nth picture's prompt and pictures, by the note as it is now; None when there are no more."""
+            now = self._character_set_now(path) if n > 1 else None
+            if now is not None:
+                ticked = None if now["variations"] is None else _ticked(now["variations"])
+                if ticked == []:
+                    asked["stopped"] = "every variation under `Variations:` was unticked"
+                    return None
+                more = (now["count"] or "8").strip()
+                more = int(more) if more.isdigit() and 1 <= int(more) <= 48 else asked["count"]
+                if (ticked and ticked != asked["variations"]) or more != asked["count"]:
+                    asked.update(variations=ticked or asked["variations"], count=more, changed=True)
+            if n > asked["count"]:
+                return None
+            least = min(used[v] for v in asked["variations"])
+            variation = draw.choice([v for v in asked["variations"] if used[v] == least])
+            used[variation] += 1
+            these = [named] + draw.sample(others, each - 1) if named else draw.sample(others, each)
+            chosen.append(variation)
+            sources.append(these)
+            return (f"The same person as in picture 1, {variation.rstrip('.')}. Keep their face, hair, build and "
+                    "skin exactly as in picture 1.", these)
+
         half = (header["half-size sources"] or "no").strip().lower() in models.YES
         candidates = os.path.join(folder, "candidates")
         os.makedirs(candidates, exist_ok=True)
@@ -249,28 +251,34 @@ class Looks:
                 k += 1
             copy_in(path, os.path.join(candidates, target))
             made.append(target)
-            self.made_so_far.append(f"![[{target}]] seed {seed}")
-            livelog.append(self.live_log(name, "character set"), f"*{time.strftime('%H:%M')}* {n}: ![[{target}]]\n")
-        result = media.edit(self.media, {"prompt": prompts[0], "model": header["model"], "seed": str(seed),
-                                         "quality": header["quality"], "negative": header["negative"]},
-                            sources[0], job, on_image=arrived, prompts=prompts, sources=sources, half=half)
+            asked_for = f"*{chosen[n - 1]}* · from {_linked(sources[n - 1])}"
+            self.made_so_far.append(f"![[{target}]] seed {seed} · {asked_for}")
+            livelog.append(self.live_log(name, "character set"),
+                           f"*{time.strftime('%H:%M')}* {n}: ![[{target}]] · {asked_for}\n")
+        result = media.edit(self.media, {"model": header["model"], "seed": str(seed), "quality": header["quality"],
+                                         "negative": header["negative"]},
+                            [], job, on_image=arrived, plan=plan, half=half)
         total = len(others) + (1 if named else 0)
         if named and each == 1:
-            went_by = f"from `{os.path.basename(named)}`, their Reference: picture"
+            went_by = f"from [[{os.path.basename(named)}]], their Reference: picture"
         elif total == 1:
-            went_by = f"from `{os.path.basename(sources[0][0])}`, the one picture in `{characters.LOOKS_FOLDER}/`"
+            went_by = f"from [[{os.path.basename(sources[0][0])}]], the one picture in `{characters.LOOKS_FOLDER}/`"
         elif each == 1:
             went_by = f"each from one of the {total} pictures in `{characters.LOOKS_FOLDER}/`, drawn at random for it"
         else:
             went_by = (f"each going by {each} of the {total} pictures in `{characters.LOOKS_FOLDER}/`, drawn at "
                        "random for it")
             if named:
-                went_by += f", `{os.path.basename(named)}` (their Reference:) always first"
+                went_by += f", [[{os.path.basename(named)}]] (their Reference:) always first"
         lines = [f"## Candidates for {who}, {_stamp()}", "",
                  f"{len(made)} pictures, {went_by}" + (", at half size" if half and not single else "")
-                 + f" · {'your own ' + str(len(own)) if own else 'the built-in ' + str(len(VARIATIONS))} "
-                 f"variations, drawn at random · with `{result['spec']['name']}` · seed {seed} · "
-                 f"took {round((time.time() - took) / 60)} minutes", ""]
+                 + f" · from {len(asked['variations'])} variations, each drawn at random from the least used so far"
+                 f" · with `{result['spec']['name']}` · seed {seed} · took {round((time.time() - took) / 60)} minutes",
+                 ""]
+        if asked["stopped"]:
+            lines += [f"It stopped after {len(made)} of {asked['count']}: {asked['stopped']}.", ""]
+        if asked["changed"]:
+            lines += [f"`Variations:` or `Count:` changed while it ran, so seed {seed} would draw differently now.", ""]
         if int(wanted) > each:
             lines += [(f"`{result['spec']['name']}` edits one picture and goes by no others, so `Source count: "
                        f"{wanted}` came to one." if single else
@@ -298,12 +306,20 @@ class Looks:
                     os.replace(os.path.join(candidates, target), os.path.join(rejected, target))
                     verdict = f" · {seer} does not see {who}: moved to `candidates/rejected/`"
             # What each was asked for and went by: the owner's to judge it by, and to caption a LoRA with.
-            lines += [f"![[{target}]]", f"*{variation}* · from {', '.join(f'`{os.path.basename(p)}`' for p in these)}"
-                      + verdict, ""]
+            lines += [f"![[{target}]]", f"*{variation}* · from {_linked(these)}" + verdict, ""]
         if not tag:
             lines.append("No vision model to check them with (a note in `models/`, `Kind: vision`): every candidate "
                          "is kept for you to judge.")
         return "\n".join(lines) + "\n"
+
+    def _character_set_now(self, path):
+        """What a running character set's note says now, or None when it cannot be read just then (being
+        saved, or taken out of working/, which stops the job anyway)."""
+        try:
+            with open(path, encoding="utf-8") as f:
+                return parse_header(drop_guide(split_note(f.read())[0]))
+        except (OSError, UnicodeDecodeError):
+            return None
 
     def _media_train(self, name, header, owner_text, job, earlier=""):
         """Train a LoRA on a character's looks/, and give it to them."""
