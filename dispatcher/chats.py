@@ -1,5 +1,5 @@
 """Chats and characters: a note is one conversation, with one character or several (chat.py,
-characters.py); each character a folder with their config.md and memory."""
+characters.py); each character a folder with their own note and memory."""
 
 import glob
 import json
@@ -46,7 +46,7 @@ class Chats:
 
     def create_character(self, path):
         """A note asking for a new character: their folder, with its looks/ and memory/, their
-        memory.md, and their config.md with what the note says; then the note answered."""
+        memory.md, and their own note with what the note says; then the note answered."""
         note = os.path.basename(path)
         self._tidy(path, "new character")
         with open(path, encoding="utf-8") as f:
@@ -56,7 +56,7 @@ class Chats:
         known = {n.lower(): n for n in self.known_characters()}
         models_, images = sorted(self.models), self._images_on_disk()
         own_model = self.default_model or "none"
-        # The note's settings and words, read as the character's own config.md would be.
+        # The note's settings and words, read as the character's own note would be.
         lines = [f"{key}: {header[key]}" for key, word in (("model", "Model"), ("thinking", "Thinking"),
                                                             ("image", "Image"), ("quality", "Quality"),
                                                             ("web", "Web"), ("lan", "LAN"), ("loopback", "Loopback"),
@@ -73,7 +73,7 @@ class Chats:
             problem = f"`{name}` cannot be a character's name: use letters, digits and spaces."
         elif name.lower() in known:
             problem = (f"there is already a character called `{known[name.lower()]}`, in "
-                       f"`characters/{known[name.lower()]}/`. Change them in their `config.md`, or give this one "
+                       f"`characters/{known[name.lower()]}/`. Change them in their own note there, or give this one "
                        "another name.")
         elif header["problems"] or problems:
             problem = "visor could not read all of the note: " + " ".join(header["problems"] + problems)
@@ -87,11 +87,11 @@ class Chats:
             if not os.path.isdir(folder):
                 os.makedirs(folder)
                 os.chmod(folder, 0o2775)
-        write_file(os.path.join(home, characters.PANEL), characters.render(name, character, models_, images))
+        write_file(characters.note_path(home), characters.render(name, character, models_, images))
         write_file(os.path.join(home, characters.MEMORY), characters.MEMORY_START)
         self.sync_character(name, settled_only=False)
         where = os.path.relpath(home, os.path.dirname(self.tasks))
-        append_to_note(path, f"## Character made, {_stamp()}\n\n`{name}` is in `{where}/`: `config.md` holds who they "
+        append_to_note(path, f"## Character made, {_stamp()}\n\n`{name}` is in `{where}/`: `{name}.md` holds who they "
                              f"are and their settings, `memory.md` what they remember (they keep it themselves), "
                              f"`{characters.LOOKS_FOLDER}/` pictures of them and `{characters.MEMORY_FOLDER}/` their "
                              f"longer memories. To talk with them, write a chat note: `Chat: {name}`. Put a picture of "
@@ -102,11 +102,11 @@ class Chats:
         return f"{note}: made the character {name}"
 
     def sync_character(self, name, settled_only=True):
-        """Read a character's config.md, making it if there is none, and write it back with
+        """Read a character's own note, making it if there is none, and write it back with
         one box ticked a group once it has been left alone a while. Returns (the character,
         what could not be read, whether the note was only now made)."""
         home = os.path.join(self.characters_folder, name)
-        path = os.path.join(home, characters.PANEL)
+        path = characters.note_path(home)
         kept = os.path.join(self.state_dir, "characters", slug(name + ".md") + ".json")
         own_model = self.default_model or "none"
         try:
@@ -151,7 +151,7 @@ class Chats:
             try:
                 self.sync_character(name)
             except OSError as error:
-                self.log(f"{name}: could not keep their config.md: {error}")
+                self.log(f"{name}: could not keep their own note: {error}")
 
     def _chat_said(self, whole, standing):
         """What the top of a chat note sets for everyone in it: (settings, problems). A group
@@ -194,7 +194,7 @@ class Chats:
         elif not present:
             error = ("the `Chat:` line names nobody. Say who is in the conversation: `Chat: Mara`, or "
                      "`Chat: Mara, Tom`. Who a character is, and what they may do, is in their own note, "
-                     "`characters/<Name>/config.md`.")
+                     "`characters/<Name>/<Name>.md`.")
         elif [n for n in new if not characters.NAME.fullmatch(n) or n.lower() == "you"]:
             error = (f"`{[n for n in new if not characters.NAME.fullmatch(n) or n.lower() == 'you'][0]}` cannot be a "
                      "character's name: use letters, digits and spaces.")
@@ -207,14 +207,14 @@ class Chats:
                 try:
                     people[who], unread, made = self.sync_character(who, settled_only=False)
                 except OSError as failure:
-                    error = (f"visor cannot keep `characters/{who}/config.md`: {failure.strerror or failure}. If the "
+                    error = (f"visor cannot keep `characters/{who}/{who}.md`: {failure.strerror or failure}. If the "
                              "folder was made by another account, open it to visor's group on the server: "
                              f"`chmod g+w '{os.path.join(self.characters_folder, who)}'`.")
                     break
                 if unread:
-                    error = f"visor could not read all of `characters/{who}/config.md`: " + " ".join(unread)
+                    error = f"visor could not read all of `characters/{who}/{who}.md`: " + " ".join(unread)
             if new and not (error or "").startswith("visor cannot keep"):
-                where = ", ".join(f"`characters/{n}/config.md`" for n in new)
+                where = ", ".join(f"`characters/{n}/{n}.md`" for n in new)
                 error = ("visor did not know " + ", ".join(f"`{n}`" for n in new) + f", so it has made {where}. "
                          "Say there who they are and tick what they may do. If it was a slip of the keys, "
                          "delete that folder and correct the name here.")
@@ -285,7 +285,7 @@ class Chats:
             # Image: is one line for two things: whether they may draw, and with what.
             image = (said.get("image") or people[who].get("image") or "no").lower()
             own["image"] = people[who].get("image", "no") if image in ("yes", "on") else image
-            origin = lambda key: "the chat" if said.get(key) else f"`characters/{who}/config.md`"
+            origin = lambda key: "the chat" if said.get(key) else f"`characters/{who}/{who}.md`"
             for problem in (ask(own["model"], sorted(self.models), "Model"),
                             ask(own["thinking"], sorted(THINKING), "Thinking"),
                             ask(own["web"], sorted(WEB), "Web"), ask(own["chan"], sorted(CHAN), "Chan"),
@@ -568,7 +568,7 @@ class Chats:
         shutil.rmtree(room, ignore_errors=True)
         for who in present:
             home = os.path.join(self.characters_folder, who)
-            shutil.copytree(home, os.path.join(room, who), ignore=shutil.ignore_patterns(characters.PANEL, ".*"))
+            shutil.copytree(home, os.path.join(room, who), ignore=shutil.ignore_patterns(os.path.basename(characters.note_path(home)), ".*"))
         def heard(carries_on):
             if not carries_on:
                 return conversation

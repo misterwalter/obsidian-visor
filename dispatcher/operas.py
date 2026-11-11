@@ -135,7 +135,7 @@ class Operas:
                 model = (self.sync_character(who, settled_only=False)[0].get("model") or "").lower()
                 if model not in self.models:
                     problems.append(f"{who}'s model, `{model or 'none'}`, is not a language model visor knows: "
-                                    f"choose one in their `config.md`.")
+                                    f"choose one in their own note.")
         if not problems and not os.path.exists(self.opera_python):
             venv = media._venv_root(self.opera_python)
             problems.append(f"the game's rules engine is not installed on this server. Run `install.sh` there, "

@@ -1,5 +1,5 @@
 """Visor's settings (visor.conf), the notes folder's layout and timing, and projects: each one's
-config.md, and making a new one from a note."""
+own note, and making a new one from a note."""
 
 import configparser
 import json
@@ -102,7 +102,7 @@ class Config:
              if path and os.access(path, os.X_OK)), "ollama")
         self.fetching, self.fetch_said = None, {}
         # The projects are one list in a file of its own, which visor writes: a project is
-        # made by a note and changed through the config.md in its folder (projects.py).
+        # made by a note and changed through its own note in its folder (projects.py).
         self.config_path = path
         self.projects_path = visor.get("projects_list", os.path.join(os.path.dirname(path), "projects.conf"))
         self.projects_folder = visor.get("projects_folder", os.path.join(self.tasks, "projects"))
@@ -161,17 +161,43 @@ class Config:
                 except OSError as error:
                     raise ConfigError(f"the tasks folder has no {folder}/, and visor could not make it: {error}")
 
-    # Each project's config.md: the owner's way to see and change its settings
+    # ONE-TIME MIGRATION (2026-11): to be deleted once every server has run it.
+    def name_notes_after_their_folders(self):
+        """Characters' and projects' own notes were `config.md`; now each is named after its character or
+        project, so that a link to them, `[[Mara]]`, finds it. Renamed once, at start: where the new name is
+        already taken, nothing is renamed or overwritten, and VISOR.md says so."""
+        self.migration_problems = []
+        try:
+            homes = [os.path.join(self.characters_folder, n) for n in sorted(os.listdir(self.characters_folder))]
+        except OSError:
+            homes = []
+        homes += [os.path.dirname(self.panel_path(name)) for name in sorted(self.projects)]
+        for home in homes:
+            old = os.path.join(home, "config.md")
+            new = os.path.join(home, os.path.basename(os.path.normpath(home)) + ".md")
+            if not os.path.isfile(old):
+                continue
+            shown = os.path.relpath(home, os.path.dirname(self.tasks))
+            if os.path.exists(new):
+                self.migration_problems.append(
+                    f"`{shown}/` has both `config.md` and `{os.path.basename(new)}`. Visor now reads "
+                    f"`{os.path.basename(new)}` and left `config.md` alone: move what you want kept into "
+                    f"`{os.path.basename(new)}`, then delete `config.md`.")
+                continue
+            os.rename(old, new)
+            self.log(f"renamed {shown}/config.md to {os.path.basename(new)}, its new name")
+
+    # Each project's own note: the owner's way to see and change its settings
 
     def panel_path(self, name):
-        """A project's config.md: in the project's own folder if it is a folder, and in a
+        """A project's own note, named after it, `game/game.md`: in the project's own folder if it is a folder, and in a
         folder of its name under the notes' projects folder if it is a repository."""
         project = self.projects[name]
         home = project["source"] if project["folder"] else os.path.join(self.projects_folder, name)
-        return os.path.join(home, projects.PANEL)
+        return os.path.join(home, name + ".md")
 
     def _remote(self, name):
-        """Where a repository came from, for its config.md. Asked once."""
+        """Where a repository came from, for its own note. Asked once."""
         known = self.__dict__.setdefault("_remotes", {})
         if name not in known:
             asked = subprocess.run(["git", "-C", self.projects[name]["source"], "remote", "get-url", "origin"],
@@ -180,7 +206,7 @@ class Config:
         return known[name]
 
     def sync_panel(self, name, settled_only=True):
-        """Bring a project and its config.md into step: take what the owner ticked there,
+        """Bring a project and its own note into step: take what the owner ticked there,
         then write the note back with one box ticked a group and the change listed. The
         writing waits until the note has been left alone a while, since it may still be
         arriving through sync; with settled_only off, the reading does not wait, so that a
@@ -201,7 +227,7 @@ class Config:
             label = (projects.REACH[key][0] if key in projects.REACH else
                      retention.LINE if key == retention.KEY else key.capitalize())
             listed.append(f"- {_stamp()}: {label}, {was} → {value or 'nothing'}")
-            self.log(f"{name}: {key} {was} -> {value or 'nothing'}, from its config.md")
+            self.log(f"{name}: {key} {was} -> {value or 'nothing'}, from its own note")
             project[key] = value
         if changed:
             projects.save(self.projects_path, self.projects)
@@ -218,11 +244,11 @@ class Config:
             write_file(path, fresh)
 
     def _panel_shown(self, name):
-        """A project's config.md, as a path in the notes."""
+        """A project's own note, as a path in the notes."""
         return os.path.relpath(self.panel_path(name), os.path.dirname(self.tasks))
 
     def _set_found_tests(self, name, command):
-        """Keep the test command visor found for a project, and say so in its config.md."""
+        """Keep the test command visor found for a project, and say so in its own note."""
         self.projects[name]["tests"] = command
         projects.save(self.projects_path, self.projects)
         self.log(f"{name}: tests found: {command}")
@@ -243,7 +269,7 @@ class Config:
             try:
                 self.sync_panel(name)
             except OSError as error:
-                self.log(f"{name}: could not keep its config.md: {error}")
+                self.log(f"{name}: could not keep its own note: {error}")
 
     def project_settings(self, project):
         """A project's settings; for a note that names none (an `Agent:` errand), every setting's default."""
@@ -379,7 +405,7 @@ class Config:
             said += (f" Its tests run with `{tests}`" + ("" if header["tests"] else ", which visor found") + ".")
         elif not _is_godot(target):
             said += (" Visor found no way to run its tests. Before it can build, write the command on the "
-                     "`Tests:` line of its `config.md`, or `Tests: none` to build without tests.")
+                     f"`Tests:` line of its note, `{name}.md`, or `Tests: none` to build without tests.")
         return {"source": target, "folder": False, "tests": tests, "model": model}, said
 
     def unwritable(self):

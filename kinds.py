@@ -12,7 +12,7 @@ When visor takes a note it tidies the top of it in place (tidy):
 - a second line for the same setting is marked too: only the first one counts;
 - a line the kind reads and the note leaves out is added, with what it stands at
   when left out. Where that comes from elsewhere (a project's or a character's
-  config.md, the model's own size) the line is added empty, which means just that.
+  own note, the model's own size) the line is added empty, which means just that.
   Every line that means something for the kind is added, every time, so that the
   owner, who sees only the notes, always sees every setting there is;
 - a list (a Character set's `Variations:`) is a line with a box under it for each item, every

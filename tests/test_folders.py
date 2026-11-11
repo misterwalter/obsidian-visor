@@ -149,14 +149,14 @@ class FoldersTest(unittest.TestCase):
     def test_the_project_s_config_note_is_kept_out_of_the_history_and_never_redrafted(self):
         # A history made before the config note existed follows the rule too.
         repo = folders.snapshot(self.folder)
-        self.write(self.folder, "config.md", "# My Story\n\nWeb\n- [x] no\n")
-        self.write(self.folder, "notes/config.md", "A file of the owner's that happens to share the name.\n")
-        work = self.run_writes("run1", {"config.md": "# My Story\n\nWeb\n- [x] yes\n", "Chapter5.md": "Five.\n"})
+        self.write(self.folder, "My Story.md", "# My Story\n\nWeb\n- [x] no\n")
+        self.write(self.folder, "notes/My Story.md", "A file of the owner's that happens to share the name.\n")
+        work = self.run_writes("run1", {"My Story.md": "# My Story\n\nWeb\n- [x] yes\n", "Chapter5.md": "Five.\n"})
         tracked = self.git("ls-tree", "-r", "--name-only", "origin/main", cwd=work).split("\n")
-        self.assertNotIn("config.md", tracked, "no run is shown the settings note")
-        self.assertIn("notes/config.md", tracked, "only the one at the top of the folder is visor's")
+        self.assertNotIn("My Story.md", tracked, "no run is shown the settings note")
+        self.assertIn("notes/My Story.md", tracked, "only the one at the top of the folder is visor's")
         lines = folders.deliver(work, self.folder)
-        self.assertEqual(self.read("config.md"), "# My Story\n\nWeb\n- [x] no\n", "what a run wrote never replaces it")
+        self.assertEqual(self.read("My Story.md"), "# My Story\n\nWeb\n- [x] no\n", "what a run wrote never replaces it")
         self.assertTrue(any("Chapter5a.md" in line for line in lines))
 
     # Canon: the files the owner has settled on, in canon/
@@ -166,7 +166,7 @@ class FoldersTest(unittest.TestCase):
         self.write(self.folder, "canon/Chapter4b.md", "Chapter four as it stands.\n")
         self.write(self.folder, "canon/people/Mara.md", "A ferry pilot.\n")
         self.write(self.folder, "canon/.obsidian-note.md", "hidden\n")
-        self.write(self.folder, "config.md", "# My Story\n")
+        self.write(self.folder, "My Story.md", "# My Story\n")
 
     def test_the_canon_history_holds_canon_alone(self):
         self.canon()

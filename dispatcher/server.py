@@ -439,7 +439,8 @@ class Server:
         fresh = server_note.render(self._server_said(), self.version, self.health, models, self._server_problems,
                                    (self.reading, self.reading_found, self._reading_problems),
                                    {"installed": installed, "up": installed and self.vpn_up(), "proxy": self.vpn_proxy},
-                                   getattr(self, "logs_said", ()))
+                                   getattr(self, "logs_said", ()),
+                                   renamed=self.migration_problems)  # ONE-TIME MIGRATION (2026-11)
         if fresh != text:
             write_file(path, fresh)
         self._server_written = fresh

@@ -128,7 +128,7 @@ class LogsTest(unittest.TestCase):
         self.assertEqual(parse_header("Agent: x\nRetain Logs (days): 7\n")[retention.KEY], "7")
         self.assertEqual(parse_header("Agent: x\nRetain Logs (days): a week\n")["problems"],
                          ["`Retain Logs (days): a week` must be a whole number of days, from 0 to 3650."])
-        # A project's config.md and a character's say it too.
+        # A project's own note and a character's say it too.
         project = dict(projects.NONE, source=self.tasks, folder=True)
         panel = projects.panel("story", project, ["official"], "official")
         self.assertIn("Retain Logs (days):\n", panel)

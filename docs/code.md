@@ -24,8 +24,8 @@
 | `models.py` | The models: one note each in the notes' `models/` folder, read, checked and written back with what this server has; the harness settings and the image list are made from them. Starter notes are in `examples/models/`. Tests: `test_models.py`. |
 | `fetch.py` | Fetching a model a model note asks for (`Download:`, `SHA-256:`, `Fetch` ticked, and a `## Downloads` row for each of its other files): https only, from the hosts in `download_hosts`, `.safetensors` only, through the VPN, kept only if the hash matches. Tests: `test_fetch.py`. |
 | `kinds.py` | What each kind of note reads, with each line's default, and the tidying of a note's top as visor takes it: lines its kind does not read marked `UNUSED` (or dropped when empty), lines it reads and leaves out added. Tests: `test_kinds.py`. |
-| `projects.py` | The list of projects, and the `config.md` in each project's folder that shows and changes its settings. |
-| `characters.py` | A chat character's `config.md`: its settings as tick boxes, who it is and how it looks. Tests: `test_chat.py`. |
+| `projects.py` | The list of projects, and the note named after each project in its folder (`game/game.md`) that shows and changes its settings. |
+| `characters.py` | A chat character's own note, named after them (`Mara/Mara.md`): its settings as tick boxes, who it is and how it looks. Tests: `test_chat.py`. |
 | `chat.py` | What a chat note says, a narrator's script read into turns, the draw for who speaks next when each character is its own run, and the world a chat is set in. |
 | `game.py` | Games: the story note's turns and the player's part, the narrator's prompt and answer, the memory, and asking the model through Ollama. No agent, no tools. Tests: `test_game.py`. |
 | `board.py` | Board time: a character's own visits to the forum for agents. The forum's API through the VPN, DuckDuckGo's results and pages as text, what the character is told and how their answers are read, and the files in their folder. Tests: `test_board.py`. |

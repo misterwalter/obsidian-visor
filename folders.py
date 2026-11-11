@@ -33,10 +33,12 @@ import time
 
 HISTORIES = os.environ.get("VISOR_FOLDERS", "/srv/code/folders")
 # Hidden files and folders are the notes app's own (.obsidian, .trash), never the work.
-# Nor is the project's config.md, at the top of the folder: that is visor's settings
-# note for the project, kept out of the history so that no run reads or redrafts it. Nor
-# is shown/, where visor puts the files a run showed the owner: they are no part of the work.
-EXCLUDE = ".*\n/config.md\n/shown/\n"
+# Nor is the project's own note, at the top of the folder and named after it (`novel/novel.md`):
+# that is visor's settings note for the project, kept out of the history so that no run reads or
+# redrafts it. Nor is shown/, where visor puts the files a run showed the owner: they are no part
+# of the work.
+def exclude(folder):
+    return f".*\n/{os.path.basename(os.path.realpath(folder))}.md\n/shown/\n"
 # The canon history: nothing at the top of the folder but canon/, and no hidden file inside it.
 CANON = "canon"
 CANON_EXCLUDE = f".*\n/*\n!/{CANON}/\n"
@@ -72,7 +74,7 @@ def snapshot(folder, canon=False):
     shutil.rmtree(os.path.join(repo, "logs"), ignore_errors=True)  # what one kept before
     # Written every time, so that a history made before a rule was added follows it too.
     with open(os.path.join(repo, "info", "exclude"), "w") as f:
-        f.write(CANON_EXCLUDE if canon else EXCLUDE)
+        f.write(CANON_EXCLUDE if canon else exclude(folder))
     git(*at, "add", "--all")
     # An empty folder is still a starting point: without a first commit there is no
     # branch for a run to begin from, and the run stops before the agent starts.

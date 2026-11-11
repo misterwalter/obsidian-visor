@@ -2,10 +2,10 @@
 """The projects visor knows, and the note in each project's folder that sets them up.
 
 The list is one file, projects.conf beside visor's settings, which visor writes:
-a project is made by a `New project:` note and changed through its `config.md`,
+a project is made by a `New project:` note and changed through its own note,
 never by hand in a settings file.
 
-Each project has a `config.md` in its own folder under the notes' projects
+Each project has its own note, named after it, in its folder under the notes' projects
 folder: what the project is, and its settings as groups of tick boxes (see
 settings.py). The owner ticks; visor reads the note, keeps the list in step,
 and writes the note back with one box ticked in each group and what changed
@@ -47,7 +47,6 @@ CHANGES = "## Changes"
 KEPT_CHANGES = 15
 # A project's Model when its notes run on the default model in VISOR.md, not one of its own.
 DEFAULT = "default"
-PANEL = "config.md"
 
 
 # What `Tests: none` says: build anyway, with nothing to check the build.
@@ -57,7 +56,7 @@ NO_TESTS = "none"
 def detect_tests(source):
     """The command that runs a repository's tests, found from its files the way a person new
     to it would look; None when there is nothing to go on. Visor writes what it finds into
-    the project's config.md, for the owner to correct."""
+    the project's own note, for the owner to correct."""
     def has(*names):
         return any(os.path.exists(os.path.join(source, name)) for name in names)
     def text(name):
@@ -128,7 +127,7 @@ def load(path):
 def save(path, projects):
     """Write the list whole."""
     lines = ["# The projects visor knows. Visor writes this file: change a project through the",
-             "# config.md note in its folder, and make one with a `New project:` note.", ""]
+             "# note named after it in its folder, and make one with a `New project:` note.", ""]
     for name in sorted(projects):
         project = projects[name]
         lines.append(f"[project {name}]")
@@ -149,7 +148,7 @@ def own_model(project, models):
 
 
 def panel(name, project, models, default_model, remote="", godot=False, problems=(), changes=()):
-    """The project's config.md, whole."""
+    """The project's own note, whole."""
     lines = [f"# {name}", ""]
     if project["folder"]:
         lines += ["A folder project: its files are in this folder. Visor adds what it writes beside them as "
@@ -197,7 +196,7 @@ def panel(name, project, models, default_model, remote="", godot=False, problems
 
 
 def read_panel(text, project, models):
-    """What a config.md says now: (settings that differ from the project's, problems, the
+    """What a project's note says now: (settings that differ from the project's, problems, the
     changes already listed in it). Only settings the note still shows are read; one it no
     longer shows keeps its value."""
     top, _, listed = text.partition("\n" + CHANGES)

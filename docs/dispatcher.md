@@ -57,14 +57,14 @@ one this kind does not read, a second copy of a setting, or a name visor does
 not know among the settings (`settings.scan` reads on past it). A blank one is
 taken out. A line the kind reads and the note leaves out is added, with its
 default (`Full quality` unticked), or empty where the value comes from a
-project's or character's `config.md`. An empty line inherits, and stays a line,
+project's or character's own note. An empty line inherits, and stays a line,
 since one box cannot say "as the project has it"; an on/off line typed as yes or
 no, or a setting of two values typed as one of them (`Quality: full`), becomes
 its box. The parser passes over `UNUSED` lines, so marking one never moves where
 the header ends; only the owner takes a prefix off.
 
 **Tests, and trying again.** A build is checked by the project's tests, before
-and after the agent. With `Tests:` empty in its `config.md`, visor looks for a
+and after the agent. With `Tests:` empty in its own note, visor looks for a
 command the first time it builds (`projects.detect_tests`: npm, cargo, go,
 make, pytest, unittest), keeps it, and says so there. `Tests: none` builds
 without tests, and every reply on such a build says nothing checked it. A build

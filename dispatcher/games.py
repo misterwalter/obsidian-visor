@@ -125,7 +125,7 @@ class Games:
         present, new = chat.named(header["characters"] or "", self.known_characters())
         if new:
             return None, (f"`Characters:` names {', '.join(f'`{n}`' for n in new)}, who visor does not know. A character "
-                          "is a folder in `characters/`, with their `config.md`: a chat note naming them makes one.")
+                          "is a folder in `characters/`, with their own note: a chat note naming them makes one.")
         voice = (header["voice"] or "no").strip()
         image = (header["image model"] or "").strip().lower() or None
         if pictures and image and image not in self.media.image_models:

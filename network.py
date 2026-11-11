@@ -18,7 +18,7 @@ import re
 import urllib.parse
 
 HOST_NAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
-# The two lines, as a project's or a character's config.md shows them: {key: (the line, what it means)}.
+# The two lines, as a project's or a character's own note shows them: {key: (the line, what it means)}.
 LINES = {
     "lan": ("LAN", "The local network, reached directly, never through the VPN: `yes` for all of it, or the hosts a "
                    "run may reach, by name, address or network, each with a port if only that one "
@@ -29,7 +29,7 @@ LINES = {
 
 
 def shown(key, value):
-    """A project's or a character's config.md lines for one of the two: the line, then what it means."""
+    """A project's or a character's own note's lines for one of the two: the line, then what it means."""
     name, what = LINES[key]
     return [f"{name}: " + (f"`{value}`" if value else ""), "", what, ""]
 

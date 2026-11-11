@@ -6,7 +6,7 @@ the owner's business, so they live in the notes and never in this repository. A
 model's note says what kind of model it is and how to run it, a line to a setting,
 then `## About` in the owner's own words. Visor reads the notes, writes each back
 in a standard form once it has been left alone a while (as it does a character's
-config.md), and adds what it found on the server: `On this server: yes`.
+own note), and adds what it found on the server: `On this server: yes`.
 
     Kind: image                        Kind: language
     File: some-model.safetensors       Ollama: coder-official
@@ -15,7 +15,7 @@ config.md), and adds what it found on the server: `On this server: yes`.
     ...                                ...
 
 Every list of models visor shows or checks against is made from these notes: the
-samples, a character's config.md, what a run is told, the settings each harness is
+samples, a character's own note, what a run is told, the settings each harness is
 given (harness_settings), and what the media door offers.
 """
 

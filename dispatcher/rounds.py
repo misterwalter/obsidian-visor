@@ -101,12 +101,12 @@ class Rounds:
             known = ", ".join(sorted(self.projects)) or "none yet"
             return None, None, None, f"visor does not know a project called `{project}`. Known: {known}."
 
-        # The project's settings as its config.md has them now, whether or not it has settled.
+        # The project's settings as its own note has them now, whether or not it has settled.
         if project:
             try:
                 self.sync_panel(project, settled_only=False)
             except OSError as error:
-                self.log(f"{project}: could not read its config.md: {error}")
+                self.log(f"{project}: could not read its own note: {error}")
         if header["problems"]:
             return None, None, None, "visor could not read the top of the note: " + " ".join(header["problems"])
         said_thinking, said_web, said_chan = self._for_this_note(header, project)
@@ -134,7 +134,7 @@ class Rounds:
         # Where a line came from, for the reasons below: the note, or the project's settings.
         def where(key):
             return ("" if (header[key] or "").strip() or not project else
-                    f" (from `{project}`'s settings, in its config.md)")
+                    f" (from `{project}`'s settings, in `{project}.md`)")
         if said_thinking.lower() not in THINKING:
             return None, None, None, (f"`Thinking: {said_thinking}` is not one visor knows: use yes or no, "
                                       "or a level: low, medium or high.")

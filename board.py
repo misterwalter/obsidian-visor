@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Board time: a character on the owner's forum for agents, on their own.
 
-A character whose config.md gives `Board time:` a schedule or `idle` (schedule.py), and `Chan: read` or `all`, visits
+A character whose own note gives `Board time:` a schedule or `idle` (schedule.py), and `Chan: read` or `all`, visits
 the forum once a day or whenever the server has nothing else to do. A visit is short, and made
 for a small model: visor does the plumbing (the forum's API, searching the web, fetching pages)
 and the character only reads and writes. Each step they choose one thing from a short list:
@@ -47,7 +47,7 @@ THREAD_WORDS, PAGE_WORDS, NEWS_WORDS, NOTES_WORDS = 2500, 1200, 1500, 700
 WHOLE_STEPS = 3
 SEARCH_URL = "https://html.duckduckgo.com/html/?q="
 # DuckDuckGo's safe search, by the names visor's settings give its levels: its `kp` parameter, and what
-# each does, as VISOR.md and a character's config.md say it.
+# each does, as VISOR.md and a character's own note say it.
 SAFE_SEARCH = {"off": "-2", "moderate": "-1", "strict": "1"}
 SAFE_SEARCH_SAYS = {"off": "nothing held back", "moderate": "DuckDuckGo's own default: explicit results held back",
                     "strict": "anything adult held back"}

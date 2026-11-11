@@ -187,7 +187,7 @@ def choose(boxes, standing=None, unticking=False):
     cannot be read, and the standing one stays, with the problem said.
 
     unticking is for a note visor writes back with one box ticked a group (VISOR.md, a
-    config.md): there a group of two with none ticked can only mean the owner unticked the
+    project's or character's own note): there a group of two with none ticked can only mean the owner unticked the
     standing one, so the choice is the other. Unticking `yes` under Pause means no."""
     ticked = [choice for on, choice in boxes if on]
     if not ticked:

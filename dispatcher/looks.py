@@ -382,8 +382,8 @@ class Looks:
                               "pictures; without one each says only how they look.")]) + "\n"
 
     def _set_character_line(self, who, key, value):
-        """Set one plain line of a character's config.md (`LoRA:`, `Reference:`)."""
-        path = os.path.join(self.characters_folder, who, characters.PANEL)
+        """Set one plain line of a character's own note (`LoRA:`, `Reference:`)."""
+        path = characters.note_path(os.path.join(self.characters_folder, who))
         with open(path, encoding="utf-8") as f:
             text = f.read()
         text, n = re.subn(rf"^{re.escape(key)}:.*$", f"{key}: {value}", text, count=1, flags=re.MULTILINE)

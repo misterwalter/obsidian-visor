@@ -96,13 +96,13 @@ quality` (unticked, fast), `Separate minds` (unticked, one narrator), `Fix hands
 `Web: yes` or `Quality: full`, it is written back as its box when visor takes the note.
 
 **An empty line inherits.** A setting left as an empty line, such as `Web:`, `Thinking:` or `Quality:`,
-takes its value from where this kind of note gets it: on a project, the project's `config.md`; in a chat,
-each character's own `config.md`; otherwise visor's default. A box cannot say "as the project has it",
+takes its value from where this kind of note gets it: on a project, the project's own note; in a chat,
+each character's own note; otherwise visor's default. A box cannot say "as the project has it",
 so such a line stays a line until you give it a value, and then it becomes a box. To inherit again,
 delete the box: visor puts the empty line back."""
 
-PROJECT_SETTINGS = """**The project's own settings.** Each project keeps its settings in a note you can click:
-`config.md`, in the project's folder under `projects/`. Tick a box there and every note on that
+PROJECT_SETTINGS = """**The project's own settings.** Each project keeps its settings in a note you can click,
+named after it in its folder under `projects/`: `projects/game/game.md`. Tick a box there and every note on that
 project gets it; a line in the note itself still wins, for that note."""
 
 AFTERWARDS = """**What happens next.**
@@ -245,7 +245,7 @@ def build(ctx):
         "**Branches.** Builds never touch `main`. Each one is pushed to its own `visor/` branch, or to the branch "
         "the note names with `Branch:`, with a pull request, and a further build on the same note carries on "
         "from that branch. A repository is built on only once it has a way to run its tests: a Godot project "
-        "runs its GUT suite, and any other needs `Tests:` in its `config.md`.",
+        "runs its GUT suite, and any other needs `Tests:` in its own note.",
         PROJECT_SETTINGS, BOXES, DAILY, AFTERWARDS, ctx["language"]])
     top = f"Project: {repo}\nBuild: \n\n" + "\n".join(
         settings.group("Model", list(ctx["models"]), None, ctx["models"])) + "\n\nBranch: \n\n"
@@ -300,8 +300,8 @@ def new_project(ctx):
         "| `GitHub: owner/repo` | Visor clones that repository instead. |\n"
         "| `Model: <model>` | The model for the project's notes when they name none, as its note in `models/` names it. |\n"
         "| `Tests: <command>` | How to run the tests of a repository that is not Godot, so visor can build on it. |",
-        "Visor answers in the note: made, and where; or why not. The new project's settings are then in its "
-        "`config.md`. A folder project's `canon/` folder, for the files you have settled on, is yours to make "
+        "Visor answers in the note: made, and where; or why not. The new project's settings are then in its own "
+        "note, named after it, `projects/<name>/<name>.md`. A folder project's `canon/` folder, for the files you have settled on, is yours to make "
         "when you want one; a chat set in the project makes it for you.",
         ctx["language"]])
     return ("New project: \n\nGitHub\n- [x] no (a folder project, for notes and prose)\n"
@@ -317,11 +317,11 @@ def new_character(ctx):
     body = "\n\n".join([
         "**A New character note makes a character, and runs no model.** Write their name on the first line, who "
         "they are under the top of the note, and how they look under `## How they look`. Visor makes their folder, "
-        "`characters/<name>/`, with everything a character needs: `config.md` (who they are, and their settings "
+        "`characters/<name>/`, with everything a character needs: `<name>.md` (who they are, and their settings "
         "as boxes), `memory.md` (what they remember, which they keep themselves), `looks/` (pictures of them) and "
         "`memory/` (their longer memories). Making the folder yourself works too, but one made by another account "
         "can be closed to visor; this way it never is. " + COPY,
-        "**Board time.** In their `config.md`, `Board time:` (a schedule as a note's `Repeat:` takes it, `daily` "
+        "**Board time.** In their own note, `Board time:` (a schedule as a note's `Repeat:` takes it, `daily` "
         "or `friday, 18:00`, or `idle`) sends them to the forum for agents on their own, to read, search and post as their `Chan` allows (`read` to read and keep notes, `all` to post "
         "as well). `Boards:` says which boards. What they do there is kept in their folder: `board-log.md`, one "
         "entry a visit with every post word for word, and `board.md`, their own notes, which they have in front "
@@ -333,9 +333,9 @@ def new_character(ctx):
         "| `Image`, as boxes | Whether they may draw, and with which image model. | They may not draw. |\n"
         "| `Speak: <voice>` | The voice their turns are read aloud in, such as `bf_emma`, or a blend of several, `(25 af_heart 75 am_david)`; `no` for text only. | No. |\n"
         "| `LoRA: <name>` | A LoRA trained on them, by its note's name in `models/`. | None. |\n"
-        "| `Thinking:`, `Full quality` (a box), `Web:`, `LAN:`, `Loopback:`, `Chan:` | As in their `config.md`. "
+        "| `Thinking:`, `Full quality` (a box), `Web:`, `LAN:`, `Loopback:`, `Chan:` | As in their own note. "
         "| Off; unticked. |",
-        "Visor answers in the note, and from then on everything about them is in their `config.md`. Put a picture "
+        "Visor answers in the note, and from then on everything about them is in their own note, `<name>.md`. Put a picture "
         "of them in `looks/` and name it on its `Reference:` line, so that pictures of them look like them. "
         "Visor knows: " + ctx["characters_known"] + ".",
         BOXES, ctx["voices"]])
@@ -358,13 +358,13 @@ def chat_note(ctx):
         "**A chat note is a conversation with one character or several**, kept in the note. Name who is "
         "present on the first line; visor knows: " + (", ".join(ctx["characters"]) or "nobody yet") + ". Write "
         "your turn under `## You`, at the end. A group with nothing ticked leaves each character as their own "
-        "`config.md` has them. " + COPY,
-        "**Characters.** Each character is a folder in `characters/` with two notes of their own. `config.md` "
-        "is who they are, how they look, and their settings as boxes to tick: the model that plays them, "
+        "note has them. " + COPY,
+        "**Characters.** Each character is a folder in `characters/` with two notes of their own. One "
+        "named after them, `characters/Mara/Mara.md`, is who they are, how they look, and their settings as boxes to tick: the model that plays them, "
         "whether and with what they draw and at what quality, their voice, and whether they may use the web, "
         "the forum, the local network or the server's own services. `memory.md` is what they remember, which they keep themselves and you can read and "
         "edit; its longer pages are beside it in `memory/`. A character is the same in every chat. Name "
-        "someone visor does not know and it makes their `config.md` for you to fill in, and hands the note back.",
+        "someone visor does not know and it makes their own note for you to fill in, and hands the note back.",
         "| Line in the chat note | Meaning | If left out |\n|---|---|---|\n"
         "| `Chat: <names>` | Who is present, with commas between. | |\n"
         "| `Project: <name>` | The world the chat is set in: a folder project's `canon/` folder. See \"Settings\" "
@@ -381,13 +381,13 @@ def chat_note(ctx):
         "setting for everyone in this chat, over each character's own. `Image: <model>` has them all draw, with "
         "that model; `Image: no` has nobody draw. `Web: yes` or `no`, and `Quality: full` or `fast`, become a box "
         "once typed (`Web`, `Full quality`), ticked or unticked for everyone; left empty, they are each "
-        "character's own. `LAN:` and `Loopback:` are typed as in a character's `config.md`: `yes`, a list, or "
+        "character's own. `LAN:` and `Loopback:` are typed as in a character's own note: `yes`, a list, or "
         "`no` for nobody. | Each character's own. |",
         "**Settings.** `Project: <name>` sets the chat in the world of a folder project, as its `canon/` folder "
         "has it; the drafts outside `canon/` are never shown. `canon/summary.md` is the front page: everyone "
         "has it in front of them every turn, so keep it to what they always need. The other pages are listed "
         "for them by name, and they read one when the talk turns to it. A page in `canon/` named after a "
-        "character, such as `Mara.md`, is who they are in that world, and wins over their own `config.md` "
+        "character, such as `Mara.md`, is who they are in that world, and wins over their own note "
         "where the two disagree: the specific beats the general. A `## How they look` heading in it replaces "
         "how they look there. The setting is for reading: nothing a character writes there is kept, and what "
         "happens to them goes into their own memory as usual. A project with no `canon/` folder yet is given "
@@ -511,7 +511,7 @@ for the SDXL models, more for an edit, and hours for training. A long job is a g
 when visor has nothing of yours waiting."""
 
 LOOKS = """**Characters' looks.** Each character's folder has a `looks/` folder for pictures of them, and two
-lines in their `config.md`: `Reference:`, the picture in `looks/` that is them, and `LoRA:`, the name of a
+lines in their own note: `Reference:`, the picture in `looks/` that is them, and `LoRA:`, the name of a
 LoRA trained on them (a model note, `Kind: lora`). A picture with `Characters: Mara` is drawn with her LoRA
 when it suits the image model; without one, it is drawn and then edited to look like her reference
 picture, when there is an edit model. A `Character set:` note makes more pictures of her to choose from,

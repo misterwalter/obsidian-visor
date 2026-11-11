@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Characters: who a chat can be with, each a folder in the notes' characters folder.
 
-A character's folder holds two notes. `config.md` is who they are and what they
-may do: their settings as groups of tick boxes (settings.py), then who they are
+A character's folder holds two notes. Their own note, named after them
+(`characters/Mara/Mara.md`, so that a link to them, `[[Mara]]`, finds it), is who
+they are and what they may do: their settings as groups of tick boxes (settings.py), then who they are
 and how they look, in words. `memory.md` is their own, the front page of what
 they remember, with longer pages beside it in `memory/`. Their `looks/` folder
 holds pictures of them: `Reference:` names the one that is them, and `LoRA:` a
@@ -12,11 +13,12 @@ A character is the same in every chat they are in: one config, one memory. A
 chat note names who is present, and a line in it overrides the same setting of
 everyone there, for that chat.
 
-Visor reads a config.md when a chat needs it and writes it back with one box
+Visor reads their note when a chat needs it and writes it back with one box
 ticked in each group, as it does a project's (projects.py). What the owner
 wrote under the headings is theirs, and is written back as it was.
 """
 
+import os
 import re
 
 import board
@@ -25,7 +27,8 @@ import retention
 import schedule
 import settings
 
-PANEL = "config.md"
+# How a character's own note begins, after its title: how visor knows it in a folder renamed in the notes app.
+INTRO = "One of visor's characters."
 WHO, LOOKS = "## Who they are", "## How they look"
 WHO_HINT = "*(Say who they are here, in a sentence or a page: it is in front of the model every turn.)*"
 LOOKS_HINT = ("*(Optional. How they look, in the words a picture would be drawn from: anyone who draws them, "
@@ -54,6 +57,29 @@ MEMORY_START = "# Memory\n\nNothing yet.\n"
 PLAIN = ("speak", "reference", "lora", "boards") + tuple(network.LINES)
 
 
+def note_path(home):
+    """A character's own note, in their folder `home`: named after the folder. Renamed in the notes app, the
+    folder keeps the note it had, which is found by how it begins (INTRO) and used as it is: renamed outside
+    the notes app, it would lose the links to it. Where there is neither, where a new one goes."""
+    name = os.path.basename(os.path.normpath(home))
+    path = os.path.join(home, name + ".md")
+    if os.path.isfile(path):
+        return path
+    try:
+        names = sorted(n for n in os.listdir(home) if n.endswith(".md") and n != MEMORY)
+    except OSError:
+        return path
+    for other in names:
+        try:
+            with open(os.path.join(home, other), encoding="utf-8", errors="replace") as f:
+                top = f.read(4000).splitlines()[:5]
+        except OSError:
+            continue
+        if top and top[0].startswith("# ") and any(line.startswith(INTRO) for line in top):
+            return os.path.join(home, other)
+    return path
+
+
 def named(character, key):
     """What one of a character's lines names (`Reference:`, `LoRA:`), a link read as the name of what it
     points to (settings.named): the line itself is kept as the owner wrote it."""
@@ -67,9 +93,9 @@ def blank(model):
 
 
 def render(name, character, models, image_models, problems=()):
-    """A character's config.md, whole. character holds the settings, and who and looks."""
+    """A character's own note, whole. character holds the settings, and who and looks."""
     lines = [f"# {name}", "",
-             f"One of visor's characters. To talk with them, name them in a chat note: `Chat: {name}`, or with "
+             f"{INTRO} To talk with them, name them in a chat note: `Chat: {name}`, or with "
              f"others, `Chat: {name}, Someone Else`. They are the same in every chat: this note, and their own "
              "memory beside it.", "",
              "Tick the box you want in a group, or tick or untick one on its own (on or off): visor clears the "
@@ -132,7 +158,7 @@ def in_setting(character, note):
 
 
 def read(text, standing, models, image_models):
-    """What a config.md says: (the character, problems). The character is `standing` with
+    """What a character's note says: (the character, problems). The character is `standing` with
     whatever the note now sets; a setting the note no longer shows keeps its value."""
     top, _, rest = text.partition("\n" + WHO)
     who, _, looks = rest.partition("\n" + LOOKS)

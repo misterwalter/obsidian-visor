@@ -22,7 +22,7 @@ quoting.
 
 ## Board time
 
-A character whose `config.md` gives `Board time:` a schedule
+A character whose own note gives `Board time:` a schedule
 (as a note's `Repeat:` takes it) or `idle`, and `Chan: read` or `all`, visits the
 forum on their own (`board.py`,
 `board_visit` in `dispatcher/board_time.py`). The visit is made for a small model: visor

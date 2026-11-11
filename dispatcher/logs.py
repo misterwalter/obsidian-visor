@@ -140,7 +140,7 @@ class Logs:
         # A note visor keeps no state for, a game's or an Opera game's page say: by its own line, its logs alone.
         noted = {state.get("note") for state in states}
         others = [(os.path.splitext(name)[0], self._days_of(self._header_of(path))) for name, path in notes.items()
-                  if name not in noted and name != characters.PANEL]
+                  if name not in noted]
         for stem, days in others + self._board_logs():
             mine = self._logs_of(stem, live)
             claimed.update(mine)
@@ -197,13 +197,16 @@ class Logs:
         return [p for p in live if os.path.basename(p).startswith(stem + " - ")]
 
     def _notes_by_name(self):
-        """Every note in the notes folder by its file name, which visor knows a note by."""
+        """Every note in the notes folder by its file name, which visor knows a note by. Characters' and
+        projects' own notes are none of them: each is named after its character or project, which a note may be
+        too, and their logs are found by the character or project (_board_logs)."""
         found = {}
-        logs = os.path.realpath(self.logs)
+        passed = {os.path.realpath(self.logs), os.path.realpath(self.characters_folder)}
+        own = {os.path.realpath(self.panel_path(name)) for name in self.projects}
         for top, dirs, files in os.walk(self.tasks):
-            dirs[:] = [d for d in dirs if not d.startswith(".") and os.path.realpath(os.path.join(top, d)) != logs]
+            dirs[:] = [d for d in dirs if not d.startswith(".") and os.path.realpath(os.path.join(top, d)) not in passed]
             for file in files:
-                if file.endswith(".md"):
+                if file.endswith(".md") and os.path.realpath(os.path.join(top, file)) not in own:
                     found.setdefault(file, os.path.join(top, file))
         return found
 
@@ -236,14 +239,14 @@ class Logs:
         return self.retain_logs if days is None else days
 
     def _board_logs(self):
-        """The live logs of characters' board visits: [(the character, their days, by their config.md)]."""
+        """The live logs of characters' board visits: [(the character, their days, by their own note)]."""
         found = []
         try:
             names = sorted(os.listdir(self.characters_folder))
         except OSError:
             names = []
         for name in names:
-            if not os.path.isfile(os.path.join(self.characters_folder, name, characters.PANEL)):
+            if not os.path.isfile(characters.note_path(os.path.join(self.characters_folder, name))):
                 continue
             try:
                 days = retention.days(self.sync_character(name, settled_only=False)[0].get(retention.KEY))

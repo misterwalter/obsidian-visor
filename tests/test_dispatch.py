@@ -483,7 +483,7 @@ class DispatchTest(unittest.TestCase):
 
     def character(self, name, who="", looks="", speak="", **ticks):
         """A character as the owner sets one up: visor makes the config note, they fill it in."""
-        path = os.path.join(self.tasks, "characters", name, "config.md")
+        path = os.path.join(self.tasks, "characters", name, name + ".md")
         self.d.sync_character(name)
         text = open(path).read()
         text = text.replace(dispatch.characters.WHO_HINT, who or dispatch.characters.WHO_HINT)
@@ -548,8 +548,8 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "Evening.md", "Chat: Zed\n\n## You\nHello?\n")
         self.d.once()
         self.assertEqual(self.calls_made(), [])
-        self.assertIn("visor did not know `Zed`, so it has made `characters/Zed/config.md`", self.read("output", "Evening.md"))
-        made = open(os.path.join(self.tasks, "characters", "Zed", "config.md")).read()
+        self.assertIn("visor did not know `Zed`, so it has made `characters/Zed/Zed.md`", self.read("output", "Evening.md"))
+        made = open(os.path.join(self.tasks, "characters", "Zed", "Zed.md")).read()
         self.assertIn("# Zed", made)
         self.assertIn(dispatch.characters.WHO_HINT, made)
         self.assertIn("Image\n- [x] no (may not draw)", made)
@@ -603,7 +603,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("--narrator", call)
         self.assertEqual(call[2], "writer-local", "the first one named sets what the narrator runs on")
         self.assertEqual(sorted(os.listdir(call[0])), ["Mara", "Tom"], "a room holding each character's folder")
-        self.assertFalse(os.path.exists(os.path.join(call[0], "Mara", "config.md")), "and not their settings")
+        self.assertFalse(os.path.exists(os.path.join(call[0], "Mara", "Mara.md")), "and not their settings")
         cast = open(call[call.index("--persona") + 1]).read()
         self.assertIn("# The scene\nThe lamp room, a storm coming in.", cast)
         self.assertIn("## Mara\nDry, sixty, a lighthouse keeper.", cast)
@@ -769,8 +769,8 @@ class DispatchTest(unittest.TestCase):
                                       "## How they look\n\nGrey plait, oilskin coat.\n")
         self.d.once()
         home = os.path.join(self.tasks, "characters", "Mara")
-        self.assertEqual(sorted(os.listdir(home)), ["config.md", "looks", "memory", "memory.md"])
-        config = open(os.path.join(home, "config.md")).read()
+        self.assertEqual(sorted(os.listdir(home)), ["Mara.md", "looks", "memory", "memory.md"])
+        config = open(os.path.join(home, "Mara.md")).read()
         self.assertIn("Model\n- [ ] official\n- [x] second\n", config)
         self.assertIn("Speak: bf_emma\n", config)
         self.assertIn("## Who they are\n\nA ferry pilot. Dry.\n", config)
@@ -801,7 +801,7 @@ class DispatchTest(unittest.TestCase):
         os.makedirs(os.path.join(self.tasks, "characters", "Orla"))
         self.d.sync_characters()
         home = os.path.join(self.tasks, "characters", "Orla")
-        self.assertEqual(sorted(os.listdir(home)), ["config.md", "looks", "memory", "memory.md"])
+        self.assertEqual(sorted(os.listdir(home)), ["Orla.md", "looks", "memory", "memory.md"])
 
     # Board time: a character's own visits to the forum
 
@@ -893,11 +893,11 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(self.fresh().safe_search, "strict", "kept over a restart")
         home = self.board_goer()
         self.assertIn("Safe search\n- [x] default (as `VISOR.md` says, for everyone)",
-                      open(os.path.join(home, "config.md")).read())
+                      open(dispatch.characters.note_path(home)).read())
         self.assertEqual(self.d.safe_search_of(dispatch.characters.read(
-            open(os.path.join(home, "config.md")).read(), dispatch.characters.blank("official"),
+            open(dispatch.characters.note_path(home)).read(), dispatch.characters.blank("official"),
             sorted(self.d.models), [])[0]), "strict")
-        self.tick_in(os.path.join(home, "config.md"), "Safe search", "off")
+        self.tick_in(dispatch.characters.note_path(home), "Safe search", "off")
         self.clock += 1000
         mara = self.d.sync_character("Mara", settled_only=False)[0]
         self.assertEqual(self.d.safe_search_of(mara), "off", "hers, over VISOR.md's")
@@ -1235,13 +1235,13 @@ class DispatchTest(unittest.TestCase):
         finally:
             os.chmod(inbox, 0o775)
         # A character's folder closed: the rest works, and a chat with them comes back saying why.
-        os.remove(os.path.join(mara, "config.md"))
+        os.remove(os.path.join(mara, "Mara.md"))
         os.chmod(mara, 0o555)
         try:
             self.d.once()
             self.assertEqual(self.calls_made(), [])
             note = self.read("output", "Evening.md")
-            self.assertIn("visor cannot keep `characters/Mara/config.md`", note)
+            self.assertIn("visor cannot keep `characters/Mara/Mara.md`", note)
             self.assertIn(f"chmod g+w '{mara}'", note)
             self.assertIn(f"chmod g+w '{mara}'", self.read("", "STATUS.md"))
             self.assertNotIn("Nothing can run", self.read("", "STATUS.md"))
@@ -1257,7 +1257,7 @@ class DispatchTest(unittest.TestCase):
             os.chmod(models_folder, 0o775)
         self.d.once()
         self.assertNotIn("Visor cannot write in", self.read("", "STATUS.md"))
-        self.assertTrue(os.path.exists(os.path.join(mara, "config.md")), "and the config note is made once it can be")
+        self.assertTrue(os.path.exists(os.path.join(mara, "Mara.md")), "and their note is made once it can be")
 
     def test_a_chat_with_turns_in_it_goes_before_new_notes(self):
         self.character("Mara")
@@ -2132,7 +2132,7 @@ class DispatchTest(unittest.TestCase):
 
     # Mistakes in a note come back to the owner, loudly
 
-    # A project's settings, in its config.md
+    # A project's settings, in its own note
 
     def panel(self, name):
         return self.d.panel_path(name)
@@ -2152,10 +2152,47 @@ class DispatchTest(unittest.TestCase):
         with open(self.panel(name), "w") as f:
             f.write("\n".join(lines) + "\n")
 
+    # ONE-TIME MIGRATION (2026-11): to be deleted with it.
+    def test_notes_called_config_md_are_named_after_their_character_or_project_once_and_nothing_is_overwritten(self):
+        self.d.once()
+        mara = os.path.dirname(self.character("Mara", "A ferry pilot."))
+        os.rename(os.path.join(mara, "Mara.md"), os.path.join(mara, "config.md"))
+        game = os.path.dirname(self.panel("game"))
+        os.rename(self.panel("game"), os.path.join(game, "config.md"))
+        tom = os.path.dirname(self.character("Tom", "A deckhand."))
+        with open(os.path.join(tom, "config.md"), "w") as f:
+            f.write("An older note of Tom's.\n")
+        d = self.fresh()
+        self.assertEqual(sorted(n for n in os.listdir(mara) if n.endswith(".md")), ["Mara.md", "memory.md"])
+        self.assertIn("A ferry pilot.", open(os.path.join(mara, "Mara.md")).read())
+        self.assertEqual(sorted(os.listdir(game)), ["game.md"])
+        self.assertIn("renamed tasks/characters/Mara/config.md to Mara.md, its new name", self.logged)
+        self.assertEqual(open(os.path.join(tom, "config.md")).read(), "An older note of Tom's.\n", "left alone")
+        self.assertIn("A deckhand.", open(os.path.join(tom, "Tom.md")).read())
+        d.sync_server_note()
+        with open(os.path.join(self.tasks, "VISOR.md")) as f:
+            said = f.read()
+        self.assertIn("> [!warning] Visor could not give these notes their new names\n> - `tasks/characters/Tom/` has "
+                      "both `config.md` and `Tom.md`. Visor now reads `Tom.md` and left `config.md` alone", said)
+        self.fresh()
+        self.assertEqual(open(os.path.join(tom, "config.md")).read(), "An older note of Tom's.\n", "and every time")
+
+    def test_a_character_s_folder_renamed_in_the_notes_app_keeps_their_note_by_its_old_name(self):
+        mara = os.path.dirname(self.character("Mara", "A ferry pilot."))
+        marah = os.path.join(os.path.dirname(mara), "Marah")
+        os.rename(mara, marah)
+        self.assertEqual(dispatch.characters.note_path(marah), os.path.join(marah, "Mara.md"))
+        character = self.d.sync_character("Marah", settled_only=False)[0]
+        self.assertEqual(character["who"], "A ferry pilot.")
+        self.assertEqual(sorted(n for n in os.listdir(marah) if n.endswith(".md")), ["Mara.md", "memory.md"],
+                         "no second note made, and the first not renamed")
+        self.assertEqual(dispatch.characters.note_path(os.path.join(os.path.dirname(mara), "Nobody")),
+                         os.path.join(os.path.dirname(mara), "Nobody", "Nobody.md"), "where a new one goes")
+
     def test_every_project_gets_a_config_note_in_a_folder_of_its_own(self):
         self.d.once()
-        self.assertEqual(self.panel("game"), os.path.join(self.tasks, "projects", "game", "config.md"))
-        self.assertEqual(self.panel("story"), os.path.join(self.tmp.name, "story", "config.md"))
+        self.assertEqual(self.panel("game"), os.path.join(self.tasks, "projects", "game", "game.md"))
+        self.assertEqual(self.panel("story"), os.path.join(self.tmp.name, "story", "story.md"))
         game = open(self.panel("game")).read()
         self.assertIn("# game", game)
         self.assertIn("A Godot project: visor runs its GUT suite", game)
@@ -2186,7 +2223,7 @@ class DispatchTest(unittest.TestCase):
         # It is in the list on disk, so it outlasts a restart.
         again = dispatch.Dispatcher(self.config, self.state, log=self.logged.append)
         self.assertEqual(again.projects["game"]["web"], "yes")
-        self.assertIn("game: web no -> yes, from its config.md", self.logged)
+        self.assertIn("game: web no -> yes, from its own note", self.logged)
 
     def test_a_note_gets_the_project_s_setting_and_its_own_line_overrides_it(self):
         self.d.once()
@@ -2259,8 +2296,8 @@ class DispatchTest(unittest.TestCase):
     def test_a_new_project_s_note_says_where_its_settings_are(self):
         self.note("inbox", "new.md", "New project: Saga\n")
         self.d.once()
-        self.assertIn("Its settings are in `tasks/projects/Saga/config.md`", self.read("output", "new.md"))
-        self.assertTrue(os.path.exists(os.path.join(self.tasks, "projects", "Saga", "config.md")))
+        self.assertIn("Its settings are in `tasks/projects/Saga/Saga.md`", self.read("output", "new.md"))
+        self.assertTrue(os.path.exists(os.path.join(self.tasks, "projects", "Saga", "Saga.md")))
         self.assertIn("[project Saga]", open(self.projects_conf).read())
 
     def test_tick_boxes_work_at_the_top_of_a_task_note_too(self):
@@ -2387,7 +2424,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(call[call.index("--loopback") + 1], "8080")
         self.assertNotIn("--web", call)
         self.assertEqual(open(self.calls + ".route").read(), "tunnel")
-        # A project's lines, in its config.md, go to every note on it that says nothing itself.
+        # A project's lines, in its own note, go to every note on it that says nothing itself.
         self.d.sync_panels()
         panel = open(self.panel("game")).read()
         self.assertIn("LAN: \n\nThe local network, reached directly, never through the VPN", panel)
@@ -2496,7 +2533,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(self.calls_made(), [])
         note = self.read("output", "task.md")
         self.assertIn("has no way to run its tests that visor can find", note)
-        self.assertIn("on the `Tests:` line of `tasks/projects/notests/config.md`, or `Tests: none`", note)
+        self.assertIn("on the `Tests:` line of `tasks/projects/notests/notests.md`, or `Tests: none`", note)
         self.assertNotIn("tests =", note)
 
     def test_visor_finds_a_repository_s_test_command_keeps_it_and_says_so_in_its_config(self):
@@ -2950,7 +2987,7 @@ class DispatchTest(unittest.TestCase):
         note = open(os.path.join(self.tasks, "models", "mara-lora.md")).read()
         self.assertIn(f"File: {loras[0]}", note)
         self.assertIn("Trigger: mara_char", note)
-        self.assertIn("LoRA: mara-lora", open(os.path.join(self.tasks, "characters", "Mara", "config.md")).read())
+        self.assertIn("LoRA: mara-lora", open(os.path.join(self.tasks, "characters", "Mara", "Mara.md")).read())
         self.assertIn("A LoRA of Mara on `photo-xl`", self.read("output", "train.md"))
 
     def test_a_scene_needs_a_vision_model_and_is_worked_towards_its_checklist(self):

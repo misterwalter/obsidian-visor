@@ -6,7 +6,7 @@ what updates are waiting, its health) and lets the owner steer it without loggin
 whether it updates itself, pausing it, restarting it, and the settings tuned often
 (the default model, reviews, how often live logs refresh).
 
-Visor writes the note, keeping the owner's ticks, as it does a project's config.md:
+Visor writes the note, keeping the owner's ticks, as it does a project's own note:
 the owner ticks, visor reads the note about a minute after they stop editing it, acts,
 and writes it back with one box ticked a group. What stays in visor.conf, on purpose:
 paths (an edit in the notes must not redirect where visor reads and writes) and
@@ -39,7 +39,7 @@ TIMING = (
      "How long a game must be left alone after you tick Go or a suggestion before visor takes the turn. "
      "The tick says you are done, so this can be short."),
     ("Settle settings", "settle_settings", 60, 10, 3600,
-     "The same wait for notes of settings: this one, a project's `config.md` and the model notes. "
+     "The same wait for notes of settings: this one, a project's or character's own note and the model notes. "
      "Visor reads them and writes them back only once they have been left alone this long."),
     ("Update check every", "update_every", 600, 60, 86400,
      "How often visor asks GitHub for new commits while it is idle. It looks even with auto-update "
@@ -110,7 +110,7 @@ def network(state, allowed):
     return lines
 
 
-def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=()):
+def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=(), renamed=()):
     """The note, whole. said: the settings as they stand ({"auto", "paused", "default_model",
     "review", "reviewer", "direct"} and each
     TIMING setting). version: {"commits": [(when, message, hash)],
@@ -129,6 +129,9 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
     if problems:
         lines += ["> [!warning] Visor could not read all of this, and kept what was set before"]
         lines += [f"> - {problem}" for problem in problems] + [""]
+    if renamed:  # ONE-TIME MIGRATION (2026-11)
+        lines += ["> [!warning] Visor could not give these notes their new names"]
+        lines += [f"> - {problem}" for problem in renamed] + [""]
     lines += ["## Version", ""]
     lines += [f"- {when} · {message} (`{short}`)" for when, message, short in version.get("commits", [])] or ["- (not known)"]
     lines.append("")
@@ -157,7 +160,7 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
     lines += settings.group("Default model", list(models), said["default_model"]) + [""]
     lines += settings.group("Reviewer", list(models), said["reviewer"]) + [""]
     lines += ["How what searches the web here searches: a character on the board, and a run given the web, "
-              "which is told to search with it. A character's `config.md` can say otherwise for them.", ""]
+              "which is told to search with it. A character's own note can say otherwise for them.", ""]
     lines += settings.group("Safe search", list(SAFE_SEARCH), said.get("safe_search", "moderate"), SAFE_SEARCH) + [""]
     lines += ["## Timing", "", "Each in seconds. Change the number after the colon; a number out of its range "
               "is not taken, and what was set before stays.", ""]

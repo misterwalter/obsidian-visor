@@ -5,19 +5,22 @@ characters it names (`chat.py`, `characters.py`).
 
 **New characters.** A `New character: <name>` note (`sample-new-character.md`)
 makes one without a model: their folder, opened to visor's group, with
-`config.md` from the note's settings and words (who they are under the top, how
+their own note, `<name>.md`, from the note's settings and words (who they are under the top, how
 they look under `## How they look`), `memory.md`, `looks/` and `memory/`. A
 folder made by hand is given whatever of those it lacks.
 
-**Characters.** Each is a folder under `tasks/characters/`. Its `config.md` is
-visor's note for it, kept the way a project's is: settings as groups of tick
+**Characters.** Each is a folder under `tasks/characters/`. Its own note, named
+after them (`characters/Mara/Mara.md`, so that `[[Mara]]` finds it), is visor's
+note for it, kept the way a project's is: settings as groups of tick
 boxes (`Model`, `Thinking`, `Image`, `Quality`, `Web`, `Safe search`, `Chan`), the typed lines
 `Speak:`, `LAN:` and `Loopback:`, then who they are and how they look, in the
 owner's words. Its
 `memory.md` and the pages in `memory/` are the character's own. A character is
 the same in every chat; a line in a chat note overrides the same setting of
-everyone present, for that chat. A name visor does not know gets a `config.md`
-made for it, and the note comes back.
+everyone present, for that chat. A name visor does not know gets their own note
+made for them, and the note comes back. A folder renamed in Obsidian keeps the
+note it had, which visor still finds by how it begins (`characters.note_path`);
+renaming the note too keeps the two matched.
 
 **A turn** is a `chat` round of `visor-run.sh`: the character's folder as the
 project, what has been said as the task, and who they are as the system prompt

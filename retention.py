@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """How long logs are kept: one setting, `Retain Logs (days):`, in days after a note's last run.
 
-A note says it on its own line; left empty, its project's config.md says it, else VISOR.md, which starts
+A note says it on its own line; left empty, its project's own note says it, else VISOR.md, which starts
 from visor.conf's `retain_logs` (30). Visor clears what is due once a night (dispatcher/server.py,
 clear_logs). A log is what is written about work: a note's live logs in logs/, the record of each run on
 the server (results/ and work/), a failed media job's folder, visor's own log (logs/visor/, a file a

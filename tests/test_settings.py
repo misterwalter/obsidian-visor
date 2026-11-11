@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for settings.py and projects.py: settings as a note writes them, and a
-project's config.md read and written back.
+project's own note read and written back.
 
     python3 tests/test_settings.py
 """

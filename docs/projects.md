@@ -17,8 +17,9 @@ The projects are one list, `projects.conf` beside the settings file
 settings file holds no projects: a `[project ...]` section there stops the
 dispatcher with a message saying where it goes.
 
-Each project has a `config.md` in a folder of its own under `tasks/projects/`
-(a folder project's is in the project's folder). It says what the project is
+Each project has a note named after it in a folder of its own under
+`tasks/projects/`, `projects/game/game.md` (a folder project's is in the
+project's folder), so that a link to it, `[[game]]`, finds it. It says what the project is
 and shows its settings as groups of tick boxes, which Obsidian draws as boxes
 to click:
 
@@ -40,12 +41,12 @@ Web
 - **Order of authority.** A line in a task note beats the project's setting,
   which beats visor's default. So `Web: yes` ticked for a project gives every
   note on it the web, and one note can still say `Web: no`.
-- **A note about to run** gets the settings as the `config.md` has them at that
+- **A note about to run** gets the settings as its own note has them at that
   moment, settled or not.
 - **One note per project,** each in its own folder, so that showing someone one
   project shows them nothing of another.
 - **Out of the agents' reach.** The notes are outside every sandbox. A folder
-  project's `config.md` is left out of the history a run works from, and a run
+  project's own note is left out of the history a run works from, and a run
   can only ever add drafts beside existing files. The test command runs inside
   the sandbox.
 
