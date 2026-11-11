@@ -150,8 +150,7 @@ class Games:
         name = os.path.splitext(note)[0]
         with open(path, encoding="utf-8") as f:
             header = parse_header(unflagged(f.read()))
-        project = (header["project"] or "").strip()
-        self._tidy(path, "game", {"folder": self.projects[project]["folder"]} if project in self.projects else None)
+        self._tidy(path, "game", self._tidy_ctx(header, "game"))
         folder = os.path.join(self.games_folder, name)
         text, header = self._game_said(path)
         problem = None
@@ -201,8 +200,7 @@ class Games:
         note = os.path.basename(path)
         # Every line a game reads, kept at its top on every turn, not only the first.
         _, header = self._game_said(path)
-        project = (header["project"] or "").strip()
-        self._tidy(path, "game", {"folder": self.projects[project]["folder"]} if project in self.projects else None)
+        self._tidy(path, "game", self._tidy_ctx(header, "game"))
         text, header = self._game_said(path)
         plan, error = self._game_plan(name, header)
         story, tail = game.split_tail(text)

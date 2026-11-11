@@ -122,7 +122,7 @@ class Operas:
         note = os.path.basename(path)
         name = os.path.splitext(note)[0]
         known = self.known_characters()
-        self._tidy(path, "opera", {"also": known})
+        self._tidy(path, "opera", self._tidy_ctx({}, "opera"))
         with open(path, encoding="utf-8") as f:
             owner_text = split_note(unflagged(f.read()))[0]
         setup, problems = opera.read_setup(owner_text, known, time.localtime(self.now()).tm_year)

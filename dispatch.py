@@ -170,6 +170,7 @@ class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Su
             self._upkeep(self.sort_media)
             self._upkeep(self.sync_chat_pictures)
             self._upkeep(self.file_repeating)
+            self._upkeep(self.tidy_repeating)
         if self.paused:
             if not dry_run:
                 self._upkeep(self.write_status)

@@ -63,7 +63,11 @@ show (`settings.plain`): a chat's turns, a game's story, an Opera message, a
 prompt (where a link to a file is what the note attaches, and is left out:
 `notes.prompt_words`) and text read aloud.
 
-**Tidying.** As visor takes a note it tidies the top of it for its kind
+**Tidying.** As visor takes a note it tidies the top of it for its kind, and a
+note waiting in `scheduled/` or `idle/` is tidied the same way once it has been
+left alone a minute (`tidy_repeating`), so that it shows every setting there is
+before it next runs, after an update too; a repeating note that failed still
+waits for the owner's change, which visor's tidying is not. It tidies the top
 (`kinds.py`). A line that does nothing here is marked `UNUSED Project: game`:
 one this kind does not read, a second copy of a setting, or a name visor does
 not know among the settings (`settings.scan` reads on past it). A blank one is

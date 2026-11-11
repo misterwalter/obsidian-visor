@@ -35,12 +35,9 @@ class MediaJobs:
         name = os.path.basename(path)
         path = move(path, self.folder("working"))
         with open(path, encoding="utf-8") as f:
-            kind = kinds.kind_of(parse_header(split_note(f.read())[0]))
-        # A note that names no model is given the default's name, so that it shows which model draws it.
-        default = (self.media.default_edit if kind in ("edit", "character set") else
-                   self.media.default_image if kind in ("image", "scene image", "train") else
-                   self.media.default_video if kind == "video" else None)
-        self._tidy(path, kind, {"model": self.model_link(default)} if default else None)
+            header = parse_header(split_note(f.read())[0])
+        kind = kinds.kind_of(header)
+        self._tidy(path, kind, self._tidy_ctx(header, kind))
         with open(path, encoding="utf-8") as f:
             whole = f.read()
         owner_text, earlier = split_note(whole)

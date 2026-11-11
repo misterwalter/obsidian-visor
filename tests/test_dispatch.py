@@ -4360,6 +4360,37 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         self.assertEqual(len(self.calls_made()), 1, "changed, it runs")
 
+    def test_a_note_waiting_to_repeat_is_filled_in_once_left_alone_without_running(self):
+        self.note("scheduled", "set.md", "Character set: Mara\nRepeat: monday 03:00\n\nMy own words.\n")
+        path = os.path.join(self.tasks, "scheduled", "set.md")
+        os.utime(path, (self.clock - 10, self.clock - 10))
+        self.d.tidy_repeating()
+        self.assertNotIn("Variations:", open(path).read(), "not while it may still be being written")
+        os.utime(path, (self.clock - 120, self.clock - 120))
+        self.d.tidy_repeating()
+        text = open(path).read()
+        self.assertIn("Count: 8\n", text)
+        self.assertIn("Variations:\n- [x] " + kinds.VARIATIONS[0] + "\n", text)
+        self.assertIn("My own words.", text)
+        self.assertIn("set.md: its top filled in for a character set note, as visor would on taking it", self.logged)
+        self.assertEqual(self.calls_made(), [])
+
+    def test_a_failed_repeating_note_filled_in_by_visor_still_waits_for_the_owner_s_change(self):
+        self.note("idle", "bad.md", "Project: game\nModel: gpt\nAnalysis: x\nRepeat: idle\n")
+        self.d.once()
+        path = os.path.join(self.tasks, "idle", "bad.md")
+        # An update brings a line its kind reads: the note, unchanged by the owner, lacks it.
+        with open(path) as f:
+            text = f.read().replace("Retain Logs (days):\n", "")
+        with open(path, "w") as f:
+            f.write(text)
+        os.utime(path, (self.clock - 120, self.clock - 120))
+        self.d._repeat_record("bad.md", failed=os.path.getmtime(path))
+        self.d.once()
+        self.assertIn("Retain Logs (days):", open(path).read(), "filled in")
+        self.d.once()
+        self.assertEqual(self.calls_made(), [], "and still waiting for the owner")
+
     def test_a_repeat_line_visor_cannot_read_is_said(self):
         self.note("inbox", "a.md", "Project: game\nModel: official\nPlan: x\nRepeat: fortnightly\n")
         self.d.once()

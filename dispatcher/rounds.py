@@ -238,12 +238,8 @@ class Rounds:
             return f"handed back {name}: it has no job type"
         if not dry_run:
             # Tidied first, so that a line this kind does not read is marked, not refused; and so that a note handed
-            # back for its project still has every other line. A project visor does not know leaves its own lines be,
-            # as does one left out, but on an errand, which needs none.
-            project = (header["project"] or "").strip()
-            self._tidy(path, kinds.kind_of(header),
-                       {"folder": self.projects[project]["folder"] if project in self.projects else
-                                  kinds.UNKNOWN if project or header["round"] != "agent" else kinds.NO_PROJECT})
+            # back for its project still has every other line.
+            self._tidy(path, kinds.kind_of(header), self._tidy_ctx(header, kinds.kind_of(header)))
         round_, model, project, error = self.plan_for(path, dry_run)
         if dry_run:
             if error:
@@ -542,6 +538,26 @@ class Rounds:
         tidied = head + kinds.tidy(rest, kind, ctx)
         if tidied != text:
             write_file(path, tidied)
+        return tidied != text
+
+    def _tidy_ctx(self, header, kind):
+        """What tidying a note of this kind needs to know (kinds.tidy), the same wherever it is tidied: as it is
+        taken, or as it waits to repeat (tidy_repeating)."""
+        project = (header.get("project") or "").strip()
+        if kind in ("analysis", "plan", "build", "write", "agent"):
+            # A project visor does not know leaves its own lines be, as does one left out, but on an errand,
+            # which needs none.
+            return {"folder": self.projects[project]["folder"] if project in self.projects else
+                              kinds.UNKNOWN if project or header.get("round") != "agent" else kinds.NO_PROJECT}
+        if kind == "game":
+            return {"folder": self.projects[project]["folder"]} if project in self.projects else None
+        if kind == "opera":
+            return {"also": self.known_characters()}  # a character's name may be a line of its own
+        # A note that names no model is given the default's, so that it shows which model draws it.
+        default = (self.media.default_edit if kind in ("edit", "character set") else
+                   self.media.default_image if kind in ("image", "scene image", "train") else
+                   self.media.default_video if kind == "video" else None)
+        return {"model": self.model_link(default)} if default else None
 
     def review_build(self, build_run, project, task_file, rest, log=None):
         """A read-only round on a build's branch, by the reviewer model, asked to check

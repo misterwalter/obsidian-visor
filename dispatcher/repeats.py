@@ -174,6 +174,41 @@ class Repeats:
             move(path, home)
             self.log(f"{os.path.basename(path)}: says `Repeat: {said}`: moved to `{rel}/`")
 
+    def tidy_repeating(self):
+        """Fill in the top of each note waiting in scheduled/ and idle/ as taking it would (kinds.tidy): every
+        line its kind reads added with its default, any it does not read marked, so that it shows every setting
+        there is before it next runs, after an update as much as when first written. A note is tidied once it
+        has been left alone (settle_settings), never while it may still be being written. A repeating note
+        whose run failed waits until the owner changes it: visor's own tidying is no such change."""
+        runs = self._repeat_runs()
+        for how in (SCHEDULED, IDLE):
+            for path in self._notes_in(how):
+                if not self.settled(path, "settle_settings"):
+                    continue
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        text = f.read()
+                    was = _changed(path)
+                except OSError:
+                    continue
+                header = parse_header(split_note(unflagged(text))[0])
+                if not (header["round"] or header["project"] or header["new project"] is not None
+                        or header["new character"] is not None):
+                    continue  # no kind to tidy it for: taken, it would be handed back to say so
+                # One that repeats as its folder does says so, as a run of it would (dispatch.py), rather than
+                # being given `Repeat: no`, which would stop it.
+                as_folder = not self._repeat_line(path)[0]
+                if as_folder:
+                    write_file(path, kinds.set_line(text, "Repeat", FOLDER_REPEATS[how]))
+                kind = kinds.kind_of(header)
+                if not self._tidy(path, kind, self._tidy_ctx(header, kind)) and not as_folder:
+                    continue
+                run = runs.get(os.path.basename(path), {})
+                kept = {key: _changed(path) for key in ("failed", "failed_note") if run.get(key) == was}
+                if kept:
+                    self._repeat_record(os.path.basename(path), **kept)
+                self.log(f"{os.path.basename(path)}: its top filled in for a {kind} note, as visor would on taking it")
+
     def repeat_due(self):
         """The repeating notes ready to run now, in the order they will: scheduled ones a moment of whose
         schedule has passed since they last ran, then idle ones."""
