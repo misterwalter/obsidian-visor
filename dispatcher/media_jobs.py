@@ -423,8 +423,8 @@ class MediaJobs:
                            "[x, y, score] in OpenPose order, for an animation program."]) + "\n"
 
     def _named_file(self, line, what):
-        """A file named on a header line, embedded (`![[x.png]]`) or plain, found inside tasks/."""
-        named = re.sub(r"^!?\[\[|\]\]$", "", line.strip()).split("|")[0].strip()
+        """A file named on a header line, linked, embedded or plain (settings.named), found inside tasks/."""
+        named = settings.named(line).strip()
         found = self._attachments(f"[[{named}]]")
         if not found:
             raise media.MediaError(f"the file `{named}` on the `{what.capitalize()}:` line was not found inside the "

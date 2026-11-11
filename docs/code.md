@@ -19,7 +19,7 @@
 | `folders.py` | Folder projects: keeps a plain folder's history, and delivers a run's writing back as drafts. Tests: `test_folders.py`. |
 | `examples/visor.conf` | The dispatcher's settings, to copy to `~/.config/visor/visor.conf`. |
 | `schedule.py` | When a repeating job runs: a `Repeat:` line (or a character's `Board time:`) read once for every kind of job, days, times, `hourly`, `idle`, and whether one is due or when it next is. Tests: `test_schedule.py`. |
-| `settings.py` | Reads settings as a note writes them: `Key: value` lines and groups of tick boxes. A line marked `UNUSED ` is part of the header and otherwise passed over. |
+| `settings.py` | Reads settings as a note writes them: `Key: value` lines and groups of tick boxes. A line marked `UNUSED ` is part of the header and otherwise passed over. A link or embed in a value counts as the name of what it points to (`named`). |
 | `vision.py` | Visor's own questions to a vision model through Ollama: a checklist from a description, which items a picture shows, whether two pictures show one person, a training caption. No agent, no tools. Tests: `test_vision.py`. |
 | `models.py` | The models: one note each in the notes' `models/` folder, read, checked and written back with what this server has; the harness settings and the image list are made from them. Starter notes are in `examples/models/`. Tests: `test_models.py`. |
 | `fetch.py` | Fetching a model a model note asks for (`Download:`, `SHA-256:`, `Fetch` ticked, and a `## Downloads` row for each of its other files): https only, from the hosts in `download_hosts`, `.safetensors` only, through the VPN, kept only if the hash matches. Tests: `test_fetch.py`. |

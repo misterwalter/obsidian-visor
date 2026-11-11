@@ -13,6 +13,7 @@ import kinds
 import livelog
 import media
 import models
+import settings
 import vision
 
 from dispatcher.notes import (_stamp, copy_in, drop_guide, note_body, parse_header, PICTURES,
@@ -44,7 +45,7 @@ class Looks:
 
     def _character_named(self, line, what):
         """The character a note's line names: (their name as their folder has it, their settings)."""
-        name = re.sub(r"^\[\[|\]\]$", "", (line or "").strip())
+        name = settings.named(line).strip()
         known = {n.lower(): n for n in self.known_characters()}
         if name.lower() not in known:
             raise media.MediaError(f"`{what}: {name}` names no character visor knows. It knows: "
@@ -60,7 +61,7 @@ class Looks:
     def _reference(self, who, character):
         """The picture that is a character: their Reference:, else the first in their looks/."""
         folder, pictures = self._looks(who)
-        named = (character.get("reference") or "").strip()
+        named = characters.named(character, "reference")
         if named:
             path = os.path.join(folder, named) if os.path.isfile(os.path.join(folder, named)) else self._find(named)
             if path:
@@ -69,7 +70,7 @@ class Looks:
 
     def _character_lora(self, character, family):
         """A character's LoRA, when it suits a model of this family."""
-        lora = models.loras(self.model_notes).get((character.get("lora") or "").strip().lower())
+        lora = models.loras(self.model_notes).get(characters.named(character, "lora").lower())
         return dict(lora) if lora and lora["family"] == family else None
 
     def _dress(self, options, cast):
@@ -83,7 +84,7 @@ class Looks:
         loras, words, edit_in, said = [], [], [], []
         for who, character in cast:
             lora = self._character_lora(character, family)
-            theirs = (character.get("lora") or "").strip()
+            theirs = characters.named(character, "lora")
             other = models.loras(self.model_notes).get(theirs.lower()) if theirs and not lora else None
             # Why there is no LoRA to draw them with, when there is none.
             lacking = (f"their LoRA `{theirs}` is for {other['family']} models, not {family}" if other else
@@ -205,7 +206,7 @@ class Looks:
                                    "your own as `- [x] ...`.")
         folder, pictures = self._looks(who)
         # Their Reference: picture, when the line names one that is there, goes first in every draw.
-        line = (character.get("reference") or "").strip()
+        line = characters.named(character, "reference")
         named = line and (os.path.join(folder, line) if os.path.isfile(os.path.join(folder, line)) else self._find(line))
         single = (self.media.edit_models.get((header["model"] or self.media.default_edit or "").strip().lower())
                   or {}).get("kind") in models.SINGLE_FILE_EDITS

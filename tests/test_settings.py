@@ -6,6 +6,7 @@ project's config.md read and written back.
 """
 
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -31,6 +32,18 @@ class SettingsTest(unittest.TestCase):
         found, end = self.read("Project: game\n\nTidy the menu.\nModel: official\n")
         self.assertEqual(found, [("project", "game", None)])
         self.assertEqual(end, 2, "the text begins at the first line that is not a setting")
+
+    def test_a_link_in_any_of_its_forms_is_read_as_the_name_of_what_it_points_to(self):
+        for written in ("front.png", "[[front.png]]", "![[front.png]]", "![[front.png|300]]", "[[front.png|Front]]",
+                        "[[looks/front.png]]", "[[front.png#part]]", "[Front](front.png)", "![](<looks/front.png>)"):
+            self.assertEqual(settings.named(written), "front.png", written)
+        self.assertEqual(settings.named("[[characters/Mara/Mara|Mara]]"), "Mara", "a path's last part, as Obsidian")
+        self.assertEqual(settings.named("[[Mara.md]]"), "Mara", "a note's name is without its .md")
+        self.assertEqual(settings.named("[Front](front%20b.png)"), "front b.png")
+        self.assertEqual(settings.named("[[Mara]], ![[Tom|him]] and Ann"), "Mara, Tom and Ann", "each in a list")
+        self.assertEqual(settings.named("a fox beside [[Mara|her]]"), "a fox beside Mara")
+        for kept in ("[[ -f setup.py ]] && pytest", "[[#Looks]]", "[site](https://example.org/a)", "", "Mara"):
+            self.assertEqual(settings.named(kept), kept, "a shell test, a part of the same note, a web address")
 
     def test_a_setting_s_name_alone_is_a_setting_only_above_boxes(self):
         self.assertEqual(self.read("Web\n- [x] yes\n")[0], [("web", "", [(True, "yes")])])
@@ -113,6 +126,14 @@ class ProjectsTest(unittest.TestCase):
         changed, problems, _ = projects.read_panel(text.replace("Web: yes", "Web: sometimes"), self.PROJECT, self.MODELS)
         self.assertEqual(changed, {})
         self.assertEqual(problems, ["Under `Web`, `sometimes` is not one of no, yes. Kept: no."])
+
+    def test_a_model_typed_as_a_link_is_its_name_and_a_shell_test_in_a_command_is_no_link(self):
+        text = re.sub(r"Model\n(- \[.\] .*\n)+", "Model: [[models/second|Second]]\n", self.panel(), count=1)
+        self.assertIn("Model: [[models/second|Second]]\n", text)
+        self.assertEqual(projects.read_panel(text, self.PROJECT, self.MODELS)[0], {"model": "second"})
+        text = self.panel().replace("Tests: `python3 tests.py`", "Tests: `[[ -f tests.py ]] && python3 tests.py`")
+        self.assertEqual(projects.read_panel(text, self.PROJECT, self.MODELS)[0],
+                         {"tests": "[[ -f tests.py ]] && python3 tests.py"})
 
     def test_a_folder_has_no_test_command_and_a_godot_project_needs_none(self):
         self.assertNotIn("Tests:", self.panel(folder=True))

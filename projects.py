@@ -205,30 +205,32 @@ def read_panel(text, project, models):
     standing = dict(project, model=own_model(project, models))
     wanted, problems = {}, []
     for entry in settings.scan(top, tuple(choices) + ("tests", retention.KEY) + tuple(REACH))[0]:
-        key = entry["key"]
+        # A link read as the name of what it points to, `Model: [[gemma]]` (settings.named).
+        key, written = entry["key"], settings.named(entry["value"])
+        boxes = None if entry["boxes"] is None else [(on, settings.named(c).strip()) for on, c in entry["boxes"]]
         if key == retention.KEY:
-            value = entry["value"].strip()
+            value = written.strip()
             if retention.problem(value):
                 problems.append(f"{retention.problem(value)}. Kept: {project.get(key) or 'empty'}.")
-            elif entry["boxes"] is None:
+            elif boxes is None:
                 wanted[key] = value
             continue
         if key == "tests":
-            if not project["folder"] and entry["boxes"] is None:
-                wanted[key] = entry["value"].strip().strip("`").strip()
+            if not project["folder"] and boxes is None:
+                wanted[key] = written.strip().strip("`").strip()
             continue
         if key in REACH:
-            value = entry["value"].strip().strip("`").strip()
+            value = written.strip().strip("`").strip()
             problem = network.problem(key, value)
             if problem:
                 problems.append(f"{problem} Kept: {project.get(key) or 'none'}.")
-            elif entry["boxes"] is None:
+            elif boxes is None:
                 wanted[key] = value
             continue
-        if entry["boxes"] is None:
-            value, problem = entry["value"].strip().lower(), None   # typed as a line: `Web: yes`
+        if boxes is None:
+            value, problem = written.strip().lower(), None   # typed as a line: `Web: yes`
         else:
-            value, problem = settings.choose(entry["boxes"], standing[key], unticking=True)
+            value, problem = settings.choose(boxes, standing[key], unticking=True)
         if problem:
             problems.append(f"Under `{key.capitalize()}`, {problem}. Kept: {standing[key]}.")
         elif (value or "").lower() not in choices[key]:

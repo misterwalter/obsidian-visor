@@ -41,6 +41,16 @@ are run before and after if the project has them (none are needed); on a folder
 project what it writes comes back as drafts. Its answer goes in the note under
 `## Answer`, and with `Repeat:` each run starts afresh.
 
+**Links.** A setting may name what it means by an Obsidian link or embed, in
+any of its forms: `[[Mara]]`, `![[front.png]]`, `![[front.png|300]]`,
+`[[front.png|shown]]`, `[[Mara#Looks]]`, `[[characters/Mara/Mara]]` or a
+Markdown `[shown](front.png)` each count as the name of what they point to
+(`settings.named`), in a note's top, a character's or project's config and
+`VISOR.md` alike. A config visor writes back keeps the form the owner wrote. A
+`Tests:` command's shell test, `[[ -f x ]]`, has a space inside its brackets,
+which no link has, and stays as it is. Model notes are left out: their values
+name files on the server, outside the notes.
+
 **Tidying.** As visor takes a note it tidies the top of it for its kind
 (`kinds.py`). A line that does nothing here is marked `UNUSED Project: game`:
 one this kind does not read, a second copy of a setting, or a name visor does

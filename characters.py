@@ -54,6 +54,12 @@ MEMORY_START = "# Memory\n\nNothing yet.\n"
 PLAIN = ("speak", "reference", "lora", "boards") + tuple(network.LINES)
 
 
+def named(character, key):
+    """What one of a character's lines names (`Reference:`, `LoRA:`), a link read as the name of what it
+    points to (settings.named): the line itself is kept as the owner wrote it."""
+    return settings.named(character.get(key) or "").strip()
+
+
 def blank(model):
     """A new character's settings: the given language model, and nothing else allowed."""
     return dict({key: choices[0] for key, choices in CHOICES.items()}, model=model, image="no", speak="no",
@@ -104,10 +110,11 @@ def render(name, character, models, image_models, problems=()):
               "`no` for text only.", "",
               f"Reference: {character.get('reference', '')}".rstrip(),
               f"LoRA: {character.get('lora', '')}".rstrip(), "",
-              f"`Reference:` is the picture that is them, in their `{LOOKS_FOLDER}/` folder (`front.png`): what an "
+              f"`Reference:` is the picture that is them, in their `{LOOKS_FOLDER}/` folder: what an "
               "edit model goes by to draw them as themselves, and what a character set starts from. `LoRA:` is a "
               "LoRA trained on them, by its note's name in `models/` (a `Train:` note makes one): with it, any "
-              "picture of them looks like them.", "",
+              "picture of them looks like them. Either may be a name, `front.png`, a link, `[[front.png]]`, or an "
+              "embed, `![[front.png]]`, which shows the picture here.", "",
               WHO, "", character.get("who") or WHO_HINT, "",
               LOOKS, "", character.get("looks") or LOOKS_HINT, ""]
     return "\n".join(lines)
@@ -170,7 +177,8 @@ def read(text, standing, models, image_models):
         if key in PLAIN:
             if entry["boxes"] is None:
                 value = entry["value"].strip().strip("`").strip()
-                character[key] = (value or "no") if key == "speak" else re.sub(r"^!?\[\[|\]\]$", "", value)
+                # As written, links and all, so that writing the note back keeps them: read through named.
+                character[key] = (value or "no") if key == "speak" else value
             continue
         if entry["boxes"] is None:
             value, problem = entry["value"].strip().lower(), None

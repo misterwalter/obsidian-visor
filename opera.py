@@ -68,7 +68,7 @@ def read_setup(text, known, this_year):
     said = {}
     for entry in entries:
         if entry["key"] in KEYS:
-            said.setdefault(entry["key"], entry["value"].strip())
+            said.setdefault(entry["key"], settings.named(entry["value"]).strip())
     problems = []
     by_lower = {n.lower(): n for n in known}
     names, pins = [], {}

@@ -52,7 +52,7 @@ class Chats:
         with open(path, encoding="utf-8") as f:
             owner_text = split_note(unflagged(f.read()))[0]
         header = parse_header(owner_text)
-        name = re.sub(r"\s+", " ", re.sub(r"^\[\[|\]\]$", "", (header["new character"] or "").strip()))
+        name = re.sub(r"\s+", " ", (header["new character"] or "").strip())
         known = {n.lower(): n for n in self.known_characters()}
         models_, images = sorted(self.models), self._images_on_disk()
         own_model = self.default_model or "none"
@@ -158,11 +158,12 @@ class Chats:
         with two boxes ticked is settled against what the chat used last time."""
         said, problems = {}, []
         for entry in settings.scan(whole, HEADER_WORDS, top_only=True)[0]:
-            key, value = entry["key"], entry["value"].strip()
+            key, value = entry["key"], settings.named(entry["value"]).strip()
             if key in ROUNDS and key != "chat" or key in said:
                 continue
             if entry["boxes"] is not None:
-                value, problem = settings.choose(entry["boxes"], standing.get(key) or CHAT_DEFAULTS.get(key))
+                boxes = [(on, settings.named(choice).strip()) for on, choice in entry["boxes"]]
+                value, problem = settings.choose(boxes, standing.get(key) or CHAT_DEFAULTS.get(key))
                 if problem:
                     problems.append(f"under `{key.capitalize()}`, {problem}.")
                 if value is None:
@@ -265,7 +266,7 @@ class Chats:
             for i in range(entry["first"] + 1, entry["last"] + 1):
                 box = settings.BOX.match(lines[i])
                 if box:
-                    on = settings.option(box.group(2)).lower() == said[entry["key"]].lower()
+                    on = settings.named(settings.option(box.group(2))).strip().lower() == said[entry["key"]].lower()
                     lines[i] = re.sub(r"\[[ xX]\]", "[x]" if on else "[ ]", lines[i], count=1)
         return "\n".join(lines) + "\n"
 
@@ -297,7 +298,7 @@ class Chats:
                 if problem:
                     return {"error": f"{problem} (From {origin(key)}.)"}
             own["model"] = own["model"].lower()
-            own["lora"] = models.loras(self.model_notes).get((people[who].get("lora") or "").strip().lower())
+            own["lora"] = models.loras(self.model_notes).get(characters.named(people[who], "lora").lower())
             if THINKING[own["thinking"].lower()] and not self.can_think(own["model"]):
                 return {"error": f"`Thinking: {own['thinking']}` (from {origin('thinking')}) asks {who} to think, and "
                                  f"{own['model']} cannot think."}

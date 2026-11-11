@@ -2786,6 +2786,26 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("3 pictures, from [[side.png]], their Reference: picture", note)
         self.assertIn("from 12 variations, each drawn at random from the least used so far", note)
 
+    def test_a_character_s_reference_and_a_note_s_lines_may_be_links_or_embeds_and_keep_their_form(self):
+        path = self.character("Mara", "A ferry pilot.")
+        self.looks("Mara", "front.png", "side.png")
+        self.d._set_character_line("Mara", "Reference", "![[side.png|300]]")
+        self.note("inbox", "set.md", "Character set: [[Mara|her]]\nCount: 1\n")
+        seen = []
+        with mock.patch.object(dispatch.media, "edit", self.stand_in(None, seen)):
+            self.d.once()
+        (asked,) = seen
+        self.assertEqual([os.path.basename(p) for p in asked["sources"][0]], ["side.png"], "the embed, its size aside")
+        self.d.sync_character("Mara")
+        self.assertIn("Reference: ![[side.png|300]]\n", open(path).read(), "written back as the owner wrote it")
+        self.note("inbox", "hat.png", "png")
+        self.note("inbox", "hat.md", "Edit: take the hat off\nCharacters: ![[Mara]]\n\n![[hat.png]]\n")
+        seen = []
+        with mock.patch.object(dispatch.media, "edit", self.stand_in(None, seen)):
+            self.d.once()
+        (asked,) = seen
+        self.assertEqual([os.path.basename(p) for p in asked["pictures"]], ["hat.png", "side.png"])
+
     def set_asked(self, note, *names, reference=None, between=None):
         """A character set run on Mara, whose looks/ holds names: what media.edit was asked, and the reply."""
         self.character("Mara", "A ferry pilot.")

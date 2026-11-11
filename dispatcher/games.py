@@ -121,8 +121,8 @@ class Games:
         missing = self._not_in_ollama([model])
         if missing:
             return None, missing
-        # Written as links or not: `Characters: [[Mara]], Tom`.
-        present, new = chat.named(re.sub(r"\[\[|\]\]", "", header["characters"] or ""), self.known_characters())
+        # Written as links or not, `Characters: [[Mara]], Tom`: parse_header reads a link as its name.
+        present, new = chat.named(header["characters"] or "", self.known_characters())
         if new:
             return None, (f"`Characters:` names {', '.join(f'`{n}`' for n in new)}, who visor does not know. A character "
                           "is a folder in `characters/`, with their `config.md`: a chat note naming them makes one.")

@@ -19,12 +19,40 @@ the choice is the text before the first bracket.
 A setting marked `UNUSED ` (`UNUSED Project: game`) is one the note's kind does not
 read (kinds.py). It is still part of the settings, so it never ends a note's header,
 and it is otherwise passed over: only a scan asked for it returns it.
+
+A value may name what it means by an Obsidian link or embed, in any of its forms:
+`named` reads each as the name of what it points to. Every reader of settings reads
+values through it, and a note visor writes back keeps the form the owner wrote.
 """
 
 import re
+import urllib.parse
 
 BOX = re.compile(r"^\s*[-*+]\s+\[([ xX])\]\s+(.*?)\s*$")
 UNUSED = "UNUSED "
+# An Obsidian link or embed, `[[target#part|shown]]`, or a Markdown one, `[shown](target)`. A link's target
+# never starts with a space, which tells it from a shell test, `[[ -f x ]]`, in a `Tests:` command.
+LINK = re.compile(r"!?\[\[(?!\s)([^\[\]|#]*)(?:#[^\[\]|]*)?(?:\|[^\[\]]*)?\]\]"
+                  r"|!?\[[^\[\]]*\]\((?!\s)(<[^>]*>|[^()\s]+)\)")
+
+
+def named(value):
+    """A setting's value with each link or embed in it read as the name of what it points to: `[[Mara]]`,
+    `![[front.png]]`, `[[front.png|shown]]`, `![[front.png|300]]` (an embed's size), `[[Mara#Looks]]` (a part of
+    a note), `[[characters/Mara/Mara]]` (a path: its last part is the name, as Obsidian finds a file by its
+    name) and `[shown](front%20b.png)` all read as `Mara` or `front.png`. A note's name is without its `.md`.
+    A link to a part of the same note, `[[#Looks]]`, and a Markdown link to a web address stay as written."""
+    def name(link):
+        target = link.group(1)
+        if target is None:
+            target = urllib.parse.unquote(link.group(2).strip("<>"))
+            if "://" in target:
+                return link.group(0)
+        target = target.strip().replace("\\", "/").rsplit("/", 1)[-1].strip()
+        if target.lower().endswith(".md"):
+            target = target[:-3]
+        return target or link.group(0)
+    return LINK.sub(name, value or "")
 
 
 def _key_line(keys):

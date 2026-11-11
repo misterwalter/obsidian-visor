@@ -192,16 +192,18 @@ def read(text, said, models):
             found[setting] = switched[key]
     actions |= {key for key in ("update now", "restart") if switched.get(key)}
     for entry in settings.scan(text, KEYS)[0]:
-        key = entry["key"]
+        # A link read as the name of what it points to, `Default model: [[gemma]]` (settings.named).
+        key, written = entry["key"], settings.named(entry["value"])
+        boxes = None if entry["boxes"] is None else [(on, settings.named(c).strip()) for on, c in entry["boxes"]]
         if key in ("update now", "restart"):
-            if entry["boxes"] and any(on for on, _ in entry["boxes"]):
+            if boxes and any(on for on, _ in boxes):
                 actions.add(key)
             continue
         if key in dict(SWITCHES) and key in switched:
             continue
         if key == retention.KEY:
             line, setting, low, high, _ = RETAIN
-            value = entry["value"].strip()
+            value = written.strip()
             if value.isdigit() and low <= int(value) <= high:
                 found[setting] = int(value)
             elif value:
@@ -210,17 +212,17 @@ def read(text, said, models):
             continue
         if key in timing:
             line, setting, low, high = timing[key]
-            value = entry["value"].strip()
+            value = written.strip()
             if value.isdigit() and low <= int(value) <= high:
                 found[setting] = int(value)
             elif value:
                 problems.append(f"`{line}: {value}` must be a whole number of seconds from {low} to {high}. "
                                 f"Kept: {said[setting]}.")
             continue
-        if entry["boxes"] is None:
-            value, problem = entry["value"].strip().lower(), None
+        if boxes is None:
+            value, problem = written.strip().lower(), None
         else:
-            value, problem = settings.choose(entry["boxes"], standing[key], unticking=True)
+            value, problem = settings.choose(boxes, standing[key], unticking=True)
         if problem:
             problems.append(f"Under `{key.capitalize()}`, {problem}. Kept: {standing[key]}.")
             continue
