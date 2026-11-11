@@ -104,7 +104,7 @@ LINES = {
     "edit": [line("Edit", given=True), line("Negative"), line("Model"), line("Count", "1"), line("Seed"),
              QUALITY, line("Characters")],
     "character set": [line("Character set", given=True), line("Negative"), line("Model"), line("Count", "8"),
-                      line("Seed"), QUALITY],
+                      line("Source count", "1"), line("Half-size sources", "no", box=True), line("Seed"), QUALITY],
     "train": [line("Train", given=True), line("Model"), line("Steps", "600"), line("Rank", "16"), line("Size")],
     "scene image": [line("Scene image", given=True), line("Negative"), line("Model"), line("Edit model"),
                     line("Rounds", "3"), line("Count", "4"), line("Seed"), QUALITY,

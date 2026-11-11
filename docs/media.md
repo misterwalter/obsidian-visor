@@ -72,11 +72,17 @@ models, and the job's scratch folder (`~/.local/state/visor/media/<job>/`).
   `KSampler`), with the model's 4-step LoRA unless `Full quality` is ticked. The first
   picture is the one edited; the others, and `Characters:` references, are what
   it goes by.
-- `Character set: Mara` edits her reference picture into new ones, one for each
-  of a dozen variations (angles, expressions, light, clothes), into
-  `looks/candidates/`; with a vision model (`vision.py`, `Kind: vision`) each is
-  compared with the reference and those that are not her go to
-  `candidates/rejected/`. The owner moves the good ones into `looks/`.
+- `Character set: Mara` edits her `looks/` pictures into new ones, into
+  `looks/candidates/`. Each is one variation (angle, pose, expression, light,
+  clothes), drawn at random without repeats from the note's own `## Variations`
+  list, or else from a built-in dozen (`dispatcher/looks.py`, `VARIATIONS`). Each
+  goes by `Source count:` pictures drawn at random from `looks/` (1 to 3, her
+  `Reference:` first when she has one); `Half-size sources` reads them at half
+  the pixels (`source_megapixels` in `edit_graph`) while the picture made keeps
+  the first one's full size. The job's seed fixes both draws. With a vision model
+  (`vision.py`, `Kind: vision`) each is compared with the first picture it went
+  by, and those that are not her go to `candidates/rejected/`. The owner moves the
+  good ones into `looks/`.
 - `Train: Mara` trains a LoRA from her `looks/` with ComfyUI's own trainer
   (`train_graph`: `LoadImageTextDataSetFromFolder`, `ResizeImagesByShorterEdge`,
   `CenterCropImages`, `MakeTrainingDataset`, `TrainLoraNode`, `SaveLoRA`, every

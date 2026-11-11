@@ -782,6 +782,27 @@ class MediaTest(unittest.TestCase):
         prompts = [json.loads(l)["positive"]["inputs"]["prompt"] for l in open(os.path.join(self.job, "graphs.jsonl"))]
         self.assertEqual(prompts, ["from the left", "smiling"])
 
+    def test_a_character_set_goes_by_pictures_of_its_own_for_each_prompt_and_reads_them_at_half_size(self):
+        self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
+        self.edit_files()
+        bed, drinks, front = (os.path.join(self.tmp.name, n) for n in ("bed.png", "drinks.jpg", "front.png"))
+        for picture in (bed, drinks, front):
+            self.write(picture, "png")
+        media.edit(self.settings, {"seed": "1"}, [front], self.job, prompts=["lying down", "serving"],
+                   sources=[[front, bed], [front, drinks]], half=True)
+        graphs = [json.loads(l) for l in open(os.path.join(self.job, "graphs.jsonl"))]
+        self.assertEqual([[g[f"picture{i}"]["inputs"]["image"] for i in (1, 2)] for g in graphs],
+                         [["source1.png", "source2.png"], ["source1.png", "source3.jpg"]], "each picture copied in once")
+        for graph in graphs:
+            self.assertEqual(graph["scaled1"]["inputs"]["megapixels"], 0.5, "read at half size")
+            self.assertEqual(graph["scaled2"]["inputs"]["megapixels"], 0.5)
+            self.assertEqual(graph["canvas"]["inputs"]["megapixels"], 1.0)
+            self.assertEqual(graph["latent"]["inputs"]["pixels"], ["canvas", 0], "made at picture 1's full size")
+        whole = media.edit_graph(dict(media.edit_spec({"prompt": "x"}, *testmodels.edit_specs()), seed=1),
+                                 ["picture1.png"])
+        self.assertNotIn("canvas", whole, "at full size, the picture read is the canvas")
+        self.assertEqual(whole["latent"]["inputs"]["pixels"], ["scaled1", 0])
+
     def test_a_character_s_lora_is_drawn_with_on_models_of_its_family_only(self):
         lora = {"file": "visor-mara.safetensors", "family": "sdxl", "trigger": "mara_char", "strength": 0.8}
         on_xl = self.spec({"prompt": "x", "model": "photo-xl", "loras": [lora]})

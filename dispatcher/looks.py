@@ -2,6 +2,7 @@
 them: edits, character sets, training a LoRA, and scenes that refine themselves."""
 
 import os
+import random
 import re
 import shutil
 import time
@@ -30,6 +31,18 @@ VARIATIONS = (
     "walking, caught mid-step, a street behind",
     "in a coat and scarf, outdoors on a grey day",
 )
+
+
+def _variations_of(owner_text):
+    """A character set note's own variations: the list items under its `## Variations` heading, one each, up to
+    the next heading; any other text there is the owner's own. [] when it has none."""
+    text = re.sub(r"%%.*?%%", "", owner_text, flags=re.DOTALL)
+    found = re.search(r"^#{1,6}[ \t]*Variations[ \t]*:?[ \t]*$(.*?)(?=^#{1,6}[ \t]|\Z)", text,
+                      flags=re.MULTILINE | re.DOTALL | re.IGNORECASE)
+    if not found:
+        return []
+    items = (re.match(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.*)$", line) for line in found.group(1).splitlines())
+    return [item.group(1).strip() for item in items if item and item.group(1).strip()]
 
 
 class Looks:
@@ -181,7 +194,9 @@ class Looks:
         return "\n".join(lines) + "\n"
 
     def _media_character_set(self, name, header, owner_text, job, earlier=""):
-        """New pictures of a character from their reference picture, as candidates for looks/."""
+        """New pictures of a character from the pictures in their looks/, as candidates for looks/: each in a
+        variation drawn at random (the note's own `## Variations`, else VARIATIONS), going by `Source count:`
+        pictures drawn at random for it, their Reference: picture first when they have one."""
         who, character = self._character_named(header["round text"], "Character set")
         reference = self._reference(who, character)
         if not reference:
@@ -191,9 +206,39 @@ class Looks:
         count = (header["count"] or "8").strip()
         if not count.isdigit() or not 1 <= int(count) <= 48:
             raise media.MediaError("`Count:` must be a whole number from 1 to 48.")
-        prompts = [f"The same person as in picture 1, {VARIATIONS[i % len(VARIATIONS)]}. Keep their face, hair, "
-                   "build and skin exactly as in picture 1." for i in range(int(count))]
-        folder, _ = self._looks(who)
+        wanted = (header["source count"] or "1").strip()
+        if wanted not in ("1", "2", "3"):
+            raise media.MediaError("`Source count:` must be 1, 2 or 3: an edit goes by at most three pictures.")
+        seed = (header["seed"] or "").strip()
+        if seed and not seed.isdigit():
+            raise media.MediaError(f"`Seed: {seed}` must be a whole number.")
+        seed = int(seed) if seed else random.randrange(2**32)
+        draw = random.Random(seed)  # the same Seed: draws the same variations and sources again
+        own = _variations_of(owner_text)
+        variations = own or list(VARIATIONS)
+        chosen, pool = [], []
+        for _ in range(int(count)):
+            if not pool:
+                pool = list(variations)
+                draw.shuffle(pool)
+            chosen.append(pool.pop())
+        prompts = [f"The same person as in picture 1, {v.rstrip('.')}. Keep their face, hair, build and skin exactly "
+                   "as in picture 1." for v in chosen]
+        folder, pictures = self._looks(who)
+        # Their Reference: picture, when the line names one that is there, goes first in every draw.
+        line = (character.get("reference") or "").strip()
+        named = line and (os.path.join(folder, line) if os.path.isfile(os.path.join(folder, line)) else self._find(line))
+        single = (self.media.edit_models.get((header["model"] or self.media.default_edit or "").strip().lower())
+                  or {}).get("kind") in models.SINGLE_FILE_EDITS
+        others = [p for p in pictures if p != named]
+        each = 1 if single else min(int(wanted), len(others) + (1 if named else 0))
+        sources = []
+        for _ in chosen:
+            if named:
+                sources.append([named] + draw.sample(others, each - 1))
+            else:
+                sources.append(draw.sample(others, each))
+        half = (header["half-size sources"] or "no").strip().lower() in models.YES
         candidates = os.path.join(folder, "candidates")
         os.makedirs(candidates, exist_ok=True)
         made, took = [], time.time()
@@ -206,28 +251,55 @@ class Looks:
             made.append(target)
             self.made_so_far.append(f"![[{target}]] seed {seed}")
             livelog.append(self.live_log(name, "character set"), f"*{time.strftime('%H:%M')}* {n}: ![[{target}]]\n")
-        result = media.edit(self.media, {"prompt": prompts[0], "model": header["model"], "seed": header["seed"],
+        result = media.edit(self.media, {"prompt": prompts[0], "model": header["model"], "seed": str(seed),
                                          "quality": header["quality"], "negative": header["negative"]},
-                            [reference], job, on_image=arrived, prompts=prompts)
+                            sources[0], job, on_image=arrived, prompts=prompts, sources=sources, half=half)
+        total = len(others) + (1 if named else 0)
+        if named and each == 1:
+            went_by = f"from `{os.path.basename(named)}`, their Reference: picture"
+        elif total == 1:
+            went_by = f"from `{os.path.basename(sources[0][0])}`, the one picture in `{characters.LOOKS_FOLDER}/`"
+        elif each == 1:
+            went_by = f"each from one of the {total} pictures in `{characters.LOOKS_FOLDER}/`, drawn at random for it"
+        else:
+            went_by = (f"each going by {each} of the {total} pictures in `{characters.LOOKS_FOLDER}/`, drawn at "
+                       "random for it")
+            if named:
+                went_by += f", `{os.path.basename(named)}` (their Reference:) always first"
         lines = [f"## Candidates for {who}, {_stamp()}", "",
-                 f"From `{os.path.basename(reference)}`, with `{result['spec']['name']}` · {len(made)} pictures · "
-                 f"took {round((time.time() - took) / 60)} minutes", "",
-                 f"They are in `characters/{who}/{characters.LOOKS_FOLDER}/candidates/`. Move the ones that are "
-                 f"{who} into `{characters.LOOKS_FOLDER}/`: the next set, and a LoRA, start from what is there.", ""]
+                 f"{len(made)} pictures, {went_by}" + (", at half size" if half and not single else "")
+                 + f" · {'your own ' + str(len(own)) if own else 'the built-in ' + str(len(VARIATIONS))} "
+                 f"variations, drawn at random · with `{result['spec']['name']}` · seed {seed} · "
+                 f"took {round((time.time() - took) / 60)} minutes", ""]
+        if int(wanted) > each:
+            lines += [(f"`{result['spec']['name']}` edits one picture and goes by no others, so `Source count: "
+                       f"{wanted}` came to one." if single else
+                       f"`Source count: {wanted}`, but `{characters.LOOKS_FOLDER}/` has only {each}: each went by "
+                       "all of them."), ""]
+        if half and single:
+            lines += [f"`Half-size sources` makes no difference to `{result['spec']['name']}`, which goes by one "
+                      "picture only.", ""]
+        if header["negative"] and not result["spec"].get("cfg", 1.0) > 1.0:
+            lines += ["`Negative:` has no effect on fast quality, which follows the prompt alone: tick "
+                      "`Quality: full` for it to count, at several times the time.", ""]
+        lines += [f"They are in `characters/{who}/{characters.LOOKS_FOLDER}/candidates/`. Move the ones that are "
+                  f"{who} into `{characters.LOOKS_FOLDER}/`: the next set, and a LoRA, start from what is there.", ""]
         seer, tag = models.vision(self.model_notes)
         if tag and self._not_in_ollama([seer], "vision"):
             raise media.MediaError(self._not_in_ollama([seer], "vision"))
         rejected = os.path.join(candidates, "rejected")
-        for target in made:
+        for target, variation, these in zip(made, chosen, sources):
             verdict = ""
             if tag:
-                if vision.same_person(self.ollama, tag, reference, os.path.join(candidates, target)):
+                if vision.same_person(self.ollama, tag, these[0], os.path.join(candidates, target)):
                     verdict = f" · {seer} sees {who}"
                 else:
                     os.makedirs(rejected, exist_ok=True)
                     os.replace(os.path.join(candidates, target), os.path.join(rejected, target))
                     verdict = f" · {seer} does not see {who}: moved to `candidates/rejected/`"
-            lines += [f"![[{target}]]{verdict}", ""]
+            # What each was asked for and went by: the owner's to judge it by, and to caption a LoRA with.
+            lines += [f"![[{target}]]", f"*{variation}* · from {', '.join(f'`{os.path.basename(p)}`' for p in these)}"
+                      + verdict, ""]
         if not tag:
             lines.append("No vision model to check them with (a note in `models/`, `Kind: vision`): every candidate "
                          "is kept for you to judge.")

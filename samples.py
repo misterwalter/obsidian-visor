@@ -540,17 +540,30 @@ def edit_note(ctx):
 
 def character_set(ctx):
     body = "\n\n".join([
-        "**A Character set note makes new pictures of a character**, from their reference picture, for you to "
-        "choose from: other angles, expressions, light and clothes. Name them after `Character set:`; visor knows "
-        f"{ctx['characters_known']}. The pictures land in `characters/<Name>/looks/candidates/`; move the ones that "
-        "are them into `looks/`. With a vision model, visor moves the ones that do not look like them into "
-        "`candidates/rejected/` first. Each set starts from what `looks/` holds, so sets build on sets, and a "
-        "LoRA is trained from it. " + COPY,
+        "**A Character set note makes new pictures of a character**, from the pictures in their `looks/`, for you "
+        "to choose from: other angles, poses, expressions, light and clothes. Name them after `Character set:`; "
+        f"visor knows {ctx['characters_known']}. The pictures land in `characters/<Name>/looks/candidates/`; move "
+        "the ones that are them into `looks/`. With a vision model, visor moves the ones that do not look like "
+        "them into `candidates/rejected/` first. Each set starts from what `looks/` holds, so sets build on sets, "
+        "and a LoRA is trained from it. " + COPY,
+        "**Each picture is one variation, drawn at random** from a built-in dozen (from the side, from behind, "
+        "sitting, walking, in a coat...), without repeats until all have been used. To choose your own, list them "
+        "under a heading `## Variations` below the top, one a line, such as `- lying on a bed, reading` or "
+        "`- serving drinks in a crowded tavern`: then only yours are used. The reply says under each picture "
+        "which variation it was and which pictures it went by.",
         "| Line | Meaning | If left out |\n|---|---|---|\n"
         "| `Character set: <name>` | Whose pictures. | |\n"
         "| `Model:` | The edit model. | The one marked default. |\n"
         "| `Count:` | How many pictures, up to 48. | 8 |\n"
-        "| `Seed:`, `Full quality` | As on an Edit note. | |",
+        "| `Source count:` | How many pictures from `looks/` each one goes by, 1 to 3, drawn at random for "
+        "each: their `Reference:` picture first, when they have one. More is truer to them, and each one "
+        "more makes every picture slower. | 1 |\n"
+        "| `Half-size sources`, a box | Ticked: the pictures it goes by are read at half size, which is quicker; "
+        "the pictures made stay full size. | Unticked |\n"
+        "| `Negative:` | What the pictures must not have, such as bunny ears. It counts only with `Quality: "
+        "full`. | |\n"
+        "| `Seed:` | Where to start: the same seed draws the same variations and pictures again. | A random one. |\n"
+        "| `Quality` | As on an Edit note. | fast |",
         LOOKS, CPU, DAILY, ctx["edits"]])
     return "Character set: \n\n" + guide("How a Character set note works", body)
 

@@ -1453,16 +1453,25 @@ def edit_graph(spec, pictures):
         model = ["lora", 0]
     graph["shift"] = {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": model, "shift": spec["shift"]}}
     images = {}
+    # Half-size sources: the pictures it goes by at half the pixels, quicker to read, while the picture it makes
+    # keeps picture 1's full size (the canvas, below).
+    source_megapixels = spec.get("source_megapixels", 1.0)
     for i, picture in enumerate(pictures[:3], start=1):
         graph[f"picture{i}"] = {"class_type": "LoadImage", "inputs": {"image": picture}}
         graph[f"scaled{i}"] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
-            "image": [f"picture{i}", 0], "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 8}}
+            "image": [f"picture{i}", 0], "upscale_method": "lanczos", "megapixels": source_megapixels,
+            "resolution_steps": 8}}
         images[f"image{i}"] = [f"scaled{i}", 0]
+    canvas = "scaled1"
+    if source_megapixels != 1.0:
+        graph["canvas"] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "image": ["picture1", 0], "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 8}}
+        canvas = "canvas"
     graph["positive"] = {"class_type": "TextEncodeQwenImageEditPlus", "inputs": dict(
         {"clip": ["clip", 0], "prompt": spec["prompt"], "vae": ["vae", 0]}, **images)}
     graph["negative"] = {"class_type": "TextEncodeQwenImageEditPlus", "inputs": dict(
         {"clip": ["clip", 0], "prompt": spec.get("negative", ""), "vae": ["vae", 0]}, **images)}
-    graph["latent"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["scaled1", 0], "vae": ["vae", 0]}}
+    graph["latent"] = {"class_type": "VAEEncode", "inputs": {"pixels": [canvas, 0], "vae": ["vae", 0]}}
     graph["sampler"] = {"class_type": "KSampler", "inputs": {
         "model": ["shift", 0], "positive": ["positive", 0], "negative": ["negative", 0], "latent_image": ["latent", 0],
         "seed": spec["seed"], "steps": spec["steps"], "cfg": spec["cfg"], "sampler_name": spec["sampler"],
@@ -1483,13 +1492,15 @@ def _edit_weights(settings, spec):
     return weights
 
 
-def edit(settings, options, pictures, job, on_image=None, prompts=None, each=None):
+def edit(settings, options, pictures, job, on_image=None, prompts=None, each=None, sources=None, half=False):
     """Edit pictures[0] by the note's instruction, going by up to two more pictures. Count:
-    of them, from Seed: up; with prompts, one edit for each prompt instead (a character set);
-    with each, a list of pictures, each of them edited in turn in place of pictures[0], by the
-    same instruction and going by the same others (characters edited into what a note drew).
-    All on one start of ComfyUI, which loads the edit model once. on_image(path, seed, n) as
-    each is done. Returns {"files", "spec", "seeds"}."""
+    of them, from Seed: up; with prompts, one edit for each prompt instead (a character set),
+    and with sources besides, a list of pictures for each prompt in place of pictures (the
+    character set's own draw from looks/); with each, a list of pictures, each of them edited in
+    turn in place of pictures[0], by the same instruction and going by the same others (characters
+    edited into what a note drew). half: the pictures it goes by at half size, the picture made
+    at full size. All on one start of ComfyUI, which loads the edit model once. on_image(path,
+    seed, n) as each is done. Returns {"files", "spec", "seeds"}."""
     spec = edit_spec(dict(options, prompt=options.get("prompt") or (prompts or [""])[0]),
                      settings.edit_models, settings.default_edit)
     if not pictures:
@@ -1497,12 +1508,24 @@ def edit(settings, options, pictures, job, on_image=None, prompts=None, each=Non
                          "somewhere in `tasks/`.")
     if spec["kind"] not in models.SINGLE_FILE_EDITS:
         spec["weight_dtype"] = stored_weights(os.path.join(settings.comfy_models, "diffusion_models", spec["file"]))
+        if half:
+            spec["source_megapixels"] = 0.5
     os.makedirs(os.path.join(job, "input"), exist_ok=True)
     names = []
     for i, picture in enumerate(pictures[:3], start=1):
         names.append(f"picture{i}{os.path.splitext(picture)[1].lower()}")
         shutil.copyfile(picture, os.path.join(job, "input", names[-1]))
-    if each:
+    if prompts and sources:
+        # Each picture copied in once, under a name of its own, however many prompts go by it.
+        copied = {}
+        for these in sources:
+            for picture in these:
+                if picture not in copied:
+                    copied[picture] = f"source{len(copied) + 1}{os.path.splitext(picture)[1].lower()}"
+                    shutil.copyfile(picture, os.path.join(job, "input", copied[picture]))
+        jobs = [(p, spec["seed"] + i, [copied[s] for s in these[:3]])
+                for i, (p, these) in enumerate(zip(prompts, sources))]
+    elif each:
         # Each picture in turn as picture 1, the others as they are.
         firsts = []
         for k, picture in enumerate(each, start=1):

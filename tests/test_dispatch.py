@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 import dispatch  # noqa: E402
 import testmodels  # noqa: E402
 # Self-update reads where visor is in its own module: the tests stand in a checkout there.
+import dispatcher.looks as visor_looks  # noqa: E402
 import dispatcher.server as visor_server  # noqa: E402
 from dispatcher.notes import flagged  # noqa: E402
 
@@ -2685,9 +2686,10 @@ class DispatchTest(unittest.TestCase):
 
     def stand_in(self, made, seen, key="edit"):
         """A stand-in for media.edit or media.generate: records what it was asked, makes pictures."""
-        def fake(settings, options, *rest, on_image=None, prompts=None, each=None, **_):
+        def fake(settings, options, *rest, on_image=None, prompts=None, each=None, sources=None, half=False, **_):
             job = rest[-1] if rest else _["job"]
-            seen.append(dict(options, pictures=rest[0] if len(rest) == 2 else None, prompts=prompts, each=each))
+            seen.append(dict(options, pictures=rest[0] if len(rest) == 2 else None, prompts=prompts, each=each,
+                             sources=sources, half=half))
             n = len(prompts) if prompts else len(each) if each else int(options.get("count") or 1)
             files = []
             for i in range(n):
@@ -2760,12 +2762,79 @@ class DispatchTest(unittest.TestCase):
             self.d.once()
         (asked,) = seen
         self.assertEqual(os.path.basename(asked["pictures"][0]), "side.png", "her Reference: picture")
+        self.assertEqual([[os.path.basename(p) for p in these] for these in asked["sources"]], [["side.png"]] * 3,
+                         "Source count: 1, and she has a Reference:")
         self.assertEqual(len(asked["prompts"]), 3)
-        self.assertIn("seen from the left side", asked["prompts"][1])
         kept = sorted(os.listdir(os.path.join(folder, "candidates")))
         self.assertEqual(len([k for k in kept if k.endswith(".png")]), 2)
         self.assertEqual(len(os.listdir(os.path.join(folder, "candidates", "rejected"))), 1)
-        self.assertIn("looker does not see Mara: moved to `candidates/rejected/`", self.read("output", "set.md"))
+        note = self.read("output", "set.md")
+        self.assertIn("looker does not see Mara: moved to `candidates/rejected/`", note)
+        self.assertIn("3 pictures, from `side.png`, their Reference: picture", note)
+        self.assertIn("the built-in 12 variations, drawn at random", note)
+
+    def set_asked(self, note, *names, reference=None):
+        """A character set run on Mara, whose looks/ holds names: what media.edit was asked, and the reply."""
+        self.character("Mara", "A ferry pilot.")
+        self.looks("Mara", *names)
+        if reference:
+            self.d._set_character_line("Mara", "Reference", reference)
+        self.note("inbox", "set.md", note)
+        seen = []
+        with mock.patch.object(dispatch.media, "edit", self.stand_in(None, seen)):
+            self.d.once()
+        (asked,) = seen
+        return asked, self.read("output", "set.md")
+
+    def test_a_character_set_draws_its_variations_at_random_without_repeats_and_its_seed_draws_them_again(self):
+        asked, note = self.set_asked("Character set: Mara\nCount: 12\nSeed: 5\n", "front.png")
+        used = [p.split("picture 1, ", 1)[1].split(". Keep", 1)[0] for p in asked["prompts"]]
+        builtin = list(visor_looks.VARIATIONS)
+        self.assertEqual(sorted(used), sorted(builtin), "all twelve, once each")
+        self.assertNotEqual(used, builtin, "not in the list's order")
+        self.assertEqual(asked["seed"], "5")
+        self.assertIn(f"*{used[0]}* · from `front.png`", note, "each picture says what it was asked for")
+        again, _ = self.set_asked("Character set: Mara\nCount: 12\nSeed: 5\n", "front.png")
+        self.assertEqual(again["prompts"], asked["prompts"], "the same seed, the same draw")
+        other, _ = self.set_asked("Character set: Mara\nCount: 12\nSeed: 6\n", "front.png")
+        self.assertNotEqual(other["prompts"], asked["prompts"])
+
+    def test_a_character_set_s_own_variations_replace_the_built_in_ones(self):
+        asked, note = self.set_asked("Character set: Mara\nCount: 5\n\n## Variations\n- lying on a bed, reading\n"
+                                     "- serving drinks in a crowded tavern\n1. eating a pear\n\nA note to myself.\n",
+                                     "front.png")
+        used = [p.split("picture 1, ", 1)[1].split(". Keep", 1)[0] for p in asked["prompts"]]
+        self.assertEqual(len(used), 5)
+        self.assertEqual(set(used), {"lying on a bed, reading", "serving drinks in a crowded tavern",
+                                     "eating a pear"}, "each item of the list is one; the note's other text is not")
+        self.assertIn("your own 3 variations, drawn at random", note)
+        self.assertIn("5 pictures, from `front.png`, the one picture in `looks/`", note)
+
+    def test_a_character_set_goes_by_source_count_pictures_drawn_for_each_the_reference_first(self):
+        asked, note = self.set_asked("Character set: Mara\nCount: 6\nSource count: 2\n- [x] Half-size sources\n",
+                                     "bed.png", "drinks.png", "eating.png", "front.png", reference="front.png")
+        drawn = [[os.path.basename(p) for p in these] for these in asked["sources"]]
+        self.assertEqual(len(drawn), 6)
+        self.assertTrue(all(these[0] == "front.png" and len(these) == 2 and these[1] != "front.png" for these in drawn))
+        self.assertGreater(len({these[1] for these in drawn}), 1, "drawn afresh for each picture")
+        self.assertTrue(asked["half"])
+        self.assertIn("each going by 2 of the 4 pictures in `looks/`, drawn at random for it, `front.png` (their "
+                      "Reference:) always first, at half size", note)
+
+    def test_a_character_set_with_no_reference_draws_every_source_and_says_when_looks_has_too_few(self):
+        asked, note = self.set_asked("Character set: Mara\nCount: 8\nSource count: 3\n", "bed.png", "drinks.png")
+        drawn = [sorted(os.path.basename(p) for p in these) for these in asked["sources"]]
+        self.assertEqual(drawn, [["bed.png", "drinks.png"]] * 8, "both, as there are only two")
+        self.assertIn("`Source count: 3`, but `looks/` has only 2: each went by all of them.", note)
+        firsts = {os.path.basename(these[0]) for these in asked["sources"]}
+        self.assertEqual(firsts, {"bed.png", "drinks.png"}, "either can be picture 1: there is no Reference:")
+
+    def test_a_character_set_says_its_source_count_must_be_one_to_three(self):
+        self.character("Mara", "A ferry pilot.")
+        self.looks("Mara", "front.png")
+        self.note("inbox", "set.md", "Character set: Mara\nSource count: 5\n")
+        self.d.once()
+        self.assertIn("`Source count:` must be 1, 2 or 3", self.read("output", "set.md"))
 
     def test_training_captions_the_looks_trains_and_gives_the_character_the_lora(self):
         self.character("Mara", "A ferry pilot.", looks="Grey plait, oilskins.")
