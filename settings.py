@@ -55,6 +55,25 @@ def named(value):
     return LINK.sub(name, value or "")
 
 
+# A link that is not an embed, `[[target#part|shown]]` or `[shown](target)`: what plain reads as words.
+WORDS_LINK = re.compile(r"(?<!!)\[\[(?!\s)([^\[\]|#]*)(?:#([^\[\]|]*))?(?:\|([^\[\]]*))?\]\]"
+                        r"|(?<!!)\[([^\[\]]*)\]\((?!\s)(?:<[^>]*>|[^()\s]+)\)")
+
+
+def plain(text):
+    """Text as a model reads it, or a voice reads it aloud: each link as the words it shows, its own words
+    when it has them, `[[characters/Mara/Mara|Mara]]` and `[her](Mara.md)` reading `Mara` and `her`, else the
+    name it points to (named), `[[Mara#Looks]]` reading `Mara`. Embeds are left to the reader: a picture is
+    described, or dropped, where the text goes."""
+    def words(link):
+        if link.group(4) is not None:
+            return link.group(4)
+        if link.group(3) is not None and link.group(3).strip():
+            return link.group(3).strip()
+        return named(f"[[{link.group(1)}]]") if link.group(1).strip() else (link.group(2) or "").strip()
+    return WORDS_LINK.sub(words, text or "")
+
+
 def _key_line(keys):
     names = "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in sorted(keys, key=len, reverse=True))
     return re.compile(r"^\s*(UNUSED\s+)?(" + names + r")\s*(?:(:)\s*(.*?))?\s*$", re.IGNORECASE)

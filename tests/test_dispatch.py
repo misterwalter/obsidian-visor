@@ -548,7 +548,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "Evening.md", "Chat: Zed\n\n## You\nHello?\n")
         self.d.once()
         self.assertEqual(self.calls_made(), [])
-        self.assertIn("visor did not know `Zed`, so it has made `characters/Zed/Zed.md`", self.read("output", "Evening.md"))
+        self.assertIn("visor did not know `Zed`, so it has made [[characters/Zed/Zed|characters/Zed/Zed.md]]", self.read("output", "Evening.md"))
         made = open(os.path.join(self.tasks, "characters", "Zed", "Zed.md")).read()
         self.assertIn("# Zed", made)
         self.assertIn(dispatch.characters.WHO_HINT, made)
@@ -1296,7 +1296,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(seen["language"], "en")
         note = self.read("output", "memo.md")
         self.assertIn("## Transcript, ", note)
-        self.assertIn("`memo.m4a` · 1.5 minutes of audio", note)
+        self.assertIn("[[inbox/memo.m4a|memo.m4a]] · 1.5 minutes of audio", note)
         self.assertIn("Hello, this is the memo.", note)
 
     def test_only_files_inside_the_tasks_folder_are_read(self):
@@ -1337,7 +1337,7 @@ class DispatchTest(unittest.TestCase):
         with mock.patch.object(dispatch.media, "speak", fake):
             self.d.once()
         self.assertEqual(seen, {"text": "The boat comes in."})
-        self.assertIn("`Chapter 1 - The Boat.md` read by", self.read("output", "read.md"))
+        self.assertIn("[[projects/Story/Chapter 1 - The Boat|Chapter 1 - The Boat]] read by", self.read("output", "read.md"))
 
     def test_an_embed_that_cannot_be_found_is_named_and_nothing_is_read(self):
         self.note("inbox", "read.md", "Speak:\n\nChapter 1: The Boat\n![[Chapter 1 - The Bote]]\n")
@@ -1402,10 +1402,31 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(seen["prompt"], "a lighthouse at dusk rain, wide shot")
         self.assertEqual((seen["model"], seen["count"]), ("anime-xl", "2"))
         note = self.read("output", "pic.md")
-        self.assertIn("`anime-xl` · 1024×1024 · 8 steps with DMD2 · 2 images, seeds 7 to 8", note)
+        self.assertIn("[[models/anime-xl|anime-xl]] · 1024×1024 · 8 steps with DMD2 · 2 images, seeds 7 to 8", note)
         self.assertIn("![[pic image 2.png]] seed 8", note, "each image's seed is beside it, for drawing it again")
         self.assertIn("![[pic image 1.png]]", note)
         self.assertIn("![[pic image 2.png]]", note)
+
+    def test_a_prompt_reads_a_link_to_a_note_as_its_words_and_leaves_out_what_the_note_attaches(self):
+        self.character("Mara", "A ferry pilot.")
+        self.note("inbox", "pic.md", "Image: a fox\nModel: anime-xl\n\nbeside [[characters/Mara/Mara|her]] and "
+                                     "[[Tom]], ![[pose.png]] [[ref.png]] %%not this%%\n")
+        seen = {}
+        def fake(settings, options, job, **_):
+            seen.update(options)
+            return {"files": [self.made(job, "a.png")], "seeds": [7],
+                    "spec": {"name": "anime-xl", "width": 1024, "height": 1024, "steps": 8, "fast": True, "seed": 7}}
+        with mock.patch.object(dispatch.media, "generate", fake):
+            self.d.once()
+        self.assertEqual(seen["prompt"], "a fox beside her and Tom,")
+
+    def test_visor_links_only_to_what_is_there_and_in_the_notes(self):
+        self.character("Mara", "A ferry pilot.")
+        self.assertEqual(self.d.character_link("Mara"), "[[characters/Mara/Mara|Mara]]")
+        self.assertEqual(self.d.character_link("Nobody"), "Nobody", "a link to nothing would make an empty note")
+        self.assertEqual(self.d.model_link("no-such-model"), "no-such-model")
+        self.assertEqual(self.d.link(os.path.join(self.tmp.name, "elsewhere.png"), "elsewhere.png"), "elsewhere.png",
+                         "outside the notes: no link")
 
     def test_a_video_note_makes_a_clip_from_its_picture_and_says_how_to_follow_on(self):
         with open(os.path.join(self.tasks, "inbox", "stall.png"), "wb") as f:
@@ -1424,7 +1445,7 @@ class DispatchTest(unittest.TestCase):
                          ("Billy hands over the coins slowly, smiling", "ltx", "2"))
         self.assertTrue(seen["start"].endswith(os.path.join("inbox", "stall.png")))
         note = self.read("output", "billy.md")
-        self.assertIn("`ltx` · 768×512 · 49 frames at 24 a second (2.0 s) · 8 steps · from `stall.png` · seed 7", note)
+        self.assertIn("[[models/ltx|ltx]] · 768×512 · 49 frames at 24 a second (2.0 s) · 8 steps · from [[inbox/stall.png|stall.png]] · seed 7", note)
         self.assertIn("![[billy video 1.mp4]]", note)
         self.assertIn("start a new Video note with `From: ![[billy video 1.mp4]]`", note)
         self.assertIn("\nOn repeat:", note, "a Video note is told On repeat, as an Image is")
@@ -1507,7 +1528,7 @@ class DispatchTest(unittest.TestCase):
             self.d.once()
         self.assertTrue(seen["pose"].endswith(os.path.join("inbox", "arms-up.png")))
         self.assertEqual(seen["pose strength"], "0.5")
-        self.assertIn("pose from `arms-up.png` at 0.5", self.read("output", "posed.md"))
+        self.assertIn("pose from [[inbox/arms-up.png|arms-up.png]] at 0.5", self.read("output", "posed.md"))
 
     def test_a_pose_image_that_is_not_in_the_tasks_folder_is_refused(self):
         self.note("inbox", "posed.md", "Image: a fox\nPose: ![[elsewhere.png]]\n")
@@ -1538,7 +1559,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(seen["parts"], "body")
         self.assertEqual(seen["pose"], os.path.join(self.tasks, "media", "fromphoto", "fromphoto skeleton 1.png"))
         note = self.read("output", "fromphoto.md")
-        self.assertIn("Traced from `ref.jpg`: person 1: 18 of 18 body points", note)
+        self.assertIn("Traced from [[inbox/ref.jpg|ref.jpg]]: person 1: 18 of 18 body points", note)
         self.assertIn("![[fromphoto image 1.png]]", note)
 
     def test_a_skeleton_note_traces_and_stops(self):
@@ -1579,7 +1600,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual((seen["hands"], seen["finish"], seen["prompt"]), (True, True, "a fox"))
         note = self.read("output", "pic.md")
         self.assertIn("## Improved, ", note)
-        self.assertIn("From `pic image 1.png`: 2 hands redrawn, finished at 1536×1536", note)
+        self.assertIn("From [[media/pic/pic image 1.png|pic image 1.png]]: 2 hands redrawn, finished at 1536×1536", note)
         self.assertIn("![[pic improved 1.png]]", note)
         self.assertEqual(open(os.path.join(media_dir, "pic image 1.png"), "rb").read(), b"original")
         self.assertEqual(open(os.path.join(media_dir, "pic improved 1.png"), "rb").read(), b"better")
@@ -1616,7 +1637,8 @@ class DispatchTest(unittest.TestCase):
             self.note("inbox", "a.md", "Image: a fox\nNegative: blurry, text\n")
             self.d.once()
         self.assertEqual((seen[0]["model"], seen[0]["negative"]), ("realistic-vision", "blurry, text"))
-        self.assertIn("\nModel: realistic-vision\n", self.read("output", "a.md"), "the note shows which model drew it")
+        self.assertIn("\nModel: [[models/realistic-vision|realistic-vision]]\n", self.read("output", "a.md"),
+                      "the note shows which model drew it, a link to its note")
         # With no model marked default, a note that names none comes back at once, asking which.
         path = os.path.join(self.tasks, "models", "realistic-vision.md")
         with open(path) as f:
@@ -1641,7 +1663,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "e.md", "Edit: take the hat off\n")
         self.d.once()
         self.assertTrue(self.read("output", "e.md").split("\n\n", 1)[1].startswith("Edit: take the hat off\nNegative:\n"
-                                                                                   "Model: quick-edit\n"))
+                                                                                   "Model: [[models/quick-edit|quick-edit]]\n"), "the default model, a link to its note")
 
     def test_a_media_job_that_fails_says_why_and_keeps_its_files(self):
         self.note("inbox", "pic.md", "Image: a fox\n")
@@ -2296,7 +2318,7 @@ class DispatchTest(unittest.TestCase):
     def test_a_new_project_s_note_says_where_its_settings_are(self):
         self.note("inbox", "new.md", "New project: Saga\n")
         self.d.once()
-        self.assertIn("Its settings are in `tasks/projects/Saga/Saga.md`", self.read("output", "new.md"))
+        self.assertIn("Its settings are in [[projects/Saga/Saga|tasks/projects/Saga/Saga.md]]", self.read("output", "new.md"))
         self.assertTrue(os.path.exists(os.path.join(self.tasks, "projects", "Saga", "Saga.md")))
         self.assertIn("[project Saga]", open(self.projects_conf).read())
 
@@ -2533,7 +2555,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(self.calls_made(), [])
         note = self.read("output", "task.md")
         self.assertIn("has no way to run its tests that visor can find", note)
-        self.assertIn("on the `Tests:` line of `tasks/projects/notests/notests.md`, or `Tests: none`", note)
+        self.assertIn("on the `Tests:` line of [[projects/notests/notests|tasks/projects/notests/notests.md]], or `Tests: none`", note)
         self.assertNotIn("tests =", note)
 
     def test_visor_finds_a_repository_s_test_command_keeps_it_and_says_so_in_its_config(self):
@@ -2765,7 +2787,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual([os.path.basename(p) for p in asked["pictures"]], ["hat.png", "front.png"])
         note = self.read("output", "hat.md")
         self.assertIn("## Edited, ", note)
-        self.assertIn("going by `front.png`", note)
+        self.assertIn("going by [[characters/Mara/looks/front.png|front.png]]", note)
         self.assertIn("![[hat edit 1.png]]", note)
 
     def test_a_character_with_a_lora_is_drawn_with_it_and_one_without_is_edited_in(self):
@@ -2790,9 +2812,10 @@ class DispatchTest(unittest.TestCase):
                          "every picture drawn, on one start of the edit model")
         note = self.read("output", "quay.md")
         self.assertIn("Tom, edited in from their reference picture:", note)
-        cast = ("**Characters:** Mara, drawn with their LoRA `mara-lora` (trigger `mara_char`, strength 0.8); Tom, no "
-                "LoRA for a sdxl model: drawn from their description, then edited in afterwards from their reference "
-                "picture `tom.png` with the edit model.")
+        cast = ("**Characters:** [[characters/Mara/Mara|Mara]], drawn with their LoRA [[models/mara-lora|mara-lora]] "
+                "(trigger `mara_char`, strength 0.8); [[characters/Tom/Tom|Tom]], no LoRA for a sdxl model: drawn from "
+                "their description, then edited in afterwards from their reference picture "
+                "[[characters/Tom/looks/tom.png|tom.png]] with the edit model.")
         self.assertIn(cast, note, "who is meant to be in the picture, and how each was drawn")
         self.assertLess(note.index(cast), note.index("![[quay image 1.png]]"), "said above the picture")
         log = open(self.d.live_log("quay.md", "image")).read()
@@ -2820,7 +2843,9 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(len(os.listdir(os.path.join(folder, "candidates", "rejected"))), 1)
         note = self.read("output", "set.md")
         self.assertIn("looker does not see Mara: moved to `candidates/rejected/`", note)
-        self.assertIn("3 pictures, from [[side.png]], their Reference: picture", note)
+        self.assertIn("3 pictures, from [[characters/Mara/looks/side.png|side.png]], their Reference: picture", note)
+        self.assertIn("with [[models/quick-edit|quick-edit]] ·", note, "the model, a link to its note")
+        self.assertIn("Move the ones that are [[characters/Mara/Mara|Mara]] into", note)
         self.assertIn("from 12 variations, each drawn at random from the least used so far", note)
 
     def test_a_character_s_reference_and_a_note_s_lines_may_be_links_or_embeds_and_keep_their_form(self):
@@ -2876,7 +2901,8 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(sorted(used), sorted(builtin), "all twelve, once each")
         self.assertNotEqual(used, builtin, "not in the list's order")
         self.assertEqual(asked["seed"], "5")
-        self.assertIn(f"*{used[0]}* · from [[front.png]]", note, "each picture says what it was asked for")
+        self.assertIn(f"*{used[0]}* · from [[characters/Mara/looks/front.png|front.png]]", note,
+                      "each picture says what it was asked for, its pictures linked by their path")
         again, _ = self.set_asked("Character set: Mara\nCount: 12\nSeed: 5\n", "front.png")
         self.assertEqual(again["prompts"], asked["prompts"], "the same seed, the same draw")
         other, _ = self.set_asked("Character set: Mara\nCount: 12\nSeed: 6\n", "front.png")
@@ -2894,7 +2920,7 @@ class DispatchTest(unittest.TestCase):
         self.assertLessEqual(max(counts.values()) - min(counts.values()), 1,
                              "the least used each time: none twice before all once, a doubled one no more often")
         self.assertIn("from 3 variations, each drawn at random", note)
-        self.assertIn("8 pictures, from [[front.png]], the one picture in `looks/`", note)
+        self.assertIn("8 pictures, from [[characters/Mara/looks/front.png|front.png]], the one picture in `looks/`", note)
 
     def test_a_character_set_with_every_variation_unticked_comes_back_undrawn(self):
         self.character("Mara", "A ferry pilot.")
@@ -2927,7 +2953,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("`Variations:` or `Count:` changed while it ran", note)
         log = open(self.d.live_log("set.md", "character set")).read()
         self.assertIn("1: ![[Mara candidate ", log)
-        self.assertIn(" · *lying on a bed* · from [[front.png]]", log, "what each was, as it comes")
+        self.assertIn(" · *lying on a bed* · from [[characters/Mara/looks/front.png|front.png]]", log, "what each was, as it comes")
 
     def test_a_running_character_set_stops_when_every_variation_is_unticked(self):
         def between(n):
@@ -2946,9 +2972,10 @@ class DispatchTest(unittest.TestCase):
         self.assertTrue(all(these[0] == "front.png" and len(these) == 2 and these[1] != "front.png" for these in drawn))
         self.assertGreater(len({these[1] for these in drawn}), 1, "drawn afresh for each picture")
         self.assertTrue(asked["half"])
-        self.assertIn("each going by 2 of the 4 pictures in `looks/`, drawn at random for it, [[front.png]] (their "
-                      "Reference:) always first, at half size", note)
-        self.assertIn(f"· from [[front.png]], [[{drawn[0][1]}]]", note, "each one's sources, linked by name")
+        self.assertIn("each going by 2 of the 4 pictures in `looks/`, drawn at random for it, "
+                      "[[characters/Mara/looks/front.png|front.png]] (their Reference:) always first, at half size", note)
+        self.assertIn(f"· from [[characters/Mara/looks/front.png|front.png]], [[characters/Mara/looks/{drawn[0][1]}|{drawn[0][1]}]]",
+                      note, "each one's sources, linked by their path")
 
     def test_a_character_set_with_no_reference_draws_every_source_and_says_when_looks_has_too_few(self):
         asked, note = self.set_asked("Character set: Mara\nCount: 8\nSource count: 3\n", "bed.png", "drinks.png")
@@ -2987,8 +3014,10 @@ class DispatchTest(unittest.TestCase):
         note = open(os.path.join(self.tasks, "models", "mara-lora.md")).read()
         self.assertIn(f"File: {loras[0]}", note)
         self.assertIn("Trigger: mara_char", note)
-        self.assertIn("LoRA: mara-lora", open(os.path.join(self.tasks, "characters", "Mara", "Mara.md")).read())
-        self.assertIn("A LoRA of Mara on `photo-xl`", self.read("output", "train.md"))
+        self.assertIn("LoRA: [[models/mara-lora|mara-lora]]", open(os.path.join(self.tasks, "characters", "Mara", "Mara.md")).read())
+        trained = self.read("output", "train.md")
+        self.assertIn("A LoRA of [[characters/Mara/Mara|Mara]] on [[models/photo-xl|photo-xl]]", trained)
+        self.assertIn("the model note [[models/mara-lora|mara-lora]]", trained, "a link to the note just made")
 
     def test_a_scene_needs_a_vision_model_and_is_worked_towards_its_checklist(self):
         self.note("inbox", "a.md", "Scene image: three waiters\n")
@@ -3420,7 +3449,7 @@ class DispatchTest(unittest.TestCase):
         self.play(lambda t: t.replace("- [ ] **Go**", "I call for [[Mara]]\n\n- [x] **Go**"))
         self.d.once()
         story = self.story()
-        self.assertIn("Characters: Mara\n", story)
+        self.assertIn("Characters: [[characters/Mara/Mara|Mara]]\n", story, "written as a link to her")
         self.assertIn("> I call for [[Mara]]", story)
         rules, now = asked[1]["prompt"][0]["content"], asked[1]["prompt"][1]["content"]
         self.assertIn("- Mara: A ferry pilot with a grey plait.", rules)

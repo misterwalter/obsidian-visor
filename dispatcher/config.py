@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 
+import characters
 import fetch
 import game
 import media
@@ -189,6 +190,29 @@ class Config:
 
     # Each project's own note: the owner's way to see and change its settings
 
+    # Links visor writes, to a note or file in the notes: by its path from the tasks folder, which Obsidian
+    # finds wherever its vault begins, and which no other file of the same name can be taken for; shown as
+    # its name. Something that is not there, or is outside the notes, is named in plain words: a link to
+    # nothing would make an empty note when clicked.
+
+    def link(self, path, shown=None):
+        rel = os.path.relpath(path, self.tasks)
+        stem = rel[:-3] if rel.lower().endswith(".md") else rel
+        shown = shown or os.path.basename(stem)
+        if rel.startswith("..") or not os.path.exists(path):
+            return shown
+        return f"[[{stem.replace(os.sep, '/')}|{shown}]]"
+
+    def character_link(self, who):
+        return self.link(characters.note_path(os.path.join(self.characters_folder, who)), who)
+
+    def model_link(self, name):
+        found = self.model_notes.get((name or "").strip().lower())
+        return self.link(found[2], name) if found else name
+
+    def project_link(self, name):
+        return self.link(self.panel_path(name), name) if name in self.projects else name
+
     def panel_path(self, name):
         """A project's own note, named after it, `game/game.md`: in the project's own folder if it is a folder, and in a
         folder of its name under the notes' projects folder if it is a repository."""
@@ -346,7 +370,7 @@ class Config:
         self.sync_panel(name)
         where = os.path.relpath(self.panel_path(name), os.path.dirname(self.tasks))
         append_to_note(path, f"## Project created, {_stamp()}\n\n{said}\n\n"
-                             f"Notes for it start with `Project: {name}`. Its settings are in `{where}`: "
+                             f"Notes for it start with `Project: {name}`. Its settings are in {self.link(self.panel_path(name), where)}: "
                              f"tick boxes there to change them.\n\n{REPLY_HEADING}\n")
         move(path, self.out("new project"))
         return f"{name_of_note}: created project {name}"

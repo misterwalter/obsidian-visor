@@ -253,6 +253,15 @@ class PromptsTest(unittest.TestCase):
 
 
 class PageTest(unittest.TestCase):
+    def test_the_players_are_links_with_the_table_whole_and_a_link_in_a_message_is_words(self):
+        state = a_game()
+        text = opera.page(state, PLACES, "m.svg", link=lambda who: f"[[characters/{who}/{who}|{who}]]")
+        row = next(line for line in text.splitlines() if line.startswith("| England |"))
+        who = state["players"]["ENGLAND"]
+        self.assertIn(f"| [[characters/{who}/{who}\\|{who}]] |", row, "its | escaped, or the table splits there")
+        written = text.replace("### To England\n\n", "### To England\n\nAsk [[characters/Tom/Tom|Tom]] about it.\n")
+        self.assertEqual(opera.read_form(written)[0]["to"]["England"], "Ask Tom about it.")
+
     def test_the_owner_writes_messages_then_orders_and_reads_back_how_they_were_read(self):
         state = a_game()
         text = opera.page(state, PLACES, "Test 1901 Spring.svg")

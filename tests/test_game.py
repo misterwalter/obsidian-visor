@@ -118,6 +118,12 @@ class Summoning(unittest.TestCase):
         self.assertEqual(game.summoned("I call for [[Mara]] and check [[the map|map]]"), ["Mara", "the map"])
         self.assertIn("Characters: Mara, Tom\n", game.with_characters(NOTE, ["Tom", "mara"]))
         self.assertIn("Game:\nCharacters: Tom\n", game.with_characters("Game:\n\nStory.\n", ["Tom"]))
+        linked = lambda who: f"[[characters/{who}/{who}|{who}]]"
+        self.assertIn("Characters: [[characters/Mara/Mara|Mara]], [[characters/Tom/Tom|Tom]]\n",
+                      game.with_characters("Game:\nCharacters: [[characters/Mara/Mara|Mara]]\n", ["mara", "Tom"], linked),
+                      "a name already there as a link is not added again")
+        self.assertEqual(game.summoned("I call for [[characters/Mara/Mara|her]]"), ["Mara"])
+        self.assertEqual(game.clean("[[characters/Mara/Mara|Mara]] and [[Tom]] wait."), "Mara and Tom wait.")
 
     def test_pages_come_in_when_named_or_by_an_alias_linked_ones_first(self):
         pages = [("Harbour", "The harbour."), ("Lighthouse", "---\naliases: [the light]\n---\nTall."),

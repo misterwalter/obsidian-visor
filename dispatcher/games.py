@@ -220,7 +220,7 @@ class Games:
         number = game.next_number(story)
         begun = game.begin(text, number, action, keep_draft=how in (SCHEDULED, IDLE))
         if joining:
-            begun = game.with_characters(begun, joining)
+            begun = game.with_characters(begun, joining, link=self.character_link)
             self.log(f"game {name}: {', '.join(joining)} joined the story")
         write_file(path, begun)
         # The story as the narrator reads it: what the memory has not yet taken in, newest last.

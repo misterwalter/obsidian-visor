@@ -852,7 +852,7 @@ def read_form(text):
     said, orders, to, buffer = {}, {}, None, []
     def close():
         if to is not None:
-            said[to] = "\n".join(buffer).strip()
+            said[to] = settings.plain("\n".join(buffer)).strip()  # a link as the words it shows
     for line in body.splitlines():
         heading = TO.match(line)
         if heading:
@@ -914,11 +914,12 @@ def owner_orders(state, places):
     return read, fine
 
 
-def _table(state, places):
+def _table(state, places, link=str):
     lines = ["| Country | Played by | Supply centres | Units |", "|---|---|---|---|"]
     for power in POWERS:
         mine = state["view"]["powers"][power]
-        who = state["players"][power] or "you"
+        # A link's | is escaped in a table, where it would start the next cell.
+        who = link(state["players"][power]).replace("|", "\\|") if state["players"][power] else "you"
         if power in state["out"]:
             lines.append(f"| {country(power)} | {who} | out | |")
             continue
@@ -927,7 +928,7 @@ def _table(state, places):
     return lines
 
 
-def page(state, places, map_file, waiting_on=(), news=()):
+def page(state, places, map_file, waiting_on=(), news=(), link=str):
     """The visor part of a game's page, below the owner's own lines: where it stands, the map,
     what is new for the owner, and what they can do now."""
     view, start = state["view"], state["start"]
@@ -942,10 +943,10 @@ def page(state, places, map_file, waiting_on=(), news=()):
             lines += [f"**Ended early, in {phase_said(over['phase'], start)}:** nobody won, and the characters "
                       "will not remember it.", ""]
         else:
-            lines += [{"solo": f"**{country(winners[0])} won it outright** ({state['players'][winners[0]] or 'you'}).",
+            lines += [{"solo": f"**{country(winners[0])} won it outright** ({link(state['players'][winners[0]]) if state['players'][winners[0]] else 'you'}).",
                        "draw": f"**A draw, agreed by everyone left:** the win is shared {len(winners)} ways.",
                        "end": f"**The end year came:** the win is shared {len(winners)} ways."}.get(how, ""), "",
-                      "Sharing the win: " + ", ".join(f"{country(p)} ({state['players'][p] or 'you'})"
+                      "Sharing the win: " + ", ".join(f"{country(p)} ({link(state['players'][p]) if state['players'][p] else 'you'})"
                                                       for p in winners), ""]
     else:
         left = years_left(phase, state["ends"], start)
@@ -955,7 +956,7 @@ def page(state, places, map_file, waiting_on=(), news=()):
         lines += [who + f"The game ends after Winter {state['ends']} ({left} year{'s' if left != 1 else ''} after "
                   f"this one); whoever is left then shares the win. {WIN} supply centres is a win of one's own. "
                   f"Communication: {SAID[state['press']].capitalize()}.", ""]
-    lines += [f"![[{map_file}]]", ""] + _table(state, places) + [""]
+    lines += [f"![[{map_file}]]", ""] + _table(state, places, link) + [""]
     if news:
         lines += ["### New for you", ""] + [f"> **{country(m['from'])}**"
                                             + (" (to Everyone)" if m["to"] == EVERYONE else "") + f": {m['text']}"

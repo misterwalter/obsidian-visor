@@ -45,6 +45,13 @@ class SettingsTest(unittest.TestCase):
         for kept in ("[[ -f setup.py ]] && pytest", "[[#Looks]]", "[site](https://example.org/a)", "", "Mara"):
             self.assertEqual(settings.named(kept), kept, "a shell test, a part of the same note, a web address")
 
+    def test_a_link_reads_as_the_words_it_shows_for_a_model_and_an_embed_is_left_alone(self):
+        self.assertEqual(settings.plain("[[characters/Mara/Mara|Mara]] smiles at [[Tom]] and [her](Mara.md)."),
+                         "Mara smiles at Tom and her.")
+        self.assertEqual(settings.plain("[[Mara#Looks]], [[Tom.md]]"), "Mara, Tom")
+        for kept in ("![[a.png]]", "![a](a.png)", "[[ -f x ]]", "- [x] Ready"):
+            self.assertEqual(settings.plain(kept), kept)
+
     def test_a_setting_s_name_alone_is_a_setting_only_above_boxes(self):
         self.assertEqual(self.read("Web\n- [x] yes\n")[0], [("web", "", [(True, "yes")])])
         self.assertEqual(self.read("Web\nis where I found it.\n")[0], [])

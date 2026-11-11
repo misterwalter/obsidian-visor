@@ -51,6 +51,18 @@ Markdown `[shown](front.png)` each count as the name of what they point to
 which no link has, and stays as it is. Model notes are left out: their values
 name files on the server, outside the notes.
 
+Visor writes links too: where a reply, a game's or Opera's page, or a line it
+fills in (`Model:`, a trained `LoRA:`, a game's `Characters:`) names a
+character, a model, a project or a file in the notes, it links to it by its
+path from the tasks folder, shown by its name: `[[characters/Mara/Mara|Mara]]`
+(`config.link`). The path keeps it from being taken for another file of the
+same name, and Obsidian finds it wherever the vault begins. Something that is
+not there is named in plain words, since clicking a link to nothing makes an
+empty note. What a model or a voice is given has its links as the words they
+show (`settings.plain`): a chat's turns, a game's story, an Opera message, a
+prompt (where a link to a file is what the note attaches, and is left out:
+`notes.prompt_words`) and text read aloud.
+
 **Tidying.** As visor takes a note it tidies the top of it for its kind
 (`kinds.py`). A line that does nothing here is marked `UNUSED Project: game`:
 one this kind does not read, a second copy of a setting, or a name visor does

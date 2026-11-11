@@ -181,7 +181,7 @@ class Rounds:
                 return None, None, None, (
                     f"`{header['project']}` has no way to run its tests that visor can find (it looks for pytest, "
                     "unittest, npm, cargo, go and make), and a build is checked by running them. Write the command "
-                    f"on the `Tests:` line of `{self._panel_shown(header['project'])}`, or `Tests: none` to build "
+                    f"on the `Tests:` line of {self.link(self.panel_path(header['project']), self._panel_shown(header['project']))}, or `Tests: none` to build "
                     "without tests, with nothing to check the build.")
             if not dry_run:
                 self._set_found_tests(header["project"], found)

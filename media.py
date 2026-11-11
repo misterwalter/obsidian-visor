@@ -32,6 +32,7 @@ import time
 import wave
 
 import models
+import settings
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 AUDIO = (".mp3", ".m4a", ".wav", ".ogg", ".opus", ".flac", ".webm", ".mp4", ".mov", ".aac")
@@ -314,8 +315,7 @@ def speech_text(markdown):
     text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
     text = re.sub(r"^>[ \t]*\[![^\]]*\][-+]?.*$", "", text, flags=re.MULTILINE)  # callout headings
     text = re.sub(r"!\[\[[^\]]*\]\]|!\[[^\]]*\]\([^)]*\)", "", text)           # embeds
-    text = re.sub(r"\[\[([^\]|]*\|)?([^\]]*)\]\]", r"\2", text)                 # [[target|shown]]
-    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)                        # [shown](target)
+    text = settings.plain(text)                                                 # a link as the words it shows
     text = re.sub(r"<[^>]+>", "", text)
     # [ \t], not \s: a pattern that may cross a line end swallows the blank line before it.
     text = re.sub(r"^[ \t]{0,3}(#{1,6}[ \t]*|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)", "", text, flags=re.MULTILINE)

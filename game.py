@@ -27,6 +27,8 @@ import sys
 import time
 import urllib.request
 
+import settings
+
 BOX = re.compile(r"^\s*[-*+]\s+\[([ xX])\]\s+(.*?)\s*$")
 TURN = re.compile(r"^%%turn (\d+)%%[ \t]*$", re.MULTILINE)
 YOUR_TURN = "%%your turn%%"
@@ -250,20 +252,22 @@ def more_pictures(text, index, names):
 
 def summoned(action):
     """The names an action links to, `[[Mara]]`: people to bring into the story, or pages to
-    bring into this turn."""
-    return [name.strip() for name in WIKILINK.findall(action)]
+    bring into this turn. A link with a path, `[[characters/Mara/Mara|Mara]]`, names `Mara` (settings.named)."""
+    return [settings.named(link.group(0)).strip() for link in WIKILINK.finditer(action)]
 
 
-def with_characters(text, names):
-    """The note with names added to its `Characters:` line, or a line added under `Game:`."""
+def with_characters(text, names, link=str):
+    """The note with names added to its `Characters:` line, or a line added under `Game:`: each written as
+    link(name) gives it, a link to them, beside the names already there as the owner wrote them."""
     line = re.search(r"^Characters:[ \t]*(.*)$", text, re.MULTILINE)
     if line:
         listed = [n for n in re.split(r"\s*[,;]\s*", line.group(1).strip()) if n]
-        listed += [n for n in names if n.lower() not in {x.lower() for x in listed}]
+        there = {settings.named(x).strip().lower() for x in listed}
+        listed += [link(n) for n in names if n.lower() not in there]
         return text[:line.start()] + "Characters: " + ", ".join(listed) + text[line.end():]
     game = re.search(r"^Game:.*$", text, re.MULTILINE)
     at = game.end() if game else 0
-    return text[:at] + "\nCharacters: " + ", ".join(names) + text[at:]
+    return text[:at] + "\nCharacters: " + ", ".join(link(n) for n in names) + text[at:]
 
 
 def clean(text):
@@ -271,7 +275,7 @@ def clean(text):
     text = text.replace(WRITING, "")
     text = re.sub(r"%%.*?%%", "", text, flags=re.DOTALL)
     text = EMBED.sub("", text)
-    text = WIKILINK.sub(lambda m: m.group(1), text)
+    text = settings.plain(text)  # a link as the words it shows
     lines = [line.rstrip() for line in text.splitlines() if not BOX.match(line)]
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 

@@ -17,17 +17,12 @@ import settings
 import vision
 
 from dispatcher.notes import (_stamp, copy_in, drop_guide, note_body, parse_header, PICTURES,
-                              split_note, write_file)
+                              prompt_words, split_note, write_file)
 
 
 def _ticked(variations):
     """A character set's variations, each once, the empty ones left out."""
     return list(dict.fromkeys(v.strip() for v in variations if v.strip()))
-
-
-def _linked(pictures):
-    """Pictures as links by name: the notes app follows them, and keeps them up to date as they are moved."""
-    return ", ".join(f"[[{os.path.basename(p)}]]" for p in pictures)
 
 
 class Looks:
@@ -87,26 +82,26 @@ class Looks:
             theirs = characters.named(character, "lora")
             other = models.loras(self.model_notes).get(theirs.lower()) if theirs and not lora else None
             # Why there is no LoRA to draw them with, when there is none.
-            lacking = (f"their LoRA `{theirs}` is for {other['family']} models, not {family}" if other else
+            lacking = (f"their LoRA {self.model_link(theirs)} is for {other['family']} models, not {family}" if other else
                        f"their LoRA `{theirs}` is not a LoRA visor knows" if theirs else f"no LoRA for a {family} model")
             if lora:
                 loras.append(lora)
                 words.append(lora["trigger"])
-                said.append(f"{who}, drawn with their LoRA `{theirs}` (trigger `{lora['trigger']}`, strength "
+                said.append(f"{self.character_link(who)}, drawn with their LoRA {self.model_link(theirs)} (trigger `{lora['trigger']}`, strength "
                             f"{lora['strength']})")
             else:
                 reference = self._reference(who, character)
                 if reference and self.media.edit_models and len(edit_in) < 2:
                     edit_in.append((who, reference))
-                    said.append(f"{who}, {lacking}: drawn from their description, then edited in afterwards from "
-                                f"their reference picture `{os.path.basename(reference)}` with the edit model")
+                    said.append(f"{self.character_link(who)}, {lacking}: drawn from their description, then edited in "
+                                f"afterwards from their reference picture {self.link(reference)} with the edit model")
                 elif reference and self.media.edit_models:
-                    said.append(f"{who}, {lacking}: drawn from their description alone, as an edit goes by two "
+                    said.append(f"{self.character_link(who)}, {lacking}: drawn from their description alone, as an edit goes by two "
                                 "reference pictures at most and two others are edited in")
                 elif not reference:
-                    said.append(f"{who}, {lacking} and no reference picture: drawn from their description alone")
+                    said.append(f"{self.character_link(who)}, {lacking} and no reference picture: drawn from their description alone")
                 else:
-                    said.append(f"{who}, {lacking}, and there is no edit model to bring their reference picture in: "
+                    said.append(f"{self.character_link(who)}, {lacking}, and there is no edit model to bring their reference picture in: "
                                 "drawn from their description alone")
             if character.get("looks"):
                 words.append(f"{who}, {character['looks']}")
@@ -140,9 +135,7 @@ class Looks:
     def _instruction(self, header, owner_text):
         """An edit's instruction: after the round's word, and the note's own words below the top,
         without its pictures and comments."""
-        body = re.sub(r"%%.*?%%", "", note_body(owner_text), flags=re.DOTALL)
-        body = re.sub(r"!?\[\[[^\]]*\]\]|!\[[^\]]*\]\([^)]*\)", "", body).strip()
-        body = re.split(r"^Checklist:\s*$", body, maxsplit=1, flags=re.MULTILINE)[0].strip()
+        body = re.split(r"^Checklist:\s*$", prompt_words(owner_text), maxsplit=1, flags=re.MULTILINE)[0].strip()
         return " ".join(t for t in ((header["round text"] or "").strip(), body) if t)
 
     def _media_edit(self, name, header, owner_text, job, earlier=""):
@@ -164,14 +157,14 @@ class Looks:
                             on_image=self._arrived(name, "edit", saved, self.live_log(name, "edit")))
         spec = result["spec"]
         lines = [f"## Edited, {_stamp()}", "",
-                 f"`{spec['name']}` · {spec['steps']} steps" + (" with its fast LoRA" if spec["fast"] else "")
-                 + f" · from `{os.path.basename(pictures[0])}`"
-                 + (f", going by {', '.join(f'`{os.path.basename(p)}`' for p in pictures[1:3])}" if len(pictures) > 1 else "")
+                 f"{self.model_link(spec['name'])} · {spec['steps']} steps" + (" with its fast LoRA" if spec["fast"] else "")
+                 + f" · from {self.link(pictures[0])}"
+                 + (f", going by {', '.join(self.link(p) for p in pictures[1:3])}" if len(pictures) > 1 else "")
                  + (f" · seeds {saved[0][1]} to {saved[-1][1]}" if len(saved) > 1 else f" · seed {spec['seed']}")
                  + f" · took {round((time.time() - took) / 60)} minutes", ""]
         if len(pictures) > 1 and spec.get("kind") in models.SINGLE_FILE_EDITS:
-            lines += [f"`{spec['name']}` edits one picture and goes by no others: only "
-                      f"`{os.path.basename(pictures[0])}` was used. An edit model of the qwen-image-edit family goes by "
+            lines += [f"{self.model_link(spec['name'])} edits one picture and goes by no others: only "
+                      f"{self.link(pictures[0])} was used. An edit model of the qwen-image-edit family goes by "
                       "up to two more.", ""]
         elif len(pictures) > 3:
             lines += [f"Only the first three pictures were used: an edit takes at most three.", ""]
@@ -252,7 +245,7 @@ class Looks:
                 k += 1
             copy_in(path, os.path.join(candidates, target))
             made.append(target)
-            asked_for = f"*{chosen[n - 1]}* · from {_linked(sources[n - 1])}"
+            asked_for = f"*{chosen[n - 1]}* · from {', '.join(self.link(p) for p in sources[n - 1])}"
             self.made_so_far.append(f"![[{target}]] seed {seed} · {asked_for}")
             livelog.append(self.live_log(name, "character set"),
                            f"*{time.strftime('%H:%M')}* {n}: ![[{target}]] · {asked_for}\n")
@@ -261,38 +254,38 @@ class Looks:
                             [], job, on_image=arrived, plan=plan, half=half)
         total = len(others) + (1 if named else 0)
         if named and each == 1:
-            went_by = f"from [[{os.path.basename(named)}]], their Reference: picture"
+            went_by = f"from {self.link(named)}, their Reference: picture"
         elif total == 1:
-            went_by = f"from [[{os.path.basename(sources[0][0])}]], the one picture in `{characters.LOOKS_FOLDER}/`"
+            went_by = f"from {self.link(sources[0][0])}, the one picture in `{characters.LOOKS_FOLDER}/`"
         elif each == 1:
             went_by = f"each from one of the {total} pictures in `{characters.LOOKS_FOLDER}/`, drawn at random for it"
         else:
             went_by = (f"each going by {each} of the {total} pictures in `{characters.LOOKS_FOLDER}/`, drawn at "
                        "random for it")
             if named:
-                went_by += f", [[{os.path.basename(named)}]] (their Reference:) always first"
+                went_by += f", {self.link(named)} (their Reference:) always first"
         lines = [f"## Candidates for {who}, {_stamp()}", "",
                  f"{len(made)} pictures, {went_by}" + (", at half size" if half and not single else "")
                  + f" · from {len(asked['variations'])} variations, each drawn at random from the least used so far"
-                 f" · with `{result['spec']['name']}` · seed {seed} · took {round((time.time() - took) / 60)} minutes",
+                 f" · with {self.model_link(result['spec']['name'])} · seed {seed} · took {round((time.time() - took) / 60)} minutes",
                  ""]
         if asked["stopped"]:
             lines += [f"It stopped after {len(made)} of {asked['count']}: {asked['stopped']}.", ""]
         if asked["changed"]:
             lines += [f"`Variations:` or `Count:` changed while it ran, so seed {seed} would draw differently now.", ""]
         if int(wanted) > each:
-            lines += [(f"`{result['spec']['name']}` edits one picture and goes by no others, so `Source count: "
+            lines += [(f"{self.model_link(result['spec']['name'])} edits one picture and goes by no others, so `Source count: "
                        f"{wanted}` came to one." if single else
                        f"`Source count: {wanted}`, but `{characters.LOOKS_FOLDER}/` has only {each}: each went by "
                        "all of them."), ""]
         if half and single:
-            lines += [f"`Half-size sources` makes no difference to `{result['spec']['name']}`, which goes by one "
+            lines += [f"`Half-size sources` makes no difference to {self.model_link(result['spec']['name'])}, which goes by one "
                       "picture only.", ""]
         if header["negative"] and not result["spec"].get("cfg", 1.0) > 1.0:
             lines += ["`Negative:` has no effect on fast quality, which follows the prompt alone: tick "
                       "`Quality: full` for it to count, at several times the time.", ""]
         lines += [f"They are in `characters/{who}/{characters.LOOKS_FOLDER}/candidates/`. Move the ones that are "
-                  f"{who} into `{characters.LOOKS_FOLDER}/`: the next set, and a LoRA, start from what is there.", ""]
+                  f"{self.character_link(who)} into `{characters.LOOKS_FOLDER}/`: the next set, and a LoRA, start from what is there.", ""]
         seer, tag = models.vision(self.model_notes)
         if tag and self._not_in_ollama([seer], "vision"):
             raise media.MediaError(self._not_in_ollama([seer], "vision"))
@@ -307,7 +300,7 @@ class Looks:
                     os.replace(os.path.join(candidates, target), os.path.join(rejected, target))
                     verdict = f" · {seer} does not see {who}: moved to `candidates/rejected/`"
             # What each was asked for and went by: the owner's to judge it by, and to caption a LoRA with.
-            lines += [f"![[{target}]]", f"*{variation}* · from {_linked(these)}" + verdict, ""]
+            lines += [f"![[{target}]]", f"*{variation}* · from {', '.join(self.link(p) for p in these)}" + verdict, ""]
         if not tag:
             lines.append("No vision model to check them with (a note in `models/`, `Kind: vision`): every candidate "
                          "is kept for you to judge.")
@@ -368,12 +361,13 @@ class Looks:
                     about=f"{who}, trained by visor on {len(pictures)} pictures from their looks/, on "
                           f"`{model_name}`, {spec['steps']} steps.")
         write_file(os.path.join(self.models_folder, note_name + ".md"), models.render(note_name, lora))
-        self._set_character_line(who, "LoRA", note_name)
+        # As a link to its note: their own note then leads to it (characters.named reads it as the name).
+        self._set_character_line(who, "LoRA", self.link(os.path.join(self.models_folder, note_name + ".md"), note_name))
         self.load_models()
         return "\n".join([f"## Trained, {_stamp()}", "",
-                           f"A LoRA of {who} on `{model_name}`, from {len(pictures)} pictures · {spec['steps']} steps at "
+                           f"A LoRA of {self.character_link(who)} on {self.model_link(model_name)}, from {len(pictures)} pictures · {spec['steps']} steps at "
                            f"{spec['size']}×{spec['size']} · took {round((time.time() - took) / 60)} minutes", "",
-                           f"It is `{lora_file}`, the model note `models/{note_name}.md`, and {who}'s `LoRA:` now. Any "
+                           f"It is `{lora_file}`, the model note {self.model_link(note_name)}, and {who}'s `LoRA:` now. Any "
                            f"picture with `Characters: {who}` on a {base['kind']} model is drawn with it; its trigger "
                            f"word is `{trigger}`.", "",
                            "The captions it learned from are beside each picture in `looks/`, as .txt files: correct "

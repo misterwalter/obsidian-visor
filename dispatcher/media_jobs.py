@@ -16,7 +16,8 @@ import vision
 
 from dispatcher.notes import (
                               _stamp, append_to_note, copy_in, drop_guide, flagged, GAVE_WAY, move, note_body,
-                              parse_header, REPLY_HEADING, slug, split_note, TAKEN_OUT, WIKILINK, write_file)
+                              parse_header, prompt_words, REPLY_HEADING, slug, split_note, TAKEN_OUT, WIKILINK,
+                              write_file)
 
 
 # The names visor gives what it keeps in media/: `<note> <kind> <n>.<ext>`, a kind of a few words, and for
@@ -39,7 +40,7 @@ class MediaJobs:
         default = (self.media.default_edit if kind in ("edit", "character set") else
                    self.media.default_image if kind in ("image", "scene image", "train") else
                    self.media.default_video if kind == "video" else None)
-        self._tidy(path, kind, {"model": default} if default else None)
+        self._tidy(path, kind, {"model": self.model_link(default)} if default else None)
         with open(path, encoding="utf-8") as f:
             whole = f.read()
         owner_text, earlier = split_note(whole)
@@ -141,7 +142,7 @@ class MediaJobs:
             os.makedirs(step)
             took = time.time()
             result = media.transcribe(self.media, source, step, (header["language"] or "auto").lower())
-            parts += [f"`{os.path.basename(source)}` · {result['seconds'] / 60:.1f} minutes of audio · "
+            parts += [f"{self.link(source)} · {result['seconds'] / 60:.1f} minutes of audio · "
                       f"took {round((time.time() - took) / 60)} minutes", "", result["text"] or "(no speech heard)", ""]
         return "\n".join(parts)
 
@@ -159,7 +160,7 @@ class MediaJobs:
             for note in notes:
                 with open(note, encoding="utf-8", errors="replace") as f:
                     texts.append(f.read())
-            source = ", ".join(f"`{os.path.basename(n)}`" for n in notes)
+            source = ", ".join(self.link(n) for n in notes)
         else:
             texts, source = [header["round text"] or "", note_body(owner_text)], "the note"
         text = media.speech_text("\n\n".join(t for t in texts if t.strip()))
@@ -197,9 +198,8 @@ class MediaJobs:
                 f"took {round((time.time() - took) / 60)} minutes\n\n" + "\n\n".join(said) + "\n")
 
     def _media_image(self, name, header, owner_text, job, earlier=""):
-        # Not the comments: text between %% marks, which the notes app hides.
-        prompt = " ".join(t for t in (header["round text"], re.sub(r"%%.*?%%", "", note_body(owner_text),
-                                                                   flags=re.DOTALL).strip()) if t)
+        # Not the comments, which the notes app hides, nor what the note attaches (prompt_words).
+        prompt = " ".join(t for t in (header["round text"], prompt_words(owner_text)) if t)
         options = {k: header[k] for k in ("model", "size", "count", "steps", "seed", "negative", "quality", "pose strength")}
         options["prompt"] = prompt
         cast = self._cast_of(header)
@@ -241,9 +241,9 @@ class MediaJobs:
         livelog.append(log, f"*{time.strftime('%H:%M')}* {count} image{'s' if count != 1 else ''} drawn; ComfyUI "
                             "stopped" + ("; then what the note asks after drawing" if fix_hands or finish or edit_in
                                          else "") + "\n")
-        settings = (f"`{spec['name']}` · {spec['width']}×{spec['height']} · {spec['steps']} steps"
+        settings = (f"{self.model_link(spec['name'])} · {spec['width']}×{spec['height']} · {spec['steps']} steps"
                     + (" with DMD2" if spec["fast"] else "")
-                    + (f" · pose from `{os.path.basename(options['pose'])}` at {spec['pose_strength']}" if spec.get("pose") else "")
+                    + (f" · pose from {self.link(options['pose'])} at {spec['pose_strength']}" if spec.get("pose") else "")
                     + (f" · {count} images, seeds {saved[0][1]} to {saved[-1][1]}" if count > 1 else f" · seed {spec['seed']}")
                     + f" · took {round((time.time() - took) / 60)} minutes")
         if count > 1:
@@ -253,8 +253,8 @@ class MediaJobs:
         body = f"## Images, {_stamp()}\n\n{settings}\n\n" + (f"{said_of_cast}\n\n" if said_of_cast else "") + f"{shown}\n"
         saved = [kept for kept, _ in saved]
         if traced:
-            body += (f"\nTraced from `{os.path.basename(header['pose from'].strip('![] '))}`: {traced['people']}. "
-                     f"The skeleton is `{os.path.basename(options['pose'])}`, for reuse with `Pose:`.\n")
+            body += (f"\nTraced from {self.link(photo)}: {traced['people']}. "
+                     f"The skeleton is {self.link(options['pose'])}, for reuse with `Pose:`.\n")
         if fix_hands or finish:
             # A fresh note that asks for improvements too: improve what was just drawn.
             fresh = [os.path.join(self.media_home(name), s) for s in saved]
@@ -305,8 +305,7 @@ class MediaJobs:
     def _media_video(self, name, header, owner_text, job, earlier=""):
         """A short clip: what happens, from the note, starting from the picture on its `From:` line, or
         following on from the video there (from its last frame); from nothing, when there is neither."""
-        prompt = " ".join(t for t in (header["round text"], re.sub(r"%%.*?%%", "", note_body(owner_text),
-                                                                   flags=re.DOTALL).strip()) if t)
+        prompt = " ".join(t for t in (header["round text"], prompt_words(owner_text)) if t)
         start = self._named_file(header["from"], "from") if (header["from"] or "").strip() else None
         options = dict({k: header[k] for k in ("model", "size", "seconds", "count", "seed", "steps", "negative")},
                        prompt=prompt)
@@ -315,11 +314,11 @@ class MediaJobs:
                              on_unfinished=self._cut_off(name, "clip", log), on_progress=self._progress(log, "clip"),
                              on_ready=self._ready(log))
         spec = result["spec"]
-        source = os.path.basename(start) if start else None
-        said = (f"`{spec['name']}` · {spec['width']}×{spec['height']} · {spec['frames']} frames at {spec['fps']} a "
+        source = self.link(start) if start else None
+        said = (f"{self.model_link(spec['name'])} · {spec['width']}×{spec['height']} · {spec['frames']} frames at {spec['fps']} a "
                 f"second ({spec['seconds']} s) · {spec['steps']} steps"
-                + ((f" · following on from the last frame of `{source}`" if start.lower().endswith(media.VIDEO)
-                    else f" · from `{source}`") if start else "")
+                + ((f" · following on from the last frame of {source}" if start.lower().endswith(media.VIDEO)
+                    else f" · from {source}") if start else "")
                 + (f" · {len(saved)} clips, seeds {saved[0][1]} to {saved[-1][1]}" if len(saved) > 1
                    else f" · seed {spec['seed']}")
                 + f" · took {round((time.time() - took) / 60)} minutes")
@@ -343,10 +342,10 @@ class MediaJobs:
             self._doing(name, log, f"{asked[0].upper()}{asked[1:]}: {n} of {len(images)} done", f"![[{saved}]]")
         result = media.improve(self.media, options, images, job, hands=fix_hands, finish=finish, on_image=arrived)
         lines = [f"## Improved, {_stamp()}", "",
-                 f"`{result['spec']['name']}` · {asked} · {len(images)} image{'s' if len(images) != 1 else ''} · "
+                 f"{self.model_link(result['spec']['name'])} · {asked} · {len(images)} image{'s' if len(images) != 1 else ''} · "
                  f"took {round((time.time() - took) / 60)} minutes. The originals are unchanged.", ""]
         for source, note, saved in kept:
-            lines += [f"From `{os.path.basename(source)}`: {note}", "", f"![[{saved}]]", ""]
+            lines += [f"From {self.link(source)}: {note}", "", f"![[{saved}]]", ""]
         return "\n".join(lines)
 
     def _doing(self, name, log, said, shown=""):
@@ -387,7 +386,7 @@ class MediaJobs:
             took = time.time()
             traced = media.trace_pose(self.media, photo, step, parts)
             (saved,) = self._keep(name, "skeleton", [traced["file"]])
-            lines += [f"From `{os.path.basename(photo)}`: {traced['people']} · took {round(time.time() - took)} s",
+            lines += [f"From {self.link(photo)}: {traced['people']} · took {round(time.time() - took)} s",
                       "", f"![[{saved}]]", "", f"Use it on an Image note with `Pose: ![[{saved}]]`.", ""]
         return "\n".join(lines)
 
@@ -416,7 +415,7 @@ class MediaJobs:
                                   log, f"*{time.strftime('%H:%M')}* frame {n} of {total}\n"))
         video, points = self._keep(name, "motion", [result["video"], result["keypoints"]])
         return "\n".join([f"## Motion, {_stamp()}", "",
-                           f"`{os.path.basename(videos[0])}` at {fps} frames a second · {result['frames']} frames, a "
+                           f"{self.link(videos[0])} at {fps} frames a second · {result['frames']} frames, a "
                            f"person found in {result['found']} · took {round((time.time() - took) / 60)} minutes", "",
                            f"![[{video}]]", "",
                            f"Every frame's points are in `{points}`: for each frame, each person's points as "

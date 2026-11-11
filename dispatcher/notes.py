@@ -101,6 +101,19 @@ def note_body(owner_text):
     return drop_guide("\n".join(owner_text.splitlines()[end:])).strip()
 
 
+def prompt_words(owner_text):
+    """The owner's words below the top as a picture's or a video's prompt reads them: no comments (hidden in
+    the notes app), no embeds or links to files (what the note attaches, `![[hat.png]]` or `[[hat.png]]`), and
+    links to notes as the words they show (settings.plain)."""
+    text = re.sub(r"%%.*?%%", "", note_body(owner_text), flags=re.DOTALL)
+    text = re.sub(r"!\[\[[^\]]*\]\]|!\[[^\]]*\]\([^)]*\)", "", text)
+    def attached(link):
+        ext = os.path.splitext(settings.named(link.group(0)))[1]
+        return "" if ext[1:].isalnum() and ext.lower() != ".md" else link.group(0)
+    text = settings.WORDS_LINK.sub(attached, text)
+    return settings.plain(text).strip()
+
+
 # A sample note's guide is a callout, `> [!guide]- How this note works`, folded away in
 # the notes app. It is for the owner: no model is shown it, and nothing draws or reads it.
 GUIDE = re.compile(r"^>[ \t]*\[!guide\][^\n]*(?:\n>[^\n]*)*\n?", re.MULTILINE | re.IGNORECASE)

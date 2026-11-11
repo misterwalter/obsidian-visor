@@ -91,7 +91,8 @@ class Chats:
         write_file(os.path.join(home, characters.MEMORY), characters.MEMORY_START)
         self.sync_character(name, settled_only=False)
         where = os.path.relpath(home, os.path.dirname(self.tasks))
-        append_to_note(path, f"## Character made, {_stamp()}\n\n`{name}` is in `{where}/`: `{name}.md` holds who they "
+        append_to_note(path, f"## Character made, {_stamp()}\n\n`{name}` is in `{where}/`: "
+                             f"{self.link(characters.note_path(home), name + '.md')} holds who they "
                              f"are and their settings, `memory.md` what they remember (they keep it themselves), "
                              f"`{characters.LOOKS_FOLDER}/` pictures of them and `{characters.MEMORY_FOLDER}/` their "
                              f"longer memories. To talk with them, write a chat note: `Chat: {name}`. Put a picture of "
@@ -214,7 +215,8 @@ class Chats:
                 if unread:
                     error = f"visor could not read all of `characters/{who}/{who}.md`: " + " ".join(unread)
             if new and not (error or "").startswith("visor cannot keep"):
-                where = ", ".join(f"`characters/{n}/{n}.md`" for n in new)
+                where = ", ".join(self.link(characters.note_path(os.path.join(self.characters_folder, n)),
+                                            f"characters/{n}/{n}.md") for n in new)
                 error = ("visor did not know " + ", ".join(f"`{n}`" for n in new) + f", so it has made {where}. "
                          "Say there who they are and tick what they may do. If it was a slip of the keys, "
                          "delete that folder and correct the name here.")
@@ -432,7 +434,7 @@ class Chats:
         if carries_on and seen and seen != self._chat_digest(path, key):
             carries_on = False
             self.log(f"{name}: the chat was edited before {who}'s last turn, so {who} reads it afresh")
-        write_file(task_file, chat.written(heard(carries_on)))
+        write_file(task_file, settings.plain(chat.written(heard(carries_on))))  # a link as the words it shows
         log = self.live_log(name, who)
         state["running"] = {"model": model, "round": "chat", "started": _stamp(), "log": log, "who": who}
         self.save_state(state)

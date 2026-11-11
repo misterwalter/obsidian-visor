@@ -212,7 +212,7 @@ class Operas:
         if you:
             news = [m for m in opera.heard(state, you)[state.get("news_seen", 0):] if m["from"] != you]
         map_file = self._map_file(name, state["view"]["phase"], state["start"])
-        body = opera.page(state, places, map_file, self._opera_waiting(state), news)
+        body = opera.page(state, places, map_file, self._opera_waiting(state), news, link=self.character_link)
         if state.get("problem"):
             body = body.replace("\n\n", f"\n\n> [!warning] The last step could not be taken\n> {state['problem']}\n\n", 1)
         text = owner_text.rstrip() + "\n\n---\n\n" + body
