@@ -162,7 +162,7 @@ class Looks:
                  + (f", going by {', '.join(self.link(p) for p in pictures[1:3])}" if len(pictures) > 1 else "")
                  + (f" · seeds {saved[0][1]} to {saved[-1][1]}" if len(saved) > 1 else f" · seed {spec['seed']}")
                  + f" · took {round((time.time() - took) / 60)} minutes", ""]
-        if len(pictures) > 1 and spec.get("kind") in models.SINGLE_FILE_EDITS:
+        if len(pictures) > 1 and spec.get("kind") in models.ONE_PICTURE_EDITS:
             lines += [f"{self.model_link(spec['name'])} edits one picture and goes by no others: only "
                       f"{self.link(pictures[0])} was used. An edit model of the qwen-image-edit family goes by "
                       "up to two more.", ""]
@@ -202,7 +202,7 @@ class Looks:
         line = characters.named(character, "reference")
         named = line and (os.path.join(folder, line) if os.path.isfile(os.path.join(folder, line)) else self._find(line))
         single = (self.media.edit_models.get((header["model"] or self.media.default_edit or "").strip().lower())
-                  or {}).get("kind") in models.SINGLE_FILE_EDITS
+                  or {}).get("kind") in models.ONE_PICTURE_EDITS
         others = [p for p in pictures if p != named]
         each = 1 if single else min(int(wanted), len(others) + (1 if named else 0))
         draw = random.Random(seed)  # the same Seed: draws the same variations and sources again

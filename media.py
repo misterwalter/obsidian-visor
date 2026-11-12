@@ -1405,7 +1405,8 @@ def edit_spec(options, edit_models, default=None):
     if quality not in ("fast", "full"):
         raise MediaError(f"`Quality: {quality}` is not one visor knows: use fast or full.")
     fast = quality == "fast" and bool(model.get("fast_lora"))
-    return {"name": name, "file": model["file"], "kind": model["kind"], "text_encoder": model["text_encoder"],
+    return {"name": name, "file": model["file"], "kind": model["kind"], "one_file": model["one_file"],
+            "text_encoder": model["text_encoder"],
             "vae": model["vae"], "lora": model.get("fast_lora") if fast else None, "fast": fast,
             "steps": model.get("fast_steps", 4) if fast else model.get("steps", 20),
             "cfg": 1.0 if fast else model.get("cfg", 2.5), "shift": model.get("shift", 3.0),
@@ -1438,15 +1439,19 @@ def pix2pix_graph(spec, pictures):
 def edit_graph(spec, pictures):
     """The workflow for one edit: pictures are file names in the job's input folder, the first
     the one edited. Built-in nodes only."""
-    if spec["kind"] in models.SINGLE_FILE_EDITS:
+    if spec["kind"] in models.ONE_PICTURE_EDITS:
         return pix2pix_graph(spec, pictures)
-    graph = {
-        "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": spec["file"],
-                                                        "weight_dtype": spec.get("weight_dtype", "default")}},
-        "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": spec["text_encoder"], "type": "qwen_image"}},
-        "vae": {"class_type": "VAELoader", "inputs": {"vae_name": spec["vae"]}},
-    }
-    model = ["unet", 0]
+    if spec["one_file"]:  # an all-in-one merge: the diffusion model, text encoder and decoder in one checkpoint
+        graph = {"checkpoint": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": spec["file"]}}}
+        model, clip, vae = ["checkpoint", 0], ["checkpoint", 1], ["checkpoint", 2]
+    else:
+        graph = {
+            "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": spec["file"],
+                                                            "weight_dtype": spec.get("weight_dtype", "default")}},
+            "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": spec["text_encoder"], "type": "qwen_image"}},
+            "vae": {"class_type": "VAELoader", "inputs": {"vae_name": spec["vae"]}},
+        }
+        model, clip, vae = ["unet", 0], ["clip", 0], ["vae", 0]
     if spec["lora"]:
         graph["lora"] = {"class_type": "LoraLoaderModelOnly",
                          "inputs": {"model": model, "lora_name": spec["lora"], "strength_model": 1.0}}
@@ -1468,25 +1473,26 @@ def edit_graph(spec, pictures):
             "image": ["picture1", 0], "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 8}}
         canvas = "canvas"
     graph["positive"] = {"class_type": "TextEncodeQwenImageEditPlus", "inputs": dict(
-        {"clip": ["clip", 0], "prompt": spec["prompt"], "vae": ["vae", 0]}, **images)}
+        {"clip": clip, "prompt": spec["prompt"], "vae": vae}, **images)}
     graph["negative"] = {"class_type": "TextEncodeQwenImageEditPlus", "inputs": dict(
-        {"clip": ["clip", 0], "prompt": spec.get("negative", ""), "vae": ["vae", 0]}, **images)}
-    graph["latent"] = {"class_type": "VAEEncode", "inputs": {"pixels": [canvas, 0], "vae": ["vae", 0]}}
+        {"clip": clip, "prompt": spec.get("negative", ""), "vae": vae}, **images)}
+    graph["latent"] = {"class_type": "VAEEncode", "inputs": {"pixels": [canvas, 0], "vae": vae}}
     graph["sampler"] = {"class_type": "KSampler", "inputs": {
         "model": ["shift", 0], "positive": ["positive", 0], "negative": ["negative", 0], "latent_image": ["latent", 0],
         "seed": spec["seed"], "steps": spec["steps"], "cfg": spec["cfg"], "sampler_name": spec["sampler"],
         "scheduler": spec["scheduler"], "denoise": 1.0}}
-    graph["decode"] = {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": ["vae", 0]}}
+    graph["decode"] = {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": vae}}
     graph["save"] = {"class_type": "SaveImage", "inputs": {"images": ["decode", 0], "filename_prefix": "edited"}}
     return graph
 
 
 def _edit_weights(settings, spec):
-    if spec["kind"] in models.SINGLE_FILE_EDITS:
-        return [os.path.join(settings.comfy_models, "checkpoints", spec["file"])]
-    weights = [os.path.join(settings.comfy_models, "diffusion_models", spec["file"]),
-               os.path.join(settings.comfy_models, "text_encoders", spec["text_encoder"]),
-               os.path.join(settings.comfy_models, "vae", spec["vae"])]
+    if spec["one_file"]:
+        weights = [os.path.join(settings.comfy_models, "checkpoints", spec["file"])]
+    else:
+        weights = [os.path.join(settings.comfy_models, "diffusion_models", spec["file"]),
+                   os.path.join(settings.comfy_models, "text_encoders", spec["text_encoder"]),
+                   os.path.join(settings.comfy_models, "vae", spec["vae"])]
     if spec["lora"]:
         weights.append(os.path.join(settings.comfy_models, "loras", spec["lora"]))
     return weights
@@ -1510,8 +1516,9 @@ def edit(settings, options, pictures, job, on_image=None, each=None, plan=None, 
     if not pictures:
         raise MediaError("there is no picture to edit: embed it in the note, `![[picture.png]]`, with the file "
                          "somewhere in `tasks/`.")
-    if spec["kind"] not in models.SINGLE_FILE_EDITS:
-        spec["weight_dtype"] = stored_weights(os.path.join(settings.comfy_models, "diffusion_models", spec["file"]))
+    if spec["kind"] not in models.ONE_PICTURE_EDITS:
+        if not spec["one_file"]:
+            spec["weight_dtype"] = stored_weights(os.path.join(settings.comfy_models, "diffusion_models", spec["file"]))
         if half:
             spec["source_megapixels"] = 0.5
     os.makedirs(os.path.join(job, "input"), exist_ok=True)

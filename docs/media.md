@@ -113,6 +113,11 @@ Editing needs, in the models folder: the edit model in `diffusion_models/`
 `text_encoders/` (`qwen_2.5_vl_7b_fp8_scaled.safetensors`), its decoder in `vae/`
 (`qwen_image_vae.safetensors`) and the 4-step LoRA in `loras/`: about 30 GB, from
 Comfy-Org's and lightx2v's pages on Hugging Face; then a model note naming them.
+An all-in-one merge of Qwen-Image-Edit, its text encoder, decoder and speed-up
+merged into one checkpoint, goes in `checkpoints/` instead: its note names only
+`File:`, leaving `Text encoder:` and `VAE:` empty (`models.one_file`), and is
+loaded with `CheckpointLoaderSimple`. With the speed-up already inside, `Fast LoRA:`
+stays empty and `Steps:` and `CFG:` say the merge's own (4 and 1, typically).
 A vision model is an Ollama model (`ollama pull qwen2.5vl:7b`, about 6 GB) and a
 note, `Kind: vision`, `Ollama: qwen2.5vl:7b`.
 

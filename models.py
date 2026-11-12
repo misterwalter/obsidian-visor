@@ -78,12 +78,18 @@ FAMILIES = {"sd15": "checkpoints", "sdxl": "checkpoints", "chroma": "diffusion_m
 # The families Fix hands and Finish work with: one checkpoint file, sampled as KSampler samples it
 # (media._loaded_model). Chroma is three files and samples its own way, so neither is written for it.
 IMPROVES = ("sdxl", "sd15")
-# The families of model that edit a picture by instruction (media.edit), whose main file is a
-# diffusion model beside its text encoder and decoder.
+# The families of model that edit a picture by instruction (media.edit).
 EDIT_FAMILIES = ("qwen-image-edit", "instruct-pix2pix")
-# Edit families whose model is one checkpoint (text encoder and decoder inside), and edits one
-# picture with no others to go by.
-SINGLE_FILE_EDITS = ("instruct-pix2pix",)
+# Edit families that edit one picture with no others to go by, and whose model is always one checkpoint.
+ONE_PICTURE_EDITS = ("instruct-pix2pix",)
+
+
+def one_file(family, text_encoder, vae):
+    """Whether an edit model is one checkpoint in the models folder's checkpoints/, its text encoder and
+    decoder inside: always for a one-picture family, and for a Qwen-Image-Edit one when its note names
+    neither (an all-in-one merge). Otherwise it is three files: a diffusion model in diffusion_models/,
+    its text encoder and its decoder."""
+    return family.lower() in ONE_PICTURE_EDITS or not (text_encoder or vae)
 # The families of model that make video (media.video), each one checkpoint in the models folder's
 # checkpoints/: an LTX-Video one holds its decoder, and takes a T5 text encoder of its own (`Text
 # encoder:`); a Wan one, as an all-in-one merge, holds its text encoder and decoder too.
@@ -188,11 +194,12 @@ def problems_of(model):
         if model.get("modelfile") and not re.search(r"^FROM\s+\S", model["modelfile"], re.MULTILINE | re.IGNORECASE):
             problems.append("the `## Modelfile` has no `FROM` line: say which weights it is made from.")
     if kind == "edit":
-        needed = ("file",) if model["family"].lower() in SINGLE_FILE_EDITS else ("file", "text encoder", "vae")
-        for key in needed:
-            if not model[key]:
-                problems.append(f"`{key.capitalize()}:` is empty: " + ("say the model's file." if key == "file" else
-                                "a model of this family is three files, each named here."))
+        if not model["file"]:
+            problems.append("`File:` is empty: say the model's file.")
+        if model["family"].lower() not in ONE_PICTURE_EDITS and bool(model["text encoder"]) != bool(model["vae"]):
+            empty = "Text encoder" if not model["text encoder"] else "VAE"
+            problems.append(f"`{empty}:` is empty: name both the text encoder and the VAE when the model is three "
+                            "files, or neither when `File:` holds them (an all-in-one merge).")
         if model["file"] and not model["file"].endswith(".safetensors"):
             problems.append("`File:` must be a .safetensors file: the older formats can run code when loaded.")
         if model["family"].lower() not in EDIT_FAMILIES:
@@ -366,7 +373,7 @@ def languages(found):
 def target(model, models_dir):
     """Where an image, edit or LoRA model's main file goes in the models folder."""
     folder = ("loras" if model["kind"] == "lora" else "checkpoints" if model["kind"] == "video" else
-              "checkpoints" if model["kind"] == "edit" and model["family"].lower() in SINGLE_FILE_EDITS else
+              "checkpoints" if model["kind"] == "edit" and one_file(model["family"], model["text encoder"], model["vae"]) else
               "diffusion_models" if model["kind"] == "edit" else FAMILIES.get(model["family"].lower(), "checkpoints"))
     return os.path.join(models_dir, folder, model["file"])
 
@@ -374,6 +381,7 @@ def target(model, models_dir):
 def edit_spec(model):
     """An edit model as media.edit uses it."""
     return {"file": model["file"], "kind": model["family"].lower(), "text_encoder": model["text encoder"],
+            "one_file": one_file(model["family"], model["text encoder"], model["vae"]),
             "vae": model["vae"], "fast_lora": model["fast lora"] or None, "fast_steps": int(model["fast steps"] or 4),
             "steps": int(model["steps"] or 20), "cfg": float(model["cfg"] or 2.5), "shift": float(model["shift"] or 3),
             "sampler": model["sampler"] or "euler", "scheduler": model["scheduler"] or "simple",
@@ -391,7 +399,7 @@ def edits(found):
 
 def edit_missing(spec, models_dir):
     """The files an edit model needs that are not in the models folder."""
-    if spec["kind"] in SINGLE_FILE_EDITS:
+    if spec["one_file"]:
         wanted = [os.path.join(models_dir, "checkpoints", spec["file"])]
     else:
         wanted = [os.path.join(models_dir, "diffusion_models", spec["file"]),

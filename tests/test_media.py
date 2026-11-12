@@ -870,6 +870,38 @@ class MediaTest(unittest.TestCase):
             media.generate(self.settings, {"prompt": "x", "model": "photo-xl"}, self.job)
         self.assertIn("ComfyUI, an install of its own", str(caught.exception))
 
+    def test_an_all_in_one_qwen_edit_merge_is_one_checkpoint_and_still_goes_by_its_pictures(self):
+        import models
+        note = models.blank("edit")
+        note.update(file="qwen-edit-aio.safetensors", steps="4", cfg="1", sampler="euler_ancestral",
+                    scheduler="beta", default="yes")
+        self.assertEqual(models.problems_of(note), [], "text encoder and decoder inside its one file")
+        self.assertEqual(os.path.relpath(models.target(note, "m"), "m"), os.path.join("checkpoints", "qwen-edit-aio.safetensors"))
+        spec = models.edit_spec(note)
+        self.assertEqual(models.edit_missing(spec, self.settings.comfy_models),
+                         [os.path.join(self.settings.comfy_models, "checkpoints", "qwen-edit-aio.safetensors")])
+        self.settings.edit_models, self.settings.default_edit = {"aio": spec}, "aio"
+        self.write(os.path.join(self.settings.comfy_models, "checkpoints", "qwen-edit-aio.safetensors"), "weights")
+        first, second = os.path.join(self.tmp.name, "a.png"), os.path.join(self.tmp.name, "b.png")
+        self.write(first, "png")
+        self.write(second, "png")
+        media.edit(self.settings, {"prompt": "give him a hat", "seed": "3"}, [first, second], self.job, half=True)
+        graph = json.load(open(os.path.join(self.job, "graph.json")))
+        self.assertEqual(graph["checkpoint"], {"class_type": "CheckpointLoaderSimple",
+                                               "inputs": {"ckpt_name": "qwen-edit-aio.safetensors"}})
+        self.assertFalse({"unet", "clip", "vae", "lora"} & set(graph))
+        self.assertEqual(graph["shift"]["inputs"]["model"], ["checkpoint", 0])
+        self.assertEqual((graph["positive"]["inputs"]["clip"], graph["positive"]["inputs"]["vae"]),
+                         (["checkpoint", 1], ["checkpoint", 2]))
+        self.assertEqual(graph["positive"]["inputs"]["image2"], ["scaled2", 0], "it goes by the second picture")
+        self.assertEqual(graph["scaled2"]["inputs"]["megapixels"], 0.5, "half-size sources still apply")
+        self.assertEqual(graph["decode"]["inputs"]["vae"], ["checkpoint", 2])
+        self.assertEqual([graph["sampler"]["inputs"][k] for k in ("steps", "cfg", "sampler_name", "scheduler")],
+                         [4, 1.0, "euler_ancestral", "beta"], "the merge's own settings, from its note")
+        half = dict(note, vae="qwen_image_vae.safetensors")
+        self.assertEqual(len([p for p in models.problems_of(half) if p.startswith("`Text encoder:` is empty")]), 1,
+                         "a three-file model names both")
+
     def test_instruct_pix2pix_edits_one_picture_from_one_checkpoint_with_built_in_nodes(self):
         import models
         note = models.blank("edit")
