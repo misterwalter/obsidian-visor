@@ -83,11 +83,23 @@ class ModelsTest(unittest.TestCase):
             self.assertEqual(read["unused"], [], "nothing in the guide is taken for a setting")
 
     def test_a_recipe_s_system_line_is_said_to_have_no_effect(self):
-        model = dict(models.blank("language"), ollama="coder", modelfile="FROM qwen3:8b\nSYSTEM You are terse.")
+        model = dict(models.blank("language"), modelfile="FROM qwen3:8b\nSYSTEM You are terse.")
         text = models.render("coder", model)
         self.assertTrue(text.startswith("> [!warning] The recipe's `SYSTEM` line has no effect\n"))
         self.assertEqual(models.read(text), (model, []), "a warning, not a problem: the model is still offered")
         self.assertNotIn("[!warning]", models.render("coder", dict(model, modelfile="FROM qwen3:8b")))
+
+    def test_a_language_model_is_known_to_ollama_by_its_note_s_name_and_an_older_ollama_line_is_its_recipe(self):
+        self.write("coder.md", "Kind: language\nOllama: qwen3:14b\nThinks: yes\n")
+        self.write("tuned.md", "Kind: language\nOllama: old-name\n\n## Modelfile\n\n```\nFROM qwen3:8b\n```\n")
+        found = models.load(self.folder)
+        coder, tuned = found["coder"][0], found["tuned"][0]
+        self.assertEqual((coder["ollama"], coder["modelfile"], found["coder"][1]), ("coder", "FROM qwen3:14b", []))
+        self.assertEqual((tuned["ollama"], tuned["modelfile"]), ("tuned", "FROM qwen3:8b"), "the recipe it had stays")
+        written = models.render("coder", coder)
+        self.assertNotIn("Ollama:", written.split("> [!guide]")[0], "the line is gone, its model now the recipe")
+        self.assertIn("## Modelfile\n\n```\nFROM qwen3:14b\n```", written)
+        self.assertEqual(models.named_in_ollama(found), {"coder:latest", "qwen3:14b", "tuned:latest", "qwen3:8b"})
 
     def test_a_note_in_the_owner_s_own_words_is_read(self):
         self.write("sketchy.md", "Kind: image\nFile: sketchy.safetensors\nFamily: sd15\nSteps: 20\n\n## About\n\nPencil.\n")
@@ -108,7 +120,7 @@ class ModelsTest(unittest.TestCase):
         self.assertIn("`File:` must be a .safetensors file: the older formats can run code when loaded.", found["a"][1])
         self.assertIn("`Family: sd3` is not one visor can draw with: use sd15, sdxl, chroma.", found["a"][1])
         self.assertIn("`Steps: lots` is not a whole number.", found["a"][1])
-        self.assertIn("`Ollama:` is empty", found["b"][1][0])
+        self.assertIn("its recipe has no `FROM` line", found["b"][1][0])
         self.assertIsNone(found["c"][0])
         self.assertIsNone(found["bad name"][0])
         self.assertEqual((models.images(found), models.languages(found)), (({}, None), {}))
@@ -138,7 +150,7 @@ class ModelsTest(unittest.TestCase):
         out = os.path.join(self.tmp.name, "harness")
         models.harness_settings(models.languages(models.load(self.folder)), HERE, out)
         pi = json.load(open(os.path.join(out, "pi", "models.json")))["providers"]["ollama"]["models"]
-        self.assertEqual([m["id"] for m in pi], ["coder-official", "coder-second", "writer-local"])
+        self.assertEqual([m["id"] for m in pi], ["official", "second", "writer"])
         writer = pi[2]
         self.assertEqual((writer["maxTokens"], writer["compat"]["supportsReasoningEffort"], writer["reasoning"]),
                          (16384, True, True))
@@ -146,7 +158,7 @@ class ModelsTest(unittest.TestCase):
         self.assertNotIn("reasoning", pi[0])
 
     def test_a_line_visor_does_not_read_is_kept_and_marked_unused(self):
-        text = "Kind: language\nOllama: coder-official\nContext: 32768\nMax tokens: 8192\n"
+        text = "Kind: language\nOllama: official\nContext: 32768\nMax tokens: 8192\n"
         model, problems = models.read(text)
         self.assertEqual((problems, model["unused"]), ([], ["Context: 32768"]))
         written = models.render("official", model)
@@ -166,7 +178,8 @@ class ModelsTest(unittest.TestCase):
         # One of each kind, small enough for a modest machine, each fetchable from its note.
         self.assertEqual(sorted(m["kind"] for m, _, _ in found.values()), ["edit", "image", "language", "video", "vision"])
         self.assertEqual(models.edits(found)[1], "pix2pix")
-        self.assertEqual(models.vision(found), ("looker", "qwen2.5vl:3b"))
+        self.assertEqual(models.vision(found), ("looker", "looker"), "its name in Ollama is its note's")
+        self.assertEqual(models.recipe_from(found["looker"][0]), "qwen2.5vl:3b")
         for name in ("dreamshaper", "pix2pix"):
             self.assertIsNone(__import__("fetch").problem(found[name][0]), name)
             self.assertEqual(found[name][0]["fetch"], "no", "nothing large downloads without the owner's say")

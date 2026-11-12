@@ -9,10 +9,13 @@ in a standard form once it has been left alone a while (as it does a character's
 own note), and adds what it found on the server: `On this server: yes`.
 
     Kind: image                        Kind: language
-    File: some-model.safetensors       Ollama: coder-official
-    Family: sdxl                       Thinks: no
-    Fast: yes                          Max tokens: 8192
-    ...                                ...
+    File: some-model.safetensors       Thinks: no
+    Family: sdxl                       Max tokens: 8192
+    Fast: yes                          ...
+    ...                                ## Modelfile: FROM qwen3:8b
+
+A model's name is its note's file name, and nothing else. A language or vision model is
+registered in Ollama under that name, from the recipe in its note.
 
 Every list of models visor shows or checks against is made from these notes: the
 samples, a character's own note, what a run is told, the settings each harness is
@@ -59,12 +62,12 @@ SWITCHES = {"thinks": "it can think before it answers: a note asks it to with `T
 # Each kind of model, and its lines: (name, what it stands at when the note leaves it out).
 # "On this server" is visor's to write: what it found.
 LINES = {
-    "language": [("Ollama", ""), ("Thinks", "no"), ("Max tokens", "8192"), ("Fetch", "no"), ("Delete", "no")],
+    "language": [("Thinks", "no"), ("Max tokens", "8192"), ("Fetch", "no"), ("Delete", "no")],
     "image": [("File", ""), ("Family", "sdxl"), ("Fast", "no"), ("Steps", ""), ("CFG", ""), ("Sampler", ""),
               ("Scheduler", ""), ("Clip skip", ""), ("Prefix", ""), ("Prompt guide", ""), ("Negative", ""), ("Size", ""),
               ("V-pred", "no"), ("Text encoder", ""), ("VAE", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
     "lora": [("File", ""), ("Family", "sdxl"), ("Trigger", ""), ("Strength", "1.0"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
-    "vision": [("Ollama", ""), ("Default", "no"), ("Fetch", "no"), ("Delete", "no")],
+    "vision": [("Default", "no"), ("Fetch", "no"), ("Delete", "no")],
     "edit": [("File", ""), ("Family", "qwen-image-edit"), ("Text encoder", ""), ("VAE", ""), ("Fast LoRA", ""),
              ("Fast steps", "4"), ("Steps", "20"), ("CFG", "2.5"), ("Shift", "3"), ("Sampler", "euler"),
              ("Scheduler", "simple"), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
@@ -73,6 +76,9 @@ LINES = {
               ("Prompt guide", ""), ("Negative", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
 }
 KINDS = tuple(LINES)
+# The kinds of model that are files in ComfyUI's models folder, and those that live in Ollama.
+FILE_KINDS = ("image", "lora", "edit", "video")
+OLLAMA_KINDS = ("language", "vision")
 # The image families visor can draw with, and the folder of the models folder each one's
 # main file is in (ComfyUI's layout).
 FAMILIES = {"sd15": "checkpoints", "sdxl": "checkpoints", "chroma": "diffusion_models"}
@@ -95,7 +101,9 @@ def one_file(family, text_encoder, vae):
 # checkpoints/: an LTX-Video one holds its decoder, and takes a T5 text encoder of its own (`Text
 # encoder:`); a Wan one, as an all-in-one merge, holds its text encoder and decoder too.
 VIDEO_FAMILIES = ("ltxv", "wan")
-WORDS = ("kind", "on this server") + tuple(dict.fromkeys(n.lower() for lines in LINES.values() for n, _ in lines))
+# `Ollama:` was a language or vision model's name in Ollama, before that was its note's: read from an older
+# note only to become its recipe (read).
+WORDS = ("kind", "on this server", "ollama") + tuple(dict.fromkeys(n.lower() for lines in LINES.values() for n, _ in lines))
 # A model note's guide (settings.guide), folded away below its settings: what the model is and where it is named,
 # then a row for each of its lines (the line, what it does, what it stands at when left empty).
 LEAD = {"language": "**A language model, `{name}`.** It writes and answers. A note or a project names it on "
@@ -108,20 +116,24 @@ LEAD = {"language": "**A language model, `{name}`.** It writes and answers. A no
                 "names it on its `Model:` line.",
         "video": "**A video model, `{name}`.** It makes a short video from what happens and a picture or video to "
                  "start from. A Video note names it on its `Model:` line."}
-HOW = ("Its name is this note's file name. Change a value after its colon: a minute after you stop editing, "
+HOW = ("Its name is this note's file name{ollama}. Change a value after its colon: a minute after you stop editing, "
        "visor writes the note back in this form, with any line you left out added. `On this server` is visor's, "
        "what it found here. `## About` is yours: its first sentence is shown beside the model's name wherever "
        "visor offers a choice of models.")
 FETCH = ("**Fetch.** Give the address the file downloads from and its SHA-256, and tick `Fetch`: visor downloads "
          "it through the VPN when it is next idle, and keeps it only if the hash matches. A model of several files "
          "has a row for each of the others under `## Downloads`.")
-RECIPE = ("**Its recipe**, a `## Modelfile` section at the end with a code block, is registered in Ollama whenever "
-          "it changes. `FROM` says which weights it is made from. `PARAMETER num_ctx` is its context length, how "
+RECIPE = ("**Its recipe**, a `## Modelfile` section at the end with a code block, is registered in Ollama under "
+          "this note's name whenever it changes. `FROM` says which weights it is made from: a model in Ollama's "
+          "library, such as `qwen3:8b`, or a file. `PARAMETER num_ctx` is its context length, how "
           "much it can see at once, and the one place that is set: visor reads it back from Ollama for the agents, "
           f"chats and games. The harnesses are set for {SUGGESTED_CONTEXT}: much less and they spend their time "
           "summarising, more takes more memory, and Ollama gives no more than the weights were trained for. With "
           f"none, Ollama uses {OLLAMA_CONTEXT}. A `SYSTEM` line has no effect: visor sends its own instructions "
           "with every request.")
+SEER_RECIPE = ("**Its recipe**, a `## Modelfile` section at the end with a code block, is registered in Ollama under "
+               "this note's name whenever it changes. `FROM` says which weights it is made from: a model in Ollama's "
+               "library, such as `qwen2.5vl:7b`, or a file.")
 _STEPS = ("`Steps:`, `CFG:`, `Sampler:`, `Scheduler:`", "How it draws: how many steps, how closely it follows the "
           "prompt, and ComfyUI's sampler and scheduler.")
 _FILE_ROWS = [("`Download:`, `SHA-256:`", "Where the main file comes from, and its hash, for `Fetch`.", ""),
@@ -137,8 +149,6 @@ _OLLAMA_DELETE = ("`Delete`, a box", "Ticked: visor removes it from Ollama when 
                                      "too stays. The note stays: tick `Fetch` to bring it back.", "Unticked")
 ROWS = {
     "language": [
-        ("`Ollama:`", "The model's name in Ollama: what visor registers its recipe as, or, with no recipe, a model "
-                      "as `ollama list` shows it.", ""),
         ("`Thinks`, a box", "Ticked: it can think before it answers. A note asks it to with `Thinking:`.", "Unticked"),
         ("`Max tokens:`", "The longest answer an agent asks it for at once.", "8192"),
         ("`Fetch`, a box", "Ticked: visor gets the weights through Ollama (directly, not through the VPN).",
@@ -167,9 +177,9 @@ ROWS = {
         ("`Strength:`", "How strongly it pulls, from 0 to 2.", "1.0"),
         _FILE_ROWS[0], *_FILE_ROWS[2:]],
     "vision": [
-        ("`Ollama:`", "The model's name in Ollama, as `ollama list` shows it.", ""),
         _FILE_ROWS[1],
-        ("`Fetch`, a box", "Ticked: visor pulls it through Ollama when it is next idle.", "Unticked"),
+        ("`Fetch`, a box", "Ticked: visor gets the weights through Ollama (directly, not through the VPN).",
+         "Unticked"),
         _OLLAMA_DELETE],
     "edit": [
         ("`File:`", "The model's file: in `diffusion_models/` beside its text encoder and VAE, or in `checkpoints/` "
@@ -201,8 +211,9 @@ def guide_text(name, model):
     improves = ("this one among them" if (model.get("family") or "").lower() in IMPROVES else "not this one")
     table = "| Line | Meaning | If left out |\n|---|---|---|\n" + "".join(
         f"| {line} | {meaning.format(improves=improves)} | {default} |\n" for line, meaning, default in ROWS[kind])
-    parts = [LEAD[kind].format(name=name) + " " + HOW, table.rstrip("\n")]
-    parts.append(RECIPE if kind == "language" else FETCH if kind != "vision" else "")
+    how = HOW.format(ollama=", and what it is registered as in Ollama" if kind in OLLAMA_KINDS else "")
+    parts = [LEAD[kind].format(name=name) + " " + how, table.rstrip("\n")]
+    parts.append(RECIPE if kind == "language" else SEER_RECIPE if kind == "vision" else FETCH)
     article = "an" if kind[0] in "aeiou" else "a"
     return settings.guide(f"How {article} {kind} model's note works", "\n\n".join(p for p in parts if p))
 
@@ -214,7 +225,7 @@ def system_ignored(model):
 
 def blank(kind):
     model = dict({name.lower(): default for name, default in LINES[kind]}, kind=kind, about="", unused=[])
-    if kind == "language":
+    if kind in OLLAMA_KINDS:
         model["modelfile"] = ""
     return model
 
@@ -222,6 +233,7 @@ def blank(kind):
 def read(text):
     """What a model's note says: (the model's settings, problems). Settings are the note's
     own words, lower-cased keys; read_* turn them into what the rest of visor uses."""
+    text, _, recipe = text.partition("\n" + MODELFILE)  # at the end, with or without an About before it
     top, _, about = text.partition("\n" + ABOUT)
     top = settings.drop_guide(top)
     found = {e["key"]: e["value"].strip() for e in settings.scan(top, WORDS)[0] if e["boxes"] is None}
@@ -232,14 +244,16 @@ def read(text):
     model = blank(kind)
     model.update({k: v for k, v in found.items() if k in model})
     model["unused"] = unused_lines(top)
-    about, _, recipe = about.partition("\n" + MODELFILE)
     about, _, listed = about.partition("\n" + DOWNLOADS)
     model["about"] = "" if about.strip() == PANEL_HINT else about.strip()
     downloads = downloads_of(listed)
     if downloads:
         model["downloads"] = downloads
-    if kind == "language":
+    if kind in OLLAMA_KINDS:
         model["modelfile"] = modelfile_of(recipe)
+        if not model["modelfile"] and found.get("ollama"):
+            # An older note named a model in Ollama to use as it is: now its recipe is made from it.
+            model["modelfile"] = f"FROM {found['ollama']}"
     return model, problems_of(model)
 
 
@@ -296,13 +310,12 @@ def problems_of(model):
     def yes_no(key):
         if model.get(key, "").lower() not in YES + NO:
             problems.append(f"`{key.capitalize()}: {model[key]}` must be yes or no.")
-    if kind in ("language", "vision") and not model["ollama"]:
-        problems.append("`Ollama:` is empty: say the model's name in Ollama, as `ollama list` shows it.")
+    if kind in OLLAMA_KINDS and not re.search(r"^FROM\s+\S", model.get("modelfile") or "", re.MULTILINE | re.IGNORECASE):
+        problems.append("its recipe has no `FROM` line: add a `## Modelfile` section at the end, with a code block "
+                        "saying which weights it is made from, such as `FROM qwen3:8b`.")
     if kind == "language":
         yes_no("thinks"), number("max tokens", 256, 262144)
         yes_no("fetch")
-        if model.get("modelfile") and not re.search(r"^FROM\s+\S", model["modelfile"], re.MULTILINE | re.IGNORECASE):
-            problems.append("the `## Modelfile` has no `FROM` line: say which weights it is made from.")
     if kind == "edit":
         if not model["file"]:
             problems.append("`File:` is empty: say the model's file.")
@@ -420,6 +433,8 @@ def load(folder):
             model, problems = read(f.read())
         if not NAME.fullmatch(stem):
             model, problems = None, [f"`{stem}` cannot be a model's name: use letters, digits, dots and dashes."]
+        elif model and model["kind"] in OLLAMA_KINDS:
+            model["ollama"] = stem.lower()  # its name in Ollama is its note's
         found[stem.lower()] = (model, problems, path)
     return found
 
@@ -611,9 +626,6 @@ def folder_from(config_path):
 
 # ── Deleting models, and the ones no note names ───────────────────────────────
 
-# The kinds of model that are files in ComfyUI's models folder, and those that live in Ollama.
-FILE_KINDS = ("image", "lora", "edit", "video")
-OLLAMA_KINDS = ("language", "vision")
 # What a model's file ends in, among what else a models folder holds.
 MODEL_FILES = (".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".sft", ".onnx")
 
@@ -759,11 +771,12 @@ def note_for_file(item, sha, when):
 def note_for_ollama(item, capabilities, when):
     """A new note for a model Ollama has that no note uses (loose_in_ollama), from what Ollama says it can do."""
     kind = "vision" if "vision" in capabilities and "tools" not in capabilities else "language"
-    model = dict(blank(kind), ollama=item["id"])
+    model = dict(blank(kind), modelfile=f"FROM {item['id']}")
     if kind == "language":
         model["thinks"] = "yes" if "thinking" in capabilities else "no"
     can = ", ".join(capabilities) or "nothing"
     model["about"] = (f"Visor found `{item['id']}` in Ollama ({size_said(item['size'])}), used by no note, and wrote "
                       f"this note on {when}. It set `Kind:`" + (" and `Thinks`" if kind == "language" else "")
-                      + f" from what Ollama says the model can do ({can}): check them.")
+                      + f" from what Ollama says the model can do ({can}): check them. Visor registers it in Ollama "
+                      "under this note's name too, from the same weights, so it takes no more space.")
     return model

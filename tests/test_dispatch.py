@@ -242,6 +242,8 @@ class DispatchTest(unittest.TestCase):
         os.makedirs(self.state, exist_ok=True)
         with open(os.path.join(self.state, "starters.json"), "w") as f:
             json.dump(["dreamshaper", "looker", "pix2pix", "small"], f)
+        with open(os.path.join(self.state, "ollama.json"), "w") as f:
+            json.dump(testmodels.registered(), f)
         self.vpn = True  # the tunnel is up unless a test says otherwise
         self.vpn_installed = True  # as on a server with one, which never goes without it
         self.kept_warm = []
@@ -303,7 +305,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "task.md", "Project: game\nMake the thing.\n")
         self.d.once()
         (call,) = self.calls_made()
-        self.assertEqual(call[2], "coder-official")
+        self.assertEqual(call[2], "official")
         self.assertIn("--plan-only", call)
         self.assertNotIn("--notes", call, "a fresh task has nothing to add")
         note = self.read("output", "task.md")
@@ -311,7 +313,7 @@ class DispatchTest(unittest.TestCase):
                         "the owner's text is kept, with the lines a Plan reads added to its top")
         self.assertIn("## Plan, ", note)
         self.assertIn("official model", note)
-        self.assertIn("Answer from coder-official.", note)
+        self.assertIn("Answer from official.", note)
         self.assertTrue(note.rstrip().endswith(dispatch.REPLY_HEADING))
         self.assertEqual(os.listdir(os.path.join(self.tasks, "inbox")), [])
 
@@ -402,7 +404,7 @@ class DispatchTest(unittest.TestCase):
         self.assertNotIn("--continue", build, "the first build starts from main")
         with open(build[build.index("--notes") + 1]) as f:
             notes = f.read()
-        self.assertIn("Answer from coder-official.", notes)
+        self.assertIn("Answer from official.", notes)
         self.assertIn("Yes, but blue.", notes)
         self.assertNotIn("Make the thing.", notes, "the task itself is not repeated as a note")
         self.assertIn("pull request: https://example.invalid/pull/", self.read("output", "task.md"))
@@ -509,13 +511,13 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("--chat", call)
         self.assertNotIn("--narrator", call)
         self.assertNotIn("--draw", call)
-        self.assertEqual(call[2], "coder-official")
+        self.assertEqual(call[2], "official")
         self.assertEqual(call[0], os.path.join(self.tasks, "characters", "Mara"), "her own folder is the project")
         self.assertEqual(open(call[call.index("--persona") + 1]).read().strip(), "Dry, sixty, a lighthouse keeper.")
         conversation = open(call[1]).read()
         self.assertEqual(conversation, "## You\n\nWho was on the boat?\n", "the header is no part of the conversation")
         note = self.read("output", "Evening.md")
-        self.assertIn("## Mara\n\nAnswer from coder-official.", note)
+        self.assertIn("## Mara\n\nAnswer from official.", note)
         self.assertTrue(note.rstrip().endswith("## You"), "a fresh turn for the owner")
 
     def test_a_character_s_lan_and_loopback_reach_their_turns_and_a_chat_can_say_otherwise(self):
@@ -601,7 +603,7 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         (call,) = self.calls_made()
         self.assertIn("--narrator", call)
-        self.assertEqual(call[2], "writer-local", "the first one named sets what the narrator runs on")
+        self.assertEqual(call[2], "writer", "the first one named sets what the narrator runs on")
         self.assertEqual(sorted(os.listdir(call[0])), ["Mara", "Tom"], "a room holding each character's folder")
         self.assertFalse(os.path.exists(os.path.join(call[0], "Mara", "Mara.md")), "and not their settings")
         cast = open(call[call.index("--persona") + 1]).read()
@@ -631,8 +633,8 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "Lamp room.md", "Chat: Mara, Tom\n\nMinds\n- [x] one narrator\n- [x] separate\n\n## You\nHello, both.\n")
         said = self.d.once()
         first, second = self.calls_made()
-        self.assertEqual((first[0], first[2]), (os.path.join(self.tasks, "characters", "Tom"), "writer-local"))
-        self.assertEqual((second[0], second[2]), (os.path.join(self.tasks, "characters", "Mara"), "coder-official"))
+        self.assertEqual((first[0], first[2]), (os.path.join(self.tasks, "characters", "Tom"), "writer"))
+        self.assertEqual((second[0], second[2]), (os.path.join(self.tasks, "characters", "Mara"), "official"))
         self.assertNotIn("--narrator", first)
         self.assertEqual(seen_in_note, [0, 1, 2], "each turn was in the note before the next was decided")
         note = self.read("output", "Lamp room.md")
@@ -758,7 +760,7 @@ class DispatchTest(unittest.TestCase):
         tom_1, mara_1, tom_2 = self.calls_made()
         self.assertNotIn("--fork", tom_1)
         self.assertNotIn("--fork", mara_1, "her own first turn, though Tom has had one")
-        self.assertEqual(tom_2[tom_2.index("--fork") + 1], "a-writer-local-pi-run0" if "writer" in tom_1[2] else "a-coder-official-pi-run0")
+        self.assertEqual(tom_2[tom_2.index("--fork") + 1], "a-writer-pi-run0" if "writer" in tom_1[2] else "a-official-pi-run0")
         heard = open(tom_2[1]).read()
         self.assertEqual(heard, "## Mara\n\nMara the first.\n\n## You\n\nThe second question.\n")
 
@@ -784,7 +786,7 @@ class DispatchTest(unittest.TestCase):
         # She is a character like any other now.
         self.note("inbox", "a.md", "Chat: Mara\n\n## You\nHello.\n")
         self.d.once()
-        self.assertEqual(self.calls_made()[0][2], "coder-second")
+        self.assertEqual(self.calls_made()[0][2], "second")
 
     def test_a_new_character_that_cannot_be_made_comes_back_saying_why(self):
         self.character("Mara")
@@ -903,7 +905,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(self.d.safe_search_of(mara), "off", "hers, over VISOR.md's")
         fetched = []
         self.d._fetch_web = lambda address: fetched.append(address) or ""
-        self.d._board_search(home, "", "garden gnomes", "now", "coder-official", None, None, self.d.safe_search_of(mara))
+        self.d._board_search(home, "", "garden gnomes", "now", "official", None, None, self.d.safe_search_of(mara))
         self.assertTrue(fetched[0].endswith("?q=garden+gnomes&kp=-2"))
         # A run given the web is told the server's.
         self.note("inbox", "a.md", "Project: game\nModel: official\nWeb: yes\nPlan:\n")
@@ -1070,7 +1072,7 @@ class DispatchTest(unittest.TestCase):
         cast = cast_of(call)
         self.assertEqual(cast["forced"], {"model": "anime-xl", "quality": "fast"})
         self.assertTrue(cast["characters"]["Tom"]["draw"])
-        self.assertEqual(call[2], "coder-official")
+        self.assertEqual(call[2], "official")
         # Image: no in the chat: nobody draws, whatever their own note says.
         self.note("inbox", "c.md", "Chat: Mara, Tom\nImage: no\n\n## You\nDraw it.\n")
         self.d.once()
@@ -1203,7 +1205,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "a.md", "Chat: Mara, Tom\nMinds: separate\n\n## You\nHello.\n")
         self.d.pick = lambda pool: pool[0]
         self.d.once()
-        self.assertEqual(self.kept_warm, [("coder-official", 1800), ("coder-second", 1800)])
+        self.assertEqual(self.kept_warm, [("official", 1800), ("second", 1800)])
 
     def test_a_turn_that_fails_ends_the_round_and_says_so(self):
         os.environ["FAKE_EXIT"] = "1"
@@ -1708,7 +1710,7 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         (call,) = self.calls_made()
         self.assertIn("--folder", call)
-        self.assertEqual(call[2], "writer-local", "the model the project was made with")
+        self.assertEqual(call[2], "writer", "the model the project was made with")
         # A restarted dispatcher still knows it.
         again = dispatch.Dispatcher(self.config, self.state)
         self.assertIn("College Class", again.projects)
@@ -1794,7 +1796,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "ch5.md", "Project: story\nWrite: chapter five\n")
         self.d.once()
         (call,) = self.calls_made()
-        self.assertEqual(call[2], "writer-local")
+        self.assertEqual(call[2], "writer")
 
     def test_a_reply_on_a_folder_asks_for_more_writing_from_the_folder_as_it_is(self):
         self.note("inbox", "ch5.md", "Project: story\nModel: official\nWrite: five\n\n---\n\n## Drafts, x\n\nDone.\n\n---\n\n## Your reply\n\nDarker.\n")
@@ -1809,8 +1811,8 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "ch5.md", "Project: story\nModel: official\nWrite: five\n")
         self.d.once()
         first, second = self.calls_made()
-        self.assertEqual(second[second.index("--continue") + 1], "ch5-coder-official-pi-run0")
-        self.assertEqual(second[second.index("--fork") + 1], "ch5-coder-official-pi-run0")
+        self.assertEqual(second[second.index("--continue") + 1], "ch5-official-pi-run0")
+        self.assertEqual(second[second.index("--fork") + 1], "ch5-official-pi-run0")
 
     # Canon: the files in a folder project's canon/, which the owner has settled on
 
@@ -1906,7 +1908,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(len(self.calls_made()), 1, "no second model, no second part")
         note = self.read("done", "slow.md")
         self.assertIn("> **Stopped:** its note was taken out of working/. Below is as far as it got.", note)
-        self.assertIn("Answer from coder-official.", note, "what the run had is kept")
+        self.assertIn("Answer from official.", note, "what the run had is kept")
         self.assertFalse(os.path.exists(self.found("slow.md")), "left where the owner put it")
         self.assertTrue(any("taken out of working/" in m for m in self.logged))
 
@@ -1975,10 +1977,10 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         first, second, third = self.calls_made()
         self.assertNotIn("--fork", first)
-        self.assertEqual(second[second.index("--fork") + 1], "task-coder-official-pi-run0")
-        self.assertEqual(second[second.index("--continue") + 1], "task-coder-official-pi-run0")
+        self.assertEqual(second[second.index("--fork") + 1], "task-official-pi-run0")
+        self.assertEqual(second[second.index("--continue") + 1], "task-official-pi-run0")
         self.assertNotIn("--notes", second, "the task and the discussion are already in the conversation")
-        self.assertEqual(third[third.index("--fork") + 1], "task-coder-official-pi-run1")
+        self.assertEqual(third[third.index("--fork") + 1], "task-official-pi-run1")
         self.assertIn("in 3 parts", self.read("output", "task.md"))
 
     def test_a_paused_question_carries_on_its_conversation(self):
@@ -1986,7 +1988,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "q.md", "Project: game\nModel: official\nAnalysis: why?\n")
         self.d.once()
         first, second = self.calls_made()
-        self.assertEqual(second[second.index("--fork") + 1], "q-coder-official-pi-run0")
+        self.assertEqual(second[second.index("--fork") + 1], "q-official-pi-run0")
         self.assertNotIn("--continue", second, "a question has no branch to carry on")
 
     def test_a_paused_build_with_no_saved_conversation_is_told_where_it_got_to(self):
@@ -1996,8 +1998,8 @@ class DispatchTest(unittest.TestCase):
         calls = self.calls_made()
         self.assertEqual(len(calls), 3)
         self.assertNotIn("--continue", calls[0])
-        self.assertEqual(calls[1][calls[1].index("--continue") + 1], "task-coder-official-pi-run0")
-        self.assertEqual(calls[2][calls[2].index("--continue") + 1], "task-coder-official-pi-run1")
+        self.assertEqual(calls[1][calls[1].index("--continue") + 1], "task-official-pi-run0")
+        self.assertEqual(calls[2][calls[2].index("--continue") + 1], "task-official-pi-run1")
         second_notes = calls[1][-1]
         self.assertIn("WHERE THE PREVIOUS PART GOT TO", second_notes)
         self.assertIn("Summary from part 0.", second_notes)
@@ -2007,7 +2009,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("in 3 parts", note)
         self.assertIn("pull request: https://example.invalid/pull/2", note, "only the last part opens one")
         self.assertEqual(note.count("## Build, "), 1, "one answer per model, however many parts")
-        self.assertTrue(any("no conversation saved by task-coder-official-pi-run0" in m for m in self.logged))
+        self.assertTrue(any("no conversation saved by task-official-pi-run0" in m for m in self.logged))
 
     def test_a_paused_question_with_no_saved_conversation_is_asked_again_with_what_was_found(self):
         os.environ["FAKE_PAUSES"] = "1"
@@ -2071,7 +2073,7 @@ class DispatchTest(unittest.TestCase):
         self.d.chosen_model = "gone too"
         self.note("inbox", "c.md", "Project: game\nPlan: x\n")
         self.d.once()
-        self.assertEqual([c[2] for c in self.calls_made()], ["coder-second", "writer-local", "coder-official"])
+        self.assertEqual([c[2] for c in self.calls_made()], ["second", "writer", "official"])
         self.assertIn("- [x] official", self.server_note(), "VISOR.md shows the default it runs on")
         self.note("inbox", "d.md", "Project: game\nModel: both\nPlan: x\n")
         self.d.once()
@@ -2104,14 +2106,14 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "task.md", "Project: game\nModel: second\nBuild:\nMake the thing.\n")
         d.once()
         build, review = self.calls_made()
-        self.assertEqual(review[2], "coder-official", "with no reviewer chosen, the default model reviews")
+        self.assertEqual(review[2], "official", "with no reviewer chosen, the default model reviews")
         self.assertIn("--analysis", review)
-        self.assertEqual(review[review.index("--continue") + 1], "task-coder-second-pi-run0")
+        self.assertEqual(review[review.index("--continue") + 1], "task-second-pi-run0")
         brief = review[-1]
         self.assertIn("REVIEW THIS BUILD", brief)
         self.assertIn("git diff abc123 HEAD", brief)
         self.assertIn("80 → 140", brief)
-        self.assertIn("Answer from coder-second.", brief, "the builder's claims, to be checked")
+        self.assertIn("Answer from second.", brief, "the builder's claims, to be checked")
         note = self.read("output", "task.md")
         self.assertIn("## Review of the second build", note)
         self.assertIn("by the official model", note)
@@ -2272,7 +2274,7 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         (call,) = self.calls_made()
         self.assertEqual(call[call.index("--tests") + 1], "python3 -m unittest")
-        self.assertEqual(call[2], "coder-second")
+        self.assertEqual(call[2], "second")
 
     def test_boxes_visor_cannot_read_are_said_in_the_note_and_nothing_changes(self):
         self.d.once()
@@ -2567,7 +2569,7 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         first, second = self.calls_made()
         self.assertNotIn("--continue", first)
-        self.assertEqual(second[second.index("--continue") + 1], "task-coder-official-pi-run0", "on its own branch")
+        self.assertEqual(second[second.index("--continue") + 1], "task-official-pi-run0", "on its own branch")
         self.assertIn("THE TESTS FAIL AFTER YOUR LAST TRY (this is try 2 of 3)", second[-1])
         note = self.read("output", "task.md")
         self.assertIn("try 1 of 3: the tests passed before and fail now, so visor tries again", note)
@@ -2704,6 +2706,14 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(dispatch.parse_header(self.d.samples()["sample-new-project.md"])["github"], "no")
 
     # Pictures of characters, edits, character sets, LoRAs, scenes and motion
+
+    def set_recipe(self, name, recipe):
+        """Give a language or vision model's note a new recipe, as the owner does."""
+        path = os.path.join(self.tasks, "models", name + ".md")
+        model, _ = dispatch.models.read(open(path).read())
+        with open(path, "w") as f:
+            f.write(dispatch.models.render(name, dict(model, modelfile=recipe)))
+        return path
 
     def more_models(self, seers=(), loras=()):
         """A vision model and LoRAs beside the usual models, as an owner adds them."""
@@ -3077,14 +3087,14 @@ class DispatchTest(unittest.TestCase):
                                         "Project:\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\n"
                                         "Retain Logs (days):\nRepeat: no\nOn repeat:\n"), note)
         self.assertIn("## Answer, ", note)
-        self.assertIn("Answer from coder-official.", note)
+        self.assertIn("Answer from official.", note)
         self.assertNotIn("pull request", note)
 
     def test_an_errand_s_lines_ask_for_what_it_may_reach_as_any_round_s_do(self):
         self.note("inbox", "memes.md", "Agent: find me three cocker spaniel memes\nWeb: yes\nLAN: nas.local\nModel: writer\n")
         self.d.once()
         (call,) = self.calls_made()
-        self.assertEqual(call[2], "writer-local")
+        self.assertEqual(call[2], "writer")
         self.assertEqual(call[call.index("--lan") + 1], "nas.local")
         self.assertIn("--web", call)
         self.note("inbox", "bad.md", "Agent: look around\nLoopback: 80, http\n")
@@ -3133,7 +3143,7 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         first, second = self.calls_made()[1:]
         self.assertNotIn("--continue", first)
-        self.assertEqual(second[second.index("--continue") + 1], "long-coder-official-pi-run1")
+        self.assertEqual(second[second.index("--continue") + 1], "long-official-pi-run1")
 
     def test_a_round_other_than_an_errand_still_needs_a_project(self):
         self.note("inbox", "a.md", "Analysis: what is this?\n")
@@ -3363,7 +3373,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("Length: 50\n", story)
         self.assertIn("# Memory", open(os.path.join(self.tasks, "games", "Inn", "memory.md")).read())
         (ask,) = asked
-        self.assertEqual(ask["model"], "writer-local")
+        self.assertEqual(ask["model"], "writer")
         self.assertIs(ask["think"], False, "a model that thinks is asked not to, for speed")
         self.assertEqual(ask["keep"], 1800, "kept loaded for the next turn")
         self.assertNotIn("num_ctx", ask["options"], "loaded as its Modelfile has it, so never loaded again")
@@ -3477,7 +3487,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(len(asked), 2)
 
     def test_a_turn_the_narrator_could_not_take_is_taken_out_and_said_and_tried_again_once_changed(self):
-        asked = self.narrator("Knocking.", dispatch.game.GameError("the model `writer-local` could not be asked: refused"),
+        asked = self.narrator("Knocking.", dispatch.game.GameError("the model `writer` could not be asked: refused"),
                               "You hide.")
         self.start()
         self.play(lambda t: t.replace("- [ ] **Go**", "I hide\n\n- [x] **Go**"))
@@ -4112,7 +4122,7 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         os.makedirs(os.path.join(self.work, "by-hand"))
         os.remove(os.path.join(self.tasks, "output", "plan", "deleted.md"))
-        kept, deleted = "kept-coder-official-pi-run0", "deleted-coder-official-pi-run1"
+        kept, deleted = "kept-official-pi-run0", "deleted-official-pi-run1"
         self.assertEqual(sorted(os.listdir(self.results)), [deleted, kept])
         self.d.between_jobs(self.clock)
         self.assertIn(deleted, os.listdir(self.work), "not on the first look")
@@ -4180,7 +4190,7 @@ class DispatchTest(unittest.TestCase):
         model_file("text_encoders/t5.safetensors")
         model_file("loras/" + dispatch.media.DMD2)
         removed = []
-        self.d._ollama_sizes = lambda: {"coder-official:latest": 9_000_000_000, "stray:7b": 3_000_000_000}
+        self.d._ollama_sizes = lambda: {"official:latest": 9_000_000_000, "stray:7b": 3_000_000_000}
         self.d._ollama_remove = lambda tag: removed.append(tag)
         self.d.once()
         note = self.server_note()
@@ -4189,7 +4199,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("`checkpoints/oldmix.safetensors`, 1 MB\n- [ ] Make a note\n- [ ] Delete\n", section)
         self.assertIn("`text_encoders/t5.safetensors`, 1 MB: a part of a model, named on a model's note beside its "
                       "main file, so it has no note of its own\n- [ ] Delete\n", section)
-        self.assertNotIn("coder-official", section, "a note uses it")
+        self.assertNotIn("official", section, "a note uses it")
         self.assertNotIn(testmodels.IMAGE["anime-xl"]["file"], section, "a note names it")
         listed, built = section.split("### Built into visor")
         self.assertNotIn(dispatch.media.DMD2, listed)
@@ -4605,23 +4615,23 @@ class DispatchTest(unittest.TestCase):
 
     def test_each_model_note_says_what_is_on_this_server(self):
         self.give_image_models("anime-xl")
-        self.d._in_ollama = lambda: {"coder-official:latest", "writer-local:latest"}
+        self.d._in_ollama = lambda: {"official:latest", "writer:latest"}
         self.d.once()
         read = lambda name: open(os.path.join(self.tasks, "models", name + ".md")).read()
         self.assertIn("\nOn this server: yes\n", read("anime-xl"))
         self.assertIn("\nOn this server: not downloaded: no `", read("photo-xl"))
         self.assertIn("\nOn this server: yes, with a context length of 8192 (its `num_ctx`)\n", read("official"))
-        self.assertIn("\nOn this server: no: not in Ollama. Tick `Fetch` to have visor run `ollama pull coder-second`",
-                      read("second"))
+        self.assertIn("\nOn this server: no: its recipe is made `FROM coder:14b`, which is not on this server; tick "
+                      "`Fetch` to have it downloaded", read("second"))
         made = json.load(open(os.path.join(self.state, "harness", "pi", "models.json")))
         self.assertEqual([m["id"] for m in made["providers"]["ollama"]["models"]],
-                         ["coder-official", "coder-second", "writer-local"])
+                         ["official", "second", "writer"])
         self.assertFalse([m for m in made["providers"]["ollama"]["models"] if "contextWindow" in m],
                          "visor-run.sh adds the run's own, as Ollama loads the model then")
 
     def test_a_language_model_trained_for_less_than_its_num_ctx_says_what_ollama_loads(self):
-        self.d._in_ollama = lambda: {"coder-official:latest", "writer-local:latest"}
-        self.d.context_of = lambda address, model: (65536, 40960) if model == "coder-official" else (32768, 262144)
+        self.d._in_ollama = lambda: {"official:latest", "writer:latest"}
+        self.d.context_of = lambda address, model: (65536, 40960) if model == "official" else (32768, 262144)
         self.d.once()
         read = lambda name: open(os.path.join(self.tasks, "models", name + ".md")).read()
         self.assertIn("\nOn this server: yes, with a context length of 40960, not the 65536 its `num_ctx` asks for: "
@@ -4629,26 +4639,24 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("\nOn this server: yes, with a context length of 32768 (its `num_ctx`)\n", read("writer"))
 
     def test_a_language_model_whose_num_ctx_nothing_sets_says_so_and_how_to_set_it(self):
-        self.d._in_ollama = lambda: {"coder-official:latest", "writer-local:latest"}
+        self.d._in_ollama = lambda: {"official:latest", "writer:latest"}
         self.d.context_of = lambda address, model: (None, 40960)
-        path = os.path.join(self.tasks, "models", "writer.md")
-        with open(path, "a") as f:
-            f.write("\n## Modelfile\n\n```\nFROM base-weights\n```\n")
+        self.set_recipe("writer", "FROM writer")  # named as the model it is made from: used as it is
         self.d.once()
         read = lambda name: open(os.path.join(self.tasks, "models", name + ".md")).read()
         self.assertIn("On this server: yes, but nothing sets its `num_ctx`, so Ollama gives it a context length of 4096",
                       read("official"))
-        self.assertIn("Add a `## Modelfile` section at the end of this note, `FROM coder-official` and "
-                      "`PARAMETER num_ctx 65536`", read("official"))
-        self.assertIn("Add `PARAMETER num_ctx 65536` to its `## Modelfile`.", read("writer"))
+        self.assertIn("Add `PARAMETER num_ctx 65536` to its `## Modelfile`.", read("official"))
+        self.assertIn("A note named as the model it is made from uses that model as it is: rename this note, and add "
+                      "`PARAMETER num_ctx 65536` to its `## Modelfile`", read("writer"))
 
     def test_a_model_note_still_being_written_is_left_alone(self):
         path = os.path.join(self.tasks, "models", "official.md")
         with open(path, "w") as f:
-            f.write("Kind: language\nOllama: coder-official\nThinks: no\n")
+            f.write("Kind: language\nOllama: official\nThinks: no\n")
         self.clock = time.time()
         self.d.once()
-        self.assertEqual(open(path).read(), "Kind: language\nOllama: coder-official\nThinks: no\n")
+        self.assertEqual(open(path).read(), "Kind: language\nOllama: official\nThinks: no\n")
         self.assertIn("official", self.d.models, "but it is read, as it stands")
 
     def test_a_model_a_note_asks_for_is_fetched_while_idle_and_kept_once_its_hash_matches(self):
@@ -4813,26 +4821,22 @@ class DispatchTest(unittest.TestCase):
         try:
             have = {"base-weights:latest"}
             self.d._in_ollama = lambda: set(have)
-            path = os.path.join(self.tasks, "models", "writer.md")
-            with open(path) as f:
-                text = f.read()
-            with open(path, "w") as f:
-                f.write(text + "\n## Modelfile\n\n```\nFROM base-weights\nPARAMETER num_ctx 32768\n```\n")
+            path = self.set_recipe("writer", "FROM base-weights\nPARAMETER num_ctx 32768")
             self.d.once()
             self.d.fetching["process"].wait()
             self.d.once()
             asked = [json.loads(line) for line in open(record)]
-            self.assertEqual(asked[0][:2], ["create", "writer-local"], "registered from its recipe, its weights here")
+            self.assertEqual(asked[0][:2], ["create", "writer"], "registered from its recipe, its weights here")
             self.assertIn("FROM base-weights", open(asked[0][3]).read())
-            have.add("writer-local:latest")
+            have.add("writer:latest")
             self.d.once()
             self.assertEqual(len([json.loads(line) for line in open(record)]), 1, "not again: the recipe is unchanged")
             self.assertIn("\nOn this server: yes, with a context length of 8192 (its `num_ctx`)\n", open(path).read())
             self.assertIn("## Modelfile\n\n```\nFROM base-weights\nPARAMETER num_ctx 32768\n```", open(path).read())
-            # A model with no recipe, not in Ollama: pulled only when its note has Fetch ticked.
-            second = os.path.join(self.tasks, "models", "second.md")
+            # A note named as the model it is made from, not in Ollama: pulled only when its note has Fetch ticked.
+            second = self.set_recipe("second", "FROM second")
             self.d.once()
-            self.assertIn("Tick `Fetch` to have visor run `ollama pull coder-second`", open(second).read())
+            self.assertIn("Tick `Fetch` to have visor run `ollama pull second`", open(second).read())
             with open(second) as f:
                 text = f.read().replace("- [ ] Fetch", "- [x] Fetch")
             with open(second, "w") as f:
@@ -4840,7 +4844,7 @@ class DispatchTest(unittest.TestCase):
             self.d.once()
             self.d.fetching["process"].wait()
             self.d.once()
-            self.assertIn(["pull", "coder-second"], [json.loads(line) for line in open(record)])
+            self.assertIn(["pull", "second"], [json.loads(line) for line in open(record)])
         finally:
             os.environ["PATH"] = os.environ["PATH"].split(os.pathsep, 1)[1]
 
@@ -4918,10 +4922,10 @@ class DispatchTest(unittest.TestCase):
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ["PATH"]
         try:
             self.more_models(seers=["looker"])
-            self.d._in_ollama = lambda: {"coder-official:latest"}
-            path = os.path.join(self.tasks, "models", "looker.md")
+            self.d._in_ollama = lambda: {"official:latest"}
+            path = self.set_recipe("looker", "FROM looker")
             self.d.once()
-            self.assertIn("\nOn this server: no: not in Ollama. Tick `Fetch` to have visor run `ollama pull looker:7b`\n",
+            self.assertIn("\nOn this server: no: not in Ollama. Tick `Fetch` to have visor run `ollama pull looker`\n",
                           open(path).read())
             self.assertIn("\nOn this server: yes, with a context length", self.read("models", "official.md"),
                           "the other notes are told what Ollama has, too")
@@ -4932,13 +4936,13 @@ class DispatchTest(unittest.TestCase):
             self.d.once()
             self.d.fetching["process"].wait()
             self.d.once()
-            self.assertIn(["pull", "looker:7b"], [json.loads(line) for line in open(record)])
+            self.assertIn(["pull", "looker"], [json.loads(line) for line in open(record)])
         finally:
             os.environ["PATH"] = os.environ["PATH"].split(os.pathsep, 1)[1]
 
     def test_a_language_model_s_note_says_where_ollama_last_ran_it(self):
-        self.d._in_ollama = lambda: {"coder-official:latest", "coder-second:latest", "writer-local:latest"}
-        self.d._loaded = lambda: {"coder-official:latest": 1.0, "coder-second:latest": 0.6}
+        self.d._in_ollama = lambda: {"official:latest", "second:latest", "writer:latest"}
+        self.d._loaded = lambda: {"official:latest": 1.0, "second:latest": 0.6}
         self.d.once()
         self.assertIn("(its `num_ctx`); last run all on the graphics card\n", self.read("models", "official.md"))
         self.assertIn("(its `num_ctx`); last run 60% on the graphics card and the rest on the processor, as much as "
@@ -4957,7 +4961,7 @@ class DispatchTest(unittest.TestCase):
         with open(path, "w") as f:
             f.write(text.replace("- [ ] Fetch", "- [x] Fetch") + "\n## Modelfile\n\n```\nFROM elsewhere\n```\n")
         self.d.ollama_command = os.path.join(self.tmp.name, "no-such-ollama")
-        self.d._in_ollama = lambda: {"coder-official:latest"}
+        self.d._in_ollama = lambda: {"official:latest"}
         self.d.once()
         self.assertIsNone(self.d.fetching)
         self.note("inbox", "a.md", "Project: game\nModel: official\nPlan: x\n")
@@ -4975,7 +4979,7 @@ class DispatchTest(unittest.TestCase):
         self.assertTrue(any("broken FAILED, and visor carries on without it" in line for line in self.logged))
 
     def test_a_job_whose_language_model_ollama_lacks_says_what_to_do_before_it_starts(self):
-        self.d._in_ollama = lambda: {"coder-official:latest"}
+        self.d._in_ollama = lambda: {"official:latest"}
         self.note("inbox", "a.md", "Project: game\nModel: writer\nPlan: x\n")
         self.d.once()
         self.assertEqual(self.calls_made(), [])
@@ -5042,7 +5046,7 @@ class DispatchTest(unittest.TestCase):
         self.assertTrue(note.startswith("Project: story\nModel: official\nWrite: five\nUNUSED Branch: tidy\n"
                                         "UNUSED Voice: bf_emma\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\n"
                                         "- [x] Canon only\n\nRetain Logs (days):\nRepeat: no\nOn repeat:\n\nDarker.\n"), note)
-        self.assertEqual(call[2], "coder-official")
+        self.assertEqual(call[2], "official")
         self.assertNotIn("--thinking", call, "an empty line is the project's setting, which is none")
 
     def test_an_empty_thinking_web_or_chan_line_takes_the_project_s_setting(self):
@@ -5062,7 +5066,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "five.md", write.replace("Write: ", "Write: chapter five", 1).replace("- [ ] official", "- [x] official"))
         self.d.once()
         (call,) = self.calls_made()
-        self.assertEqual(call[2], "coder-official")
+        self.assertEqual(call[2], "official")
         self.assertIn("--write", call)
         self.assertIn("--canon", call)
         self.assertEqual(open(call[1]).read().strip().splitlines()[:2], ["Project: story", "Write: chapter five"])

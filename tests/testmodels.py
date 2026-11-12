@@ -11,9 +11,9 @@ import os
 import models
 
 LANGUAGE = {
-    "official": {"ollama": "coder-official", "about": "The coder, as its makers ship it."},
-    "second": {"ollama": "coder-second", "about": "The same coder, tuned otherwise."},
-    "writer": {"ollama": "writer-local", "thinks": "yes", "max tokens": "16384",
+    "official": {"modelfile": "FROM coder:14b", "about": "The coder, as its makers ship it."},
+    "second": {"modelfile": "FROM coder:14b\nPARAMETER temperature 0.4", "about": "The same coder, tuned otherwise."},
+    "writer": {"modelfile": "FROM writer:12b", "thinks": "yes", "max tokens": "16384",
                "about": "A writer's model: prose and fiction. Slower; better writing."},
 }
 IMAGE = {
@@ -55,9 +55,16 @@ VIDEO = {
             "about": "LTX-Video 2B, distilled"},
     "wan": {"file": "wan-aio.safetensors", "family": "wan", "frames per second": "16", "about": "Wan, all in one"},
 }
-VISION = {"looker": {"ollama": "looker:7b", "about": "Sees pictures"}}
+VISION = {"looker": {"modelfile": "FROM qwen2.5vl:7b", "about": "Sees pictures"}}
 LORA = {"mara-lora": {"file": "visor-mara.safetensors", "family": "sdxl", "trigger": "mara_char", "strength": "0.8",
                       "about": "Mara"}}
+
+
+def registered():
+    """What visor registered in Ollama of the language and vision models, as state/ollama.json keeps it: each
+    under its note's name, from its recipe. A test's Ollama has them as visor made them."""
+    import hashlib
+    return {name: hashlib.sha256(s["modelfile"].encode()).hexdigest() for name, s in {**LANGUAGE, **VISION}.items()}
 
 
 def note(kind, settings_):

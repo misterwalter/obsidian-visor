@@ -26,7 +26,7 @@ class Names(unittest.TestCase):
     def test_an_ollama_name_with_a_colon_or_a_slash_makes_a_name_safe_everywhere_it_goes(self):
         for model, made in (("qwen3:8b", "task-qwen3-8b-pi-" + WHEN),
                             ("hf.co/someone/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M", "task-Qwen2.5-Coder-32B-In-pi-" + WHEN),
-                            ("coder-official", "task-coder-official-pi-" + WHEN)):
+                            ("official", "task-official-pi-" + WHEN)):
             run = runs.new("task", model, "pi", self.work, self.results, WHEN)
             self.assertEqual(run, made)
             # As visor-run.sh checks it, and as git takes it for the run's branch.

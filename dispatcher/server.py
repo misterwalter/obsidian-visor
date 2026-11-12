@@ -221,11 +221,11 @@ class Server:
         say(tags is not None, f"Ollama answering at {self.ollama}", "start it: systemctl start ollama")
         if not self.language:
             say(False, "a language model note in `models/`", "dispatch.py once writes starter notes; then "
-                "`ollama pull` or `ollama create` the model each names")
+                "tick `Fetch` in each")
         for name, model in sorted(self.language.items()):
             have = tags is not None and (model["ollama"] in tags or f"{model['ollama']}:latest" in tags)
-            say(have, f"language model `{name}` (`{model['ollama']}` in Ollama)",
-                f"ollama pull {model['ollama']}, or ollama create it from a Modelfile (install.sh)")
+            say(have, f"language model `{name}`, in Ollama",
+                f"tick `Fetch` in `models/{name}.md`, and visor registers it from its recipe while idle")
         way, why_not = self.internet()
         say(way is not None, {"tunnel": f"the internet, through the VPN tunnel at {self.vpn_proxy}",
                               "direct": "the internet, directly: no VPN installed, and VISOR.md allows going without"

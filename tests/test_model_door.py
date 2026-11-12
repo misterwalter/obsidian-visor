@@ -59,7 +59,7 @@ class ModelDoorTest(unittest.TestCase):
         self.sock = os.path.join(self.tmp.name, "model.sock")
         self.calls = os.path.join(self.tmp.name, "calls.jsonl")
         self.door = subprocess.Popen([sys.executable, os.path.join(HERE, "doors", "model-door.py"), self.sock,
-                                      f"127.0.0.1:{self.upstream.server_port}", "coder-official", self.calls, "1000"],
+                                      f"127.0.0.1:{self.upstream.server_port}", "official", self.calls, "1000"],
                                      stderr=subprocess.PIPE, text=True)
         for _ in range(100):
             if os.path.exists(self.sock):
@@ -97,16 +97,16 @@ class ModelDoorTest(unittest.TestCase):
         self.assertEqual(self.ask("DELETE", "/api/delete")[0], 403)
         status, text = self.ask("POST", "/v1/chat/completions", {"model": "another", "messages": []})
         self.assertEqual(status, 403)
-        self.assertIn("this run's model is coder-official", text)
+        self.assertIn("this run's model is official", text)
         self.assertEqual(Upstream.asked, [], "nothing reached the model server")
 
     def test_a_chat_request_is_passed_on_and_its_cost_recorded(self):
         status, text = self.ask("POST", "/v1/chat/completions",
-                                {"model": "coder-official", "messages": [{"role": "user", "content": "hi"}]})
+                                {"model": "official", "messages": [{"role": "user", "content": "hi"}]})
         self.assertEqual(status, 200)
         self.assertIn("hello", text)
         ((path, sent),) = Upstream.asked
-        self.assertEqual((path, sent["model"]), ("/v1/chat/completions", "coder-official"))
+        self.assertEqual((path, sent["model"]), ("/v1/chat/completions", "official"))
         (call,) = self.calls_recorded()
         self.assertEqual((call["status"], call["prompt_tokens"], call["completion_tokens"], call["messages"]),
                          (200, 1200, 34, 1))
@@ -120,7 +120,7 @@ class ModelDoorTest(unittest.TestCase):
         os.makedirs(talk)
         os.unlink(self.sock)
         self.door = subprocess.Popen([sys.executable, os.path.join(HERE, "doors", "model-door.py"), self.sock,
-                                      f"127.0.0.1:{self.upstream.server_port}", "coder-official", self.calls, "100000"],
+                                      f"127.0.0.1:{self.upstream.server_port}", "official", self.calls, "100000"],
                                      stderr=subprocess.PIPE, text=True,
                                      env=dict(os.environ, MODEL_DOOR_TALK=talk))
         for _ in range(100):
@@ -128,7 +128,7 @@ class ModelDoorTest(unittest.TestCase):
                 break
             time.sleep(0.05)
         def ask(messages):
-            self.ask("POST", "/v1/chat/completions", {"model": "coder-official", "messages": messages})
+            self.ask("POST", "/v1/chat/completions", {"model": "official", "messages": messages})
             return Upstream.asked[-1][1]["messages"]
         first = [{"role": "system", "content": "rules"}, {"role": "user", "content": "the task"}]
         self.assertEqual(ask(first), first, "nothing sent yet: passed as it is")
@@ -154,7 +154,7 @@ class ModelDoorTest(unittest.TestCase):
 
     def test_a_request_with_no_user_message_is_given_one_that_some_templates_insist_on(self):
         def sent(messages):
-            self.ask("POST", "/v1/chat/completions", {"model": "coder-official", "messages": messages})
+            self.ask("POST", "/v1/chat/completions", {"model": "official", "messages": messages})
             return Upstream.asked[-1][1]["messages"]
         summarised = [{"role": "system", "content": "rules, and the summary so far"},
                       {"role": "assistant", "content": "", "tool_calls": [{"id": "a"}]},
@@ -199,7 +199,7 @@ class ModelDoorTest(unittest.TestCase):
         edit("extends Node\n")
         says()
         self.door = subprocess.Popen([sys.executable, os.path.join(HERE, "doors", "model-door.py"), self.sock,
-                                      f"127.0.0.1:{self.upstream.server_port}", "coder-official", self.calls, "100000"],
+                                      f"127.0.0.1:{self.upstream.server_port}", "official", self.calls, "100000"],
                                      stderr=subprocess.PIPE, text=True,
                                      env=dict(os.environ, MODEL_DOOR_GODOT=project, MODEL_DOOR_GODOT_CHECK=check))
         for _ in range(100):
@@ -207,7 +207,7 @@ class ModelDoorTest(unittest.TestCase):
                 break
             time.sleep(0.05)
         def sent(messages):
-            self.ask("POST", "/v1/chat/completions", {"model": "coder-official", "messages": messages})
+            self.ask("POST", "/v1/chat/completions", {"model": "official", "messages": messages})
             return Upstream.asked[-1][1]["messages"]
         task = [{"role": "system", "content": "rules"}, {"role": "user", "content": "the task"}]
         self.assertEqual(sent(task), task, "everything compiles at the start: nothing said")
@@ -237,7 +237,7 @@ class ModelDoorTest(unittest.TestCase):
 
     def test_a_request_too_long_for_the_window_gets_the_error_a_hosted_model_gives(self):
         status, text = self.ask("POST", "/v1/chat/completions",
-                                {"model": "coder-official", "messages": [{"role": "user", "content": "x" * 8000}]})
+                                {"model": "official", "messages": [{"role": "user", "content": "x" * 8000}]})
         self.assertEqual(status, 400)
         self.assertIn("context_length_exceeded", text)
         self.assertEqual(self.calls_recorded()[0]["status"], "too long")

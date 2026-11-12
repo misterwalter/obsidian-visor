@@ -392,7 +392,8 @@ class Looks:
             raise media.MediaError(self._not_in_ollama([seer], "vision"))
         if not tag:
             raise media.MediaError("a Scene image is checked by a model that can see pictures, and there is none: "
-                                   "add one as a note in `models/`, `Kind: vision`, `Ollama: qwen2.5vl:7b`.")
+                                   "add one as a note in `models/`, `Kind: vision`, with a `## Modelfile` "
+                                   "recipe of `FROM qwen2.5vl:7b`.")
         description = self._instruction(header, owner_text)
         if not description:
             raise media.MediaError("there is no scene: describe it after `Scene image:`, or below the top.")

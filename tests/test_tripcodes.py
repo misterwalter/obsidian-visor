@@ -25,9 +25,9 @@ class Tripcodes(unittest.TestCase):
             return f.read().splitlines()
 
     def test_a_poster_s_secret_is_made_once_kept_private_and_found_again(self):
-        first = tripcodes.secret(self.path, "coder-official")
-        self.assertEqual(tripcodes.secret(self.path, "coder-official"), first)
-        self.assertEqual(self.lines(), [f"coder-official {first}"])
+        first = tripcodes.secret(self.path, "official")
+        self.assertEqual(tripcodes.secret(self.path, "official"), first)
+        self.assertEqual(self.lines(), [f"official {first}"])
         self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
         self.assertNotEqual(tripcodes.secret(self.path, "qwen3:8b"), first, "each poster its own")
 
@@ -42,9 +42,9 @@ class Tripcodes(unittest.TestCase):
         # As an older visor left the file: a new line on each visit of a character with a space in their name.
         os.makedirs(os.path.dirname(self.path))
         with open(self.path, "w", encoding="utf-8") as f:
-            f.write("character:Mara Lee old1\ncoder-official keep\ncharacter:Mara  Lee   newest\n\n")
+            f.write("character:Mara Lee old1\nofficial keep\ncharacter:Mara  Lee   newest\n\n")
         self.assertEqual(tripcodes.secret(self.path, "character:Mara Lee"), "newest")
-        self.assertEqual(tripcodes.secret(self.path, "coder-official"), "keep")
+        self.assertEqual(tripcodes.secret(self.path, "official"), "keep")
         self.assertEqual(len(self.lines()), 4, "nothing added")
 
     def test_visor_run_asks_for_it_on_the_command_line(self):

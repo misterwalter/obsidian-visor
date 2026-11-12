@@ -1,5 +1,4 @@
 Kind: language
-Ollama: small
 Max tokens: 8192
 
 - [x] Thinks (it can think before it answers: a note asks it to with `Thinking:`)

@@ -52,16 +52,16 @@ class VisionTest(unittest.TestCase):
 
     def test_a_description_becomes_a_checklist(self):
         Ollama.answers = ["Here you go:\n- Three waiters\n- A man with a long beard\n2. Maroon leather seats\nThanks"]
-        items = vision.checklist(self.address, "looker:7b", "Three waiters... Randy has a long beard.")
+        items = vision.checklist(self.address, "looker", "Three waiters... Randy has a long beard.")
         self.assertEqual(items, ["Three waiters", "A man with a long beard", "Maroon leather seats"])
         path, body = Ollama.asked[0]
         self.assertEqual((path, body["model"], body["stream"], body["options"]["temperature"]),
-                         ("/api/chat", "looker:7b", False, 0))
+                         ("/api/chat", "looker", False, 0))
         self.assertNotIn("images", body["messages"][0])
 
     def test_a_picture_is_checked_item_by_item_and_unread_answers_count_as_no(self):
         Ollama.answers = ["1: yes\n2: No\n4: yes"]
-        self.assertEqual(vision.check(self.address, "looker:7b", self.picture, ["a", "b", "c", "d"]),
+        self.assertEqual(vision.check(self.address, "looker", self.picture, ["a", "b", "c", "d"]),
                          [True, False, False, True])
         self.assertEqual(Ollama.asked[0][1]["messages"][0]["images"], [base64.b64encode(b"picture").decode()])
 

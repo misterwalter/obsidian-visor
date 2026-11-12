@@ -119,7 +119,7 @@ merged into one checkpoint, goes in `checkpoints/` instead: its note names only
 loaded with `CheckpointLoaderSimple`. With the speed-up already inside, `Fast LoRA:`
 stays empty and `Steps:` and `CFG:` say the merge's own (4 and 1, typically).
 A vision model is an Ollama model (`ollama pull qwen2.5vl:7b`, about 6 GB) and a
-note, `Kind: vision`, `Ollama: qwen2.5vl:7b`.
+note, `Kind: vision`, whose `## Modelfile` recipe is `FROM qwen2.5vl:7b`.
 
 **The graphics card.** On a machine with one, the wall passes its devices to
 each tool (`media_wall.sh --gpu`: NVIDIA's, WSL's `/dev/dxg`, AMD's), and each

@@ -35,12 +35,19 @@ sudo loginctl enable-linger AGENT_ACCOUNT
 
 ## Models
 
-Each model visor may use is a note in the notes' `models/` folder,
-`Kind: language` with `Ollama: <name>`, or `Kind: image` with its file
-(`models.py`). A language model's recipe goes in its note, as a `## Modelfile`
-section: the dispatcher registers it in Ollama (`ollama create`) when it
-changes, while idle, and with `Fetch` ticked pulls what it needs. So a new text
-model is a note, with nothing to do on the server.
+Each model visor may use is a note in the notes' `models/` folder, named by
+its file name: `Kind: language` or `Kind: vision` with a recipe, or `Kind: image`
+with its file (`models.py`). A language or vision model's recipe goes in its
+note, as a `## Modelfile` section whose `FROM` line says which weights it is made
+from (`FROM qwen3:8b`): the dispatcher registers it in Ollama under the note's
+name (`ollama create`) when it changes, while idle, and with `Fetch` ticked pulls
+what it needs. So a new text model is a note, with nothing to do on the server.
+A note named as the model it is made from (`qwen3.md`, `FROM qwen3`) uses that
+model as it is. Visor never registers a recipe over a model of the same name it
+did not make: the note says so, and renaming it is the way out. An older note's
+`Ollama:` line becomes its recipe, `FROM` that model, when visor writes it back;
+the name it was registered under before is then listed in `VISOR.md` with the
+models no note names, to delete or keep.
 
 The recipe's `PARAMETER num_ctx` is the model's context length, and the one
 place it is set: visor reads it back from Ollama for the harnesses, the model

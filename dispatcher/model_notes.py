@@ -238,23 +238,37 @@ class ModelNotes:
         except (OSError, ValueError):
             return {}
 
+    def _same_as_base(self, model):
+        """Whether a note is named as the model its recipe is made from, `FROM qwen3` in `qwen3.md`: then that
+        model is used as it is, pulled with `Fetch`, and the recipe's other lines cannot be applied."""
+        base = models.recipe_from(model)
+        return bool(base) and not os.path.isfile(base) and models.ollama_name(base) == models.ollama_name(model["ollama"])
+
+    def _made_elsewhere(self, model, tags):
+        """Whether Ollama has a model of this note's name that visor did not register: visor leaves it alone,
+        rather than register the note's recipe over it."""
+        return (not self._same_as_base(model) and self._ollama_has(tags, model["ollama"])
+                and model["ollama"] not in self._registered())
+
     def _ollama_job(self, name, model, tags):
-        """What a language model's note asks of Ollama now: ("create", recipe), ("pull", None), or None."""
+        """What a language or vision model's note asks of Ollama now: ("create", the recipe's hash), to register
+        its recipe under the note's name; ("pull", None), for a note named as the model it is made from; or None."""
         tag, recipe = model["ollama"], model.get("modelfile") or ""
         digest = hashlib.sha256(recipe.encode()).hexdigest()
-        if recipe:
-            if self._registered().get(tag) == digest and self._ollama_has(tags, tag):
-                return None
-            base = models.recipe_from(model) or ""
-            if model["fetch"].lower() in models.YES or self._ollama_has(tags, base) or os.path.isfile(base):
-                return ("create", digest)
+        fetch_ = model["fetch"].lower() in models.YES
+        if self._same_as_base(model):
+            return ("pull", None) if fetch_ and not self._ollama_has(tags, tag) else None
+        if self._registered().get(tag) == digest and self._ollama_has(tags, tag):
             return None
-        if not self._ollama_has(tags, tag) and model["fetch"].lower() in models.YES:
-            return ("pull", None)
+        if self._made_elsewhere(model, tags):
+            return None
+        base = models.recipe_from(model) or ""
+        if fetch_ or self._ollama_has(tags, base) or os.path.isfile(base):
+            return ("create", digest)
         return None
 
     def _language_state(self, name, model, tags):
-        """What `On this server` says of a language model."""
+        """What `On this server` says of a language or vision model."""
         tag = model["ollama"]
         if self.fetching and self.fetching["name"] == name:
             return f"{self.fetching['what']}, since {self.fetching['started']}"
@@ -263,10 +277,13 @@ class ModelNotes:
         asked = (tag, hashlib.sha256(recipe.encode()).hexdigest(), model["fetch"])
         if said and said[0] == asked:
             return f"no: {said[1]}"
+        if self._made_elsewhere(model, tags):
+            return (f"no: Ollama already has a `{tag}` that visor did not make, so visor leaves it alone rather than "
+                    "register this note's recipe over it. Rename this note, and visor registers the recipe under "
+                    f"the new name; that other `{tag}` is then listed in `VISOR.md`, under the models no note names")
         job = self._ollama_job(name, model, tags)
         if job:
-            return "waiting to be " + ("registered from its Modelfile" if job[0] == "create" else "pulled") + \
-                   ", when visor is next idle"
+            return "waiting to be " + ("registered from its Modelfile" if job[0] == "create" else "pulled") +                    ", when visor is next idle"
         if self._ollama_has(tags, tag):
             if model["kind"] != "language":
                 return "yes"
@@ -279,15 +296,14 @@ class ModelNotes:
                 return f"yes, with a context length of {length} (its `num_ctx`)" + self._where_it_ran(tag)
             return (f"yes, but nothing sets its `num_ctx`, so Ollama gives it a context length of {models.OLLAMA_CONTEXT}, "
                     "too short for an agent's work. " +
-                    (f"Add `PARAMETER num_ctx {models.SUGGESTED_CONTEXT}` to its `## Modelfile`." if recipe else
-                     f"Add a `## Modelfile` section at the end of this note, `FROM {tag}` and "
-                     f"`PARAMETER num_ctx {models.SUGGESTED_CONTEXT}` in a code block, and give `Ollama:` a new name "
-                     "for the model made from it."))
-        if recipe:
-            return (f"no: its Modelfile is made `FROM {models.recipe_from(model)}`, which is not on this server; "
-                    "tick `Fetch` to have it downloaded")
-        return (f"no: not in Ollama. Tick `Fetch` to have visor run `ollama pull {tag}`" +
-                (", or add its recipe" if model["kind"] == "language" else ""))
+                    (f"A note named as the model it is made from uses that model as it is: rename this note, and add "
+                     f"`PARAMETER num_ctx {models.SUGGESTED_CONTEXT}` to its `## Modelfile`, for visor to register "
+                     "the recipe under the new name." if self._same_as_base(model) else
+                     f"Add `PARAMETER num_ctx {models.SUGGESTED_CONTEXT}` to its `## Modelfile`."))
+        if self._same_as_base(model):
+            return f"no: not in Ollama. Tick `Fetch` to have visor run `ollama pull {models.recipe_from(model)}`"
+        return (f"no: its recipe is made `FROM {models.recipe_from(model)}`, which is not on this server; "
+                "tick `Fetch` to have it downloaded")
 
     def fetch_models(self, idle):
         """Look in on a download, and start the next one when visor is idle: a model whose note
@@ -345,7 +361,7 @@ class ModelNotes:
                     f.write(recipe + "\n")
                 command = [self.ollama_command, "create", model["ollama"], "-f", part + ".Modelfile"]
             else:
-                command = [self.ollama_command, "pull", model["ollama"]]
+                command = [self.ollama_command, "pull", models.recipe_from(model)]
             try:
                 process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=open(part + ".log", "w"),
                                            stdin=subprocess.DEVNULL, start_new_session=True, env=self._ollama_env())
@@ -712,7 +728,8 @@ class ModelNotes:
             default = " (default)" if name == self.media.default_edit else ""
             lines.append(f"| `{name}`{default} | edit | {self._about(name, 'edit')} | {'yes' if have else 'not downloaded'} |")
         for name, model in sorted(models.usable(self.model_notes, "vision").items()):
-            lines.append(f"| `{name}` | vision | {self._about(name, 'vision')} | `{model['ollama']}` in Ollama |")
+            lines.append(f"| `{name}` | vision | {self._about(name, 'vision')} | made from "
+                         f"`{models.recipe_from(model)}` |")
         if len(lines) == 4:
             lines.append("| | | None yet: each is a note in `models/`, `Kind: edit` or `Kind: vision`. | |")
         return "\n".join(lines)
