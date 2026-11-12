@@ -929,6 +929,44 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(first, second)
         with open(os.path.join(self.tmp.name, "chan-tripcodes")) as f:
             self.assertEqual(f.read(), f"character:Mara Lee {first}\n")
+        self.assertIn(f"\nTripcode: {first}\n", open(dispatch.characters.note_path(
+            os.path.join(self.d.characters_folder, "Mara Lee"))).read(), "shown in their own note")
+
+    def test_a_character_s_tripcode_is_in_their_note_and_one_written_there_is_theirs(self):
+        import tripcodes
+
+        def edit(old, new):
+            with open(path) as f:
+                text = f.read()
+            with open(path, "w") as f:
+                f.write(text.replace(old, new))
+            self.clock += 1000
+
+        home = self.board_goer()
+        path = dispatch.characters.note_path(home)
+        kept = os.path.join(self.tmp.name, "chan-tripcodes")
+        self.d.sync_character("Mara", settled_only=False)
+        made = tripcodes.known(kept, "character:Mara")
+        text = open(path).read()
+        self.assertIn(f"\nTripcode: {made}\n", text, "the one visor keeps")
+        self.assertLess(text.index("\nChan\n"), text.index("Tripcode:"), "under the Chan boxes")
+        self.assertLess(text.index("Tripcode:"), text.index("Board time:"))
+        edit(f"Tripcode: {made}", "Tripcode: my-own-secret")
+        self.d.sync_character("Mara")
+        self.assertEqual(tripcodes.known(kept, "character:Mara"), "my-own-secret")
+        self.assertIn("\nTripcode: my-own-secret\n", open(path).read())
+        forum = self.forum()
+        self.narrator("DONE", "## What I know\n- Little.")
+        self.d.once()
+        self.assertEqual([a[3] for a in forum.asked if a[0] == "catch_up"], ["my-own-secret"], "and visits with it")
+        edit("Tripcode: my-own-secret", "Tripcode: two words")
+        self.d.sync_character("Mara")
+        text = open(path).read()
+        self.assertIn("A tripcode is one word, with no spaces. Kept: my-own-secret.", text)
+        self.assertIn("\nTripcode: my-own-secret\n", text)
+        for state in os.listdir(os.path.join(self.d.state_dir, "characters")):
+            self.assertNotIn("tripcode", json.load(open(os.path.join(self.d.state_dir, "characters", state))),
+                             "kept in chan-tripcodes alone")
 
     def test_a_reader_cannot_post_and_a_visit_that_fails_is_said_in_the_log(self):
         home = self.board_goer(chan="read", web="no")

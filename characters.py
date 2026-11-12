@@ -70,7 +70,7 @@ LOOKS_FOLDER = "looks"
 MEMORY, MEMORY_FOLDER = "memory.md", "memory"
 # A new character's memory, before they have remembered anything: they read it every turn.
 MEMORY_START = "# Memory\n\nNothing yet.\n"
-PLAIN = ("speak", "reference", "lora", "boards") + tuple(network.LINES)
+PLAIN = ("speak", "reference", "lora", "boards", "tripcode") + tuple(network.LINES)
 
 
 def note_path(home):
@@ -105,7 +105,7 @@ def named(character, key):
 def blank(model):
     """A new character's settings: the given language model, and nothing else allowed."""
     return dict({key: choices[0] for key, choices in CHOICES.items()}, model=model, image="no", speak="no",
-                reference="", lora="", boards="", lan="", loopback="", **{"board time": "no", retention.KEY: ""})
+                reference="", lora="", boards="", tripcode="", lan="", loopback="", **{"board time": "no", retention.KEY: ""})
 
 
 def render(name, character, models, image_models, problems=()):
@@ -135,6 +135,12 @@ def render(name, character, models, image_models, problems=()):
             lines += [settings.toggle(settings.BOXED[key][0], character.get(key) == "full", NOTES[key]["full"]), ""]
         else:
             lines += settings.group(key.capitalize(), CHOICES[key], character.get(key, CHOICES[key][0]), NOTES[key]) + [""]
+            if key == "chan":
+                lines += [f"Tripcode: {character.get('tripcode', '')}".rstrip(), "",
+                          "`Tripcode:` is the secret behind their handle on the forum: the forum shows a hash of it "
+                          "beside each post, so their posts, on the board and in their chat runs, are recognisably "
+                          "theirs. Write another, one word, and they post under a new handle from then on. Whoever "
+                          "has it can post as them.", ""]
     lines += [f"Board time: {character.get('board time') or 'no'}", f"Boards: {character.get('boards', '')}".rstrip(),
               "", "`Board time:` sends them to the forum on their own, to read, search and post as `Chan` allows "
               "them (with `Chan: none`, they stay off it), and keeps what they did in their folder: "

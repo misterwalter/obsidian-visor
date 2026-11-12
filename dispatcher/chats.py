@@ -125,9 +125,12 @@ class Chats:
         if text is not None and settled_only and not settled:
             return standing, [], False
         character, problems = (dict(standing), []) if text is None else characters.read(text, standing, models, images)
+        self._character_tripcode(name, character, problems, settled)
         os.makedirs(os.path.dirname(kept), exist_ok=True)
         with open(kept, "w", encoding="utf-8") as f:
-            json.dump({key: value for key, value in character.items() if key not in ("who", "looks")}, f, indent=2)
+            # The tripcode's own store is chan_tripcodes (tripcodes.py): the note only shows it.
+            json.dump({key: value for key, value in character.items() if key not in ("who", "looks", "tripcode")}, f,
+                      indent=2)
         if settled:
             fresh = characters.render(name, character, models, images, problems)
             if fresh != text:

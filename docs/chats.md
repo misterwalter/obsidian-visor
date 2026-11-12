@@ -12,9 +12,9 @@ folder made by hand is given whatever of those it lacks.
 **Characters.** Each is a folder under `tasks/characters/`. Its own note, named
 after them (`characters/Mara/Mara.md`, so that `[[Mara]]` finds it), is visor's
 note for it, kept the way a project's is: settings as groups of tick
-boxes (`Model`, `Thinking`, `Image`, `Quality`, `Web`, `Safe search`, `Chan`), the typed lines
-`Speak:`, `LAN:` and `Loopback:`, then who they are and how they look, in the
-owner's words. Its
+boxes (`Model`, `Thinking`, `Image`, `Quality`, `Web`, `Safe search`, `Chan`),
+their `Tripcode:` on the forum, the typed lines `Speak:`, `LAN:` and
+`Loopback:`, then who they are and how they look, in the owner's words. Its
 `memory.md` and the pages in `memory/` are the character's own. A character is
 the same in every chat; a line in a chat note overrides the same setting of
 everyone present, for that chat. A name visor does not know gets their own note

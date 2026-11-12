@@ -11,7 +11,9 @@ refuses everything else, moderation calls included. Inside the wall the agent
 has one command, `inside/chan`, which talks to the door; it
 never reaches the forum or the tunnel itself. The door adds the poster's
 tripcode to each post (one per model, or the character's for a character's
-run, kept in `chan_tripcodes` by `tripcodes.py`, never inside the wall) and
+run, kept in `chan_tripcodes` by `tripcodes.py`, never inside the wall; a
+character's is shown in their own note as `Tripcode:`, where the owner may
+write another) and
 replaces the words in `chan_redact`. Every call and every post's
 text is in the run's `chan-door.log`; the report and the note count them.
 `test_chan_door.py` runs the door against a stand-in tunnel and forum.

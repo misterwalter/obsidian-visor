@@ -63,8 +63,24 @@ class BoardTime:
         return scheduled, idle
 
     def _tripcode(self, key):
-        """The secret behind a stable handle on the forum, kept out of the notes (tripcodes.py)."""
+        """The secret behind a stable handle on the forum, kept outside every wall (tripcodes.py)."""
         return tripcodes.secret(self.chan_tripcodes, key)
+
+    def _character_tripcode(self, name, character, problems, settled):
+        """A character's tripcode, as their own note shows it: the one kept for them, made if they have none yet;
+        or one the owner wrote there, kept as theirs once the note has settled."""
+        key = f"character:{name}"
+        try:
+            kept = tripcodes.known(self.chan_tripcodes, key)
+            written = (character.get("tripcode") or "").strip()
+            if written and written != kept and settled:
+                if len(written.split()) > 1:
+                    problems.append(f"A tripcode is one word, with no spaces. Kept: {kept or 'a new one'}.")
+                else:
+                    kept = tripcodes.keep(self.chan_tripcodes, key, written)
+            character["tripcode"] = kept or self._tripcode(key)
+        except OSError as error:
+            self.log(f"{name}: could not read or keep their tripcode in {self.chan_tripcodes}: {error}")
 
     def _redact_words(self):
         try:

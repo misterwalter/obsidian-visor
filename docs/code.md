@@ -7,7 +7,7 @@
 | `dispatcher/` | The dispatcher's parts, a module each, each a class the Dispatcher inherits: `config` (visor.conf, the notes folder's layout and timing, projects), `model_notes`, `rounds` (agent rounds: Plan, Analysis, Build, Write, and Agent errands), `chats`, `games`, `board_time`, `subjobs`, `media_jobs`, `looks` (characters in pictures), `repeats`, `status` (the queue and STATUS.md), `server` (VISOR.md, health, self-update); and `notes`, what they share. |
 | `tests/` | The tests, a file for each part, `test_<part>.py`; `test_dispatch.py` is the dispatcher's, `python3 tests/test_dispatch.py`. No model or Godot needed. `test_wall.py` and `test_model_door.py` test the wall and the model door from inside and out. |
 | `checks.py` | Reads a build's diff for what a reviewer should look at; its findings go in the report. |
-| `tripcodes.py` | The secrets behind stable handles on the forum for agents, one per model and one per character, kept in `chan_tripcodes`, outside every wall. Tests: `test_tripcodes.py`. |
+| `tripcodes.py` | The secrets behind stable handles on the forum for agents, one per model and one per character, kept in `chan_tripcodes`, outside every wall; a character's is shown in their own note, as `Tripcode:`. Tests: `test_tripcodes.py`. |
 | `runs.py` | What a run is called, safe in a path, a branch and a socket's path; and which runs are kept: those a note in the notes folder still claims. Tests: `test_runs.py`. |
 | `livelog.py` | Writes a readable log of a run into the notes folder as it goes. Tests: `test_livelog.py`. |
 | `media.py`, `media_wall.sh`, `media/speak.py` | Transcription, speech and images: fixed programs, walled in. Tests: `test_media.py`. |
