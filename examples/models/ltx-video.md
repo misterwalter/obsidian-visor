@@ -1,5 +1,3 @@
-# ltx-video
-
 A model that makes a short video, from what happens and a picture or video to start from: name it on a Video note as `ltx-video`. Change a value after its colon; visor reads this note and writes it back in this form a minute after you stop editing it. `On this server` is visor's: what it found. To have visor fetch the file, give the address it downloads from and its SHA-256, and tick `Fetch`: it downloads through the VPN when it is next idle, and keeps the file only if the hash matches. A model of several files has a row for each of the others under `Downloads`. `Sigmas:` is the noise schedule a model distilled for a few steps was made for, as numbers from 1 down to 0; left empty, visor works one out from `Steps:`.
 
 Kind: video

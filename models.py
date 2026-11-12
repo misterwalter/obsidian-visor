@@ -258,8 +258,9 @@ def recipe_from(model):
 
 
 def render(name, model, found="", problems=()):
-    """A model's note, whole: what it is, its settings, what visor found, and About."""
-    lines = [f"# {name}", "", f"{WHAT[model['kind']]} `{name}`. Change a value after its colon; visor reads this "
+    """A model's note, whole: what it is, its settings, what visor found, and About. Its name is its file's
+    name alone, so the note has no heading to repeat it."""
+    lines = [f"{WHAT[model['kind']]} `{name}`. Change a value after its colon; visor reads this "
              "note and writes it back in this form a minute after you stop editing it. `On this server` is "
              "visor's: what it found."
              + (" To have visor fetch the file, give the address it downloads from and its SHA-256, and tick "
