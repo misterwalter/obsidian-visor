@@ -20,6 +20,7 @@ the owner's to make where they read what it means, and nothing at all where ther
 import re
 
 import board
+import models
 import retention
 import settings
 import sources
@@ -110,14 +111,85 @@ def network(state, allowed):
     return lines
 
 
-def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=(), renamed=()):
+# ── The models no note names ──────────────────────────────────────────────────
+#
+# Each model on the server that no note in models/ names, with two boxes: one to have visor write its note, one
+# to delete it. Then visor's own built-in files, listed apart, with none.
+LOOSE = "## Models no note names"
+MAKE, DELETE = "Make a note", "Delete"
+_LOOSE_SECTION = re.compile(rf"^{re.escape(LOOSE)}[ \t]*\n.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+_LOOSE_ITEM = re.compile(r"^`([^`]+)`( in Ollama)?")
+
+
+def loose_key(where, ident):
+    """How a loose model is known between VISOR.md and visor: `ollama:qwen3:14b`, `file:loras/x.safetensors`."""
+    return f"{where}:{ident}"
+
+
+def loose_section(loose):
+    """The section's lines. loose: {"files": [{"id", "size", "guess"}], "ollama": [{"id", "size"}], or None when
+    Ollama does not answer, "built_in": [(where, size or None, what for)], "asked": {key: {MAKE, DELETE}},
+    "said": [what visor did lately]}."""
+    files, ollama, asked = loose.get("files", []), loose.get("ollama"), loose.get("asked", {})
+    items = [("ollama", item, True) for item in ollama or []] + [("file", item, bool(item["guess"])) for item in files]
+    total = sum(item["size"] for _, item, _ in items)
+    lines = [LOOSE, ""]
+    if items:
+        lines += [f"On this server, but named by no note in `models/`: {models.size_said(total)} in all. Under one, tick "
+                  f"`{MAKE}` to have visor write its note in `models/`, guessing what it can, or `{DELETE}` to "
+                  "delete it from this server. Visor does either when it is next idle. A file deleted from here "
+                  f"cannot be fetched again without its address: to keep a way back, tick `{MAKE}` first, give the "
+                  f"note its `Download:`, and delete it there, with the note's own `{DELETE}`.", ""]
+    else:
+        lines += ["None: every model on this server is named by a note in `models/`.", ""]
+    if ollama is None:
+        lines += ["Ollama is not answering, so what it has is not listed.", ""]
+    lines += [f"- {line}" for line in loose.get("said", [])] + ([""] if loose.get("said") else [])
+    for where, item, can_note in items:
+        key, ticked = loose_key(where, item["id"]), asked.get(loose_key(where, item["id"]), set())
+        head = f"`{item['id']}`" + (" in Ollama" if where == "ollama" else "") + f", {models.size_said(item['size'])}"
+        if not can_note:
+            head += ": a part of a model, named on a model's note beside its main file, so it has no note of its own"
+        lines.append(head)
+        if can_note:
+            lines.append(settings.toggle(MAKE, MAKE in ticked))
+        lines.append(settings.toggle(DELETE, DELETE in ticked))
+        if len(ticked) > 1:
+            lines.append("Both are ticked, so visor does neither until one is unticked.")
+        lines.append("")
+    built = loose.get("built_in", [])
+    if built:
+        lines += ["### Built into visor", "", "Visor's own features use these, named in its code and settings rather "
+                  "than in a note, so they are not listed above, and cannot be deleted from here.", ""]
+        lines += [f"- `{where}`, " + (models.size_said(size) if size is not None else "not on this server") + f": {what}"
+                  for where, size, what in built] + [""]
+    return lines
+
+
+def read_loose(text):
+    """The boxes ticked in the section: {key: {MAKE, DELETE}}, for each model with one ticked."""
+    found = _LOOSE_SECTION.search(text or "")
+    asked, key = {}, None
+    for line in (found.group(0) if found else "").splitlines():
+        item = _LOOSE_ITEM.match(line)
+        if item:
+            key = loose_key("ollama" if item.group(2) else "file", item.group(1))
+            continue
+        box = settings.BOX.match(line)
+        if key and box and box.group(1).lower() == "x" and box.group(2) in (MAKE, DELETE):
+            asked.setdefault(key, set()).add(box.group(2))
+    return asked
+
+
+def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=(), renamed=(), loose=None):
     """The note, whole. said: the settings as they stand ({"auto", "paused", "default_model",
     "review", "reviewer", "direct"} and each
     TIMING setting). version: {"commits": [(when, message, hash)],
     "behind": [(when, message, hash)], "last": text}. health: lines. reading: (the sources,
     what visor found in each, problems with the section) for `## Browse` (sources.render).
     net: the VPN's state for `## Network` ({"installed", "up", "proxy"}). logs: a line for each log on this
-    server, for `## Logs`."""
+    server, for `## Logs`. loose: the models no note names, and visor's own (loose_section); None leaves the
+    section out."""
     net = net or {"installed": True, "up": False, "proxy": ""}
     lines = ["# Visor", "",
              "This server's version, settings and health. Tick or untick a box to change a setting: one on its "
@@ -172,6 +244,8 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
     lines += list(logs) or ["- (listed when health is next checked)"]
     lines += [""]
     lines += [sources.render(*reading)]
+    if loose is not None:
+        lines += loose_section(loose)
     lines += ["## Health", ""] + (list(health) or ["- (checked every ten minutes)"]) + [""]
     return "\n".join(lines)
 
@@ -183,6 +257,8 @@ def read(text, said, models):
     timing = {line.lower(): (line, setting, low, high) for line, setting, _, low, high, _ in TIMING}
     # A source in `## Browse` is not a setting, whatever it is called (sources.py).
     text = sources.without_section(text)
+    # Nor is a box under the models no note names, which read_loose reads.
+    text = _LOOSE_SECTION.sub("", text)
     choices = {"default model": tuple(models), "reviewer": tuple(models), "safe search": tuple(SAFE_SEARCH)}
     choices.update({key: ("yes", "no") for key, _ in SWITCHES})
     standing = {"default model": said["default_model"], "reviewer": said["reviewer"],

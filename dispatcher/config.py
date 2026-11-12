@@ -102,6 +102,11 @@ class Config:
             (path for path in (shutil.which("ollama"), "/usr/local/bin/ollama", "/usr/bin/ollama")
              if path and os.access(path, os.X_OK)), "ollama")
         self.fetching, self.fetch_said = None, {}
+        # What visor deleted of a model whose note asked it to (its `Delete` box), for that note to say.
+        self.deleted_said = {}
+        # The models no note names, for VISOR.md (ModelNotes._survey_loose): what is there, what the owner
+        # ticked under each (server_note.read_loose), and what visor did lately.
+        self.loose, self._loose_at, self.loose_asked, self.loose_said = None, None, {}, []
         # The projects are one list in a file of its own, which visor writes: a project is
         # made by a note and changed through its own note in its folder (projects.py).
         self.config_path = path

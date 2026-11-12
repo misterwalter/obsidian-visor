@@ -3,6 +3,7 @@ Ollama: qwen2.5vl:3b
 
 - [x] Default (a note that names no model of this kind gets this one)
 - [ ] Fetch (visor downloads what is missing, when it is next idle)
+- [ ] Delete (visor deletes it from this server when it is next idle, and keeps this note)
 
 On this server:
 

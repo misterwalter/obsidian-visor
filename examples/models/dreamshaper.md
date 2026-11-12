@@ -19,6 +19,7 @@ SHA-256: 879db523c30d3b9017143d56705015e15a2cb5628762c11d086fed9538abd7fd
 - [ ] V-pred (it is a v-prediction model)
 - [x] Default (a note that names no model of this kind gets this one)
 - [ ] Fetch (visor downloads what is missing, when it is next idle)
+- [ ] Delete (visor deletes it from this server when it is next idle, and keeps this note)
 
 On this server:
 

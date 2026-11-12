@@ -4192,6 +4192,61 @@ class DispatchTest(unittest.TestCase):
             self.d.between_jobs(0)
             self.assertEqual(len(looked), 2, "never under a run started by hand")
 
+    def test_visor_md_lists_the_models_no_note_names_writes_their_notes_and_deletes_them(self):
+        self.give_image_models("anime-xl")
+        comfy = self.d.media.comfy_models
+        def model_file(rel, names=(), size=1000):
+            os.makedirs(os.path.dirname(os.path.join(comfy, rel)), exist_ok=True)
+            header = json.dumps({n: {"dtype": "F16", "shape": [1], "data_offsets": [0, 2]} for n in names}).encode()
+            with open(os.path.join(comfy, rel), "wb") as f:
+                f.write(len(header).to_bytes(8, "little") + header + b"\0" * size)
+        model_file("checkpoints/oldmix.safetensors", ["conditioner.embedders.1.model.x"])
+        model_file("loras/stray.safetensors", ["lora_unet_down_blocks_0.alpha"])
+        model_file("text_encoders/t5.safetensors")
+        model_file("loras/" + dispatch.media.DMD2)
+        removed = []
+        self.d._ollama_sizes = lambda: {"coder-official:latest": 9_000_000_000, "stray:7b": 3_000_000_000}
+        self.d._ollama_remove = lambda tag: removed.append(tag)
+        self.d.once()
+        note = self.server_note()
+        section = note[note.index("## Models no note names"):note.index("## Health")]
+        self.assertIn("`stray:7b` in Ollama, 3.0 GB\n- [ ] Make a note\n- [ ] Delete\n", section)
+        self.assertIn("`checkpoints/oldmix.safetensors`, 1 MB\n- [ ] Make a note\n- [ ] Delete\n", section)
+        self.assertIn("`text_encoders/t5.safetensors`, 1 MB: a part of a model, named on a model's note beside its "
+                      "main file, so it has no note of its own\n- [ ] Delete\n", section)
+        self.assertNotIn("coder-official", section, "a note uses it")
+        self.assertNotIn(testmodels.IMAGE["anime-xl"]["file"], section, "a note names it")
+        listed, built = section.split("### Built into visor")
+        self.assertNotIn(dispatch.media.DMD2, listed)
+        self.assertIn(f"- `loras/{dispatch.media.DMD2}`, 1 MB: the speed-up", built)
+        self.assertIn(": transcribing speech, with whisper.cpp", built)
+        # The owner ticks: a note for one, Ollama's stray deleted, and both under another, which waits.
+        text = self.server_note()
+        text = text.replace("`checkpoints/oldmix.safetensors`, 1 MB\n- [ ] Make a note",
+                            "`checkpoints/oldmix.safetensors`, 1 MB\n- [x] Make a note")
+        text = text.replace("`stray:7b` in Ollama, 3.0 GB\n- [ ] Make a note\n- [ ] Delete",
+                            "`stray:7b` in Ollama, 3.0 GB\n- [ ] Make a note\n- [x] Delete")
+        text = text.replace("`loras/stray.safetensors`, 1 MB\n- [ ] Make a note\n- [ ] Delete",
+                            "`loras/stray.safetensors`, 1 MB\n- [x] Make a note\n- [x] Delete")
+        path = self.note("", "VISOR.md", text)
+        self.clock = dispatch._changed(path) + dispatch.server_note.DEFAULTS["settle_settings"]
+        for _ in range(4):
+            self.d.once()
+        self.clock += dispatch.server_note.DEFAULTS["settle_settings"]  # VISOR.md is written back once it settles
+        self.d.once()
+        self.assertEqual(removed, ["stray:7b"])
+        made = self.read("models", "oldmix.md")
+        self.assertTrue(made.startswith("Kind: image\nFile: oldmix.safetensors\nFamily: sdxl\n"), made[:80])
+        self.assertIn("It guessed `Kind: image` and `Family: sdxl` from the names inside the file: check them.", made)
+        self.assertRegex(made, r"\nSHA-256: [0-9a-f]{64}\n")
+        note = self.server_note()
+        self.assertNotIn("`checkpoints/oldmix.safetensors`, 1 MB", note, "it has a note now")
+        self.assertIn(": wrote `models/oldmix.md` for `checkpoints/oldmix.safetensors`", note)
+        self.assertIn(": removed `stray:7b` from Ollama (3.0 GB)", note)
+        self.assertIn("`loras/stray.safetensors`, 1 MB\n- [x] Make a note\n- [x] Delete\nBoth are ticked, so visor "
+                      "does neither until one is unticked.", note)
+        self.assertTrue(os.path.exists(os.path.join(comfy, "loras", "stray.safetensors")))
+
     def test_update_now_and_restart_are_asked_for_once_and_cleared(self):
         self.d.once()
         self.edit_server_note("- [ ] Restart (", "- [x] Restart (")
@@ -4813,6 +4868,70 @@ class DispatchTest(unittest.TestCase):
             self.assertIn(["pull", "coder-second"], [json.loads(line) for line in open(record)])
         finally:
             os.environ["PATH"] = os.environ["PATH"].split(os.pathsep, 1)[1]
+
+    def test_a_model_s_note_deletes_its_files_but_what_another_note_names_and_stays(self):
+        self.give_image_models()
+        comfy = self.d.media.comfy_models
+        for folder, name in (("diffusion_models", "qwen-edit.safetensors"), ("text_encoders", "qwen-vl.safetensors"),
+                             ("vae", "qwen-vae.safetensors")):
+            os.makedirs(os.path.join(comfy, folder), exist_ok=True)
+            with open(os.path.join(comfy, folder, name), "wb") as f:
+                f.write(b"w" * 2_000_000)
+        edit = dict(dispatch.models.blank("edit"), file="qwen-edit.safetensors", delete="yes",
+                    download="https://huggingface.co/a/b/resolve/main/qwen-edit.safetensors",
+                    **{"text encoder": "qwen-vl.safetensors", "vae": "qwen-vae.safetensors"})
+        other = dict(dispatch.models.blank("edit"), file="other-edit.safetensors",
+                     **{"text encoder": "qwen-vl.safetensors", "vae": "other-vae.safetensors"})
+        path = os.path.join(self.tasks, "models", "qwen-edit.md")
+        for name, model in (("qwen-edit", edit), ("other-edit", other)):
+            with open(os.path.join(self.tasks, "models", name + ".md"), "w") as f:
+                f.write(dispatch.models.render(name, model))
+        self.d.once()
+        self.assertFalse(os.path.exists(os.path.join(comfy, "diffusion_models", "qwen-edit.safetensors")))
+        self.assertFalse(os.path.exists(os.path.join(comfy, "vae", "qwen-vae.safetensors")))
+        self.assertTrue(os.path.exists(os.path.join(comfy, "text_encoders", "qwen-vl.safetensors")), "the other's too")
+        note = open(path).read()
+        self.assertIn("Deleted `qwen-edit.safetensors` (2 MB), `qwen-vae.safetensors` (2 MB) on ", note)
+        self.assertIn("; kept `qwen-vl.safetensors`, which `other-edit` names too. Tick `Fetch` to download it again.",
+                      note)
+        self.assertIn("- [ ] Delete (", note)
+        self.assertIn("- [ ] Fetch (", note)
+
+    def test_a_model_with_both_fetch_and_delete_ticked_is_left_as_it_is_and_says_so(self):
+        self.give_image_models("anime-xl")
+        path = os.path.join(self.tasks, "models", "anime-xl.md")
+        text = open(path).read().replace("- [ ] Fetch", "- [x] Fetch").replace("- [ ] Delete", "- [x] Delete")
+        with open(path, "w") as f:
+            f.write(text)
+        self.d.once()
+        self.d.once()
+        self.assertTrue(os.path.exists(os.path.join(self.d.media.comfy_models, "checkpoints",
+                                                    testmodels.IMAGE["anime-xl"]["file"])))
+        note = open(path).read()
+        self.assertIn("\nOn this server: `Delete` and `Fetch` are both ticked, so visor does neither until one is "
+                      "unticked; yes", note)
+        self.assertIn("- [x] Delete (", note)
+        self.assertIn("- [x] Fetch (", note)
+
+    def test_a_language_model_s_note_removes_it_and_its_weights_from_ollama_unless_another_note_uses_them(self):
+        removed = []
+        self.d._ollama_sizes = lambda: {"solo:latest": 5_000_000_000, "solo-base:8b": 5_000_000_000,
+                                        "shared-base:8b": 9_000_000_000, "duo:latest": 9_000_000_000,
+                                        "trio:latest": 9_000_000_000}
+        self.d._ollama_remove = lambda tag: removed.append(tag)
+        notes = {"solo": "FROM solo-base:8b", "duo": "FROM shared-base:8b", "trio": "FROM shared-base:8b"}
+        for name, recipe in notes.items():
+            model = dict(dispatch.models.blank("language"), ollama=name, modelfile=recipe,
+                         delete="yes" if name != "trio" else "no")
+            with open(os.path.join(self.tasks, "models", name + ".md"), "w") as f:
+                f.write(dispatch.models.render(name, model))
+        self.d.once()
+        self.d.once()
+        self.assertEqual(removed, ["solo:latest", "solo-base:8b"], "the model, and the weights only it uses")
+        self.assertIn("Removed `solo:latest`, `solo-base:8b` (5.0 GB) from Ollama on ", self.read("models", "solo.md"))
+        self.assertIn("nothing was removed: the weights it is made from, `shared-base:8b`, are used by `trio` too",
+                      self.read("models", "duo.md"))
+        self.assertIn("- [ ] Delete (", self.read("models", "duo.md"), "unticked, said, and the note kept")
 
     def test_a_vision_model_s_note_says_what_ollama_has_and_with_fetch_ticked_is_pulled(self):
         bin_dir = os.path.join(self.tmp.name, "bin")

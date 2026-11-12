@@ -466,6 +466,21 @@ POSE_CONTROL = {"sdxl": "controlnet-openpose-sdxl-xinsir.safetensors",
 NEGATIVE = "lowres, blurry, deformed, bad anatomy, extra limbs, watermark, text, signature"
 
 
+def built_in(settings):
+    """The model files visor's own features use, named in its code and settings rather than in a model's
+    note: [(path, what it is for)]. VISOR.md lists them apart from the models no note names, and offers no
+    way to delete them, since a feature would quietly stop working."""
+    comfy = settings.comfy_models
+    return [(os.path.join(comfy, "loras", DMD2), "the speed-up an SDXL image model with `Fast` ticked draws with"),
+            (os.path.join(comfy, "controlnet", POSE_CONTROL["sdxl"]), "drawing an SDXL model's figures in a pose"),
+            (os.path.join(comfy, "controlnet", POSE_CONTROL["sd15"]), "drawing an SD 1.5 model's figures in a pose"),
+            (settings.whisper_model, "transcribing speech, with whisper.cpp"),
+            (settings.kokoro_model, "reading aloud, with Kokoro"),
+            (settings.kokoro_voices, "Kokoro's voices"),
+            (settings.pose_detector, "finding the people in a picture, to trace their poses"),
+            (settings.pose_model, "tracing a pose")]
+
+
 def _number(options, key, default, low, high):
     """A whole number from a note's line, as an image, video or edit job reads one: the default when
     the line is empty; else between low and high, or the owner is told what is wrong."""

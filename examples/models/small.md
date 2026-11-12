@@ -4,6 +4,7 @@ Max tokens: 8192
 
 - [x] Thinks (it can think before it answers: a note asks it to with `Thinking:`)
 - [ ] Fetch (visor downloads what is missing, when it is next idle)
+- [ ] Delete (visor deletes it from this server when it is next idle, and keeps this note)
 
 On this server:
 

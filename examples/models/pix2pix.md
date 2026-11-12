@@ -15,6 +15,7 @@ SHA-256: fbc31a67aab29ad38eef622a252d3fa4b0a81d4a4dc65da416cf45b13aa67688
 
 - [x] Default (a note that names no model of this kind gets this one)
 - [ ] Fetch (visor downloads what is missing, when it is next idle)
+- [ ] Delete (visor deletes it from this server when it is next idle, and keeps this note)
 
 On this server:
 

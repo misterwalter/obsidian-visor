@@ -34,6 +34,11 @@ Each on/off setting is a single box: ticked is on, unticked is off.
   `Update check every:` (600), `Memory retry:` (300), `Live log every:` (60)
   and `Health every:` (600).
 - **Browse:** the sources a note may let its agent read ([Browse](browse.md)).
+- **Models no note names:** each model on the server no note in `models/`
+  names, in Ollama or in ComfyUI's folder, with its size and the boxes
+  `Make a note` and `Delete`, done while idle; a model with both ticked waits.
+  Then visor's own built-in files, apart, with no boxes
+  ([Setting up](setting-up.md#models)).
 - **Health:** Ollama answering, and which version, the graphics card and what uses it, free disk
   for results and image models, free memory, and anything `dispatch.py check`
   finds missing.

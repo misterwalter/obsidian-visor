@@ -53,23 +53,24 @@ SWITCHES = {"thinks": "it can think before it answers: a note asks it to with `T
             "fast": "it has a fast mode, in a few steps with its add-on: used unless a note ticks `Full quality`",
             "v-pred": "it is a v-prediction model",
             "default": "a note that names no model of this kind gets this one",
-            "fetch": "visor downloads what is missing, when it is next idle"}
+            "fetch": "visor downloads what is missing, when it is next idle",
+            "delete": "visor deletes it from this server when it is next idle, and keeps this note"}
 
 # Each kind of model, and its lines: (name, what it stands at when the note leaves it out).
 # "On this server" is visor's to write: what it found.
 LINES = {
-    "language": [("Ollama", ""), ("Thinks", "no"), ("Max tokens", "8192"), ("Fetch", "no")],
+    "language": [("Ollama", ""), ("Thinks", "no"), ("Max tokens", "8192"), ("Fetch", "no"), ("Delete", "no")],
     "image": [("File", ""), ("Family", "sdxl"), ("Fast", "no"), ("Steps", ""), ("CFG", ""), ("Sampler", ""),
               ("Scheduler", ""), ("Clip skip", ""), ("Prefix", ""), ("Prompt guide", ""), ("Negative", ""), ("Size", ""),
-              ("V-pred", "no"), ("Text encoder", ""), ("VAE", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no")],
-    "lora": [("File", ""), ("Family", "sdxl"), ("Trigger", ""), ("Strength", "1.0"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no")],
-    "vision": [("Ollama", ""), ("Default", "no"), ("Fetch", "no")],
+              ("V-pred", "no"), ("Text encoder", ""), ("VAE", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
+    "lora": [("File", ""), ("Family", "sdxl"), ("Trigger", ""), ("Strength", "1.0"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
+    "vision": [("Ollama", ""), ("Default", "no"), ("Fetch", "no"), ("Delete", "no")],
     "edit": [("File", ""), ("Family", "qwen-image-edit"), ("Text encoder", ""), ("VAE", ""), ("Fast LoRA", ""),
              ("Fast steps", "4"), ("Steps", "20"), ("CFG", "2.5"), ("Shift", "3"), ("Sampler", "euler"),
-             ("Scheduler", "simple"), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no")],
+             ("Scheduler", "simple"), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
     "video": [("File", ""), ("Family", "wan"), ("Text encoder", ""), ("Steps", ""), ("CFG", ""), ("Sampler", ""),
               ("Scheduler", ""), ("Sigmas", ""), ("Shift", ""), ("Frames per second", ""), ("Size", ""), ("Prefix", ""),
-              ("Prompt guide", ""), ("Negative", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no")],
+              ("Prompt guide", ""), ("Negative", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
 }
 KINDS = tuple(LINES)
 # The image families visor can draw with, and the folder of the models folder each one's
@@ -125,7 +126,15 @@ _STEPS = ("`Steps:`, `CFG:`, `Sampler:`, `Scheduler:`", "How it draws: how many 
           "prompt, and ComfyUI's sampler and scheduler.")
 _FILE_ROWS = [("`Download:`, `SHA-256:`", "Where the main file comes from, and its hash, for `Fetch`.", ""),
               ("`Default`, a box", "Ticked: a note that names no model of this kind gets this one.", "Unticked"),
-              ("`Fetch`, a box", "Ticked: visor downloads what is missing when it is next idle.", "Unticked")]
+              ("`Fetch`, a box", "Ticked: visor downloads what is missing when it is next idle.", "Unticked"),
+              ("`Delete`, a box", "Ticked: visor deletes the files this note names from this server when it is next "
+                                  "idle, keeping any another note names too, then unticks it and `Fetch`. The note "
+                                  "stays: tick `Fetch` to download them again.", "Unticked")]
+# Deleting a language or vision model: the model, and the weights its recipe is made from, unless another note
+# uses them (then nothing, since visor would only register the model again from them).
+_OLLAMA_DELETE = ("`Delete`, a box", "Ticked: visor removes it from Ollama when it is next idle, with the weights "
+                                     "its recipe is made from, then unticks it and `Fetch`. What another note uses "
+                                     "too stays. The note stays: tick `Fetch` to bring it back.", "Unticked")
 ROWS = {
     "language": [
         ("`Ollama:`", "The model's name in Ollama: what visor registers its recipe as, or, with no recipe, a model "
@@ -133,7 +142,8 @@ ROWS = {
         ("`Thinks`, a box", "Ticked: it can think before it answers. A note asks it to with `Thinking:`.", "Unticked"),
         ("`Max tokens:`", "The longest answer an agent asks it for at once.", "8192"),
         ("`Fetch`, a box", "Ticked: visor gets the weights through Ollama (directly, not through the VPN).",
-         "Unticked")],
+         "Unticked"),
+        _OLLAMA_DELETE],
     "image": [
         ("`File:`", "The model's file, in the models folder's `checkpoints/` (Chroma's in `diffusion_models/`).", ""),
         ("`Family:`", f"What kind of model it is: {', '.join(FAMILIES)}. An Image note's `Fix hands` and `Finish` "
@@ -155,11 +165,12 @@ ROWS = {
         ("`Family:`", f"The image models it adds onto: {', '.join(FAMILIES)}.", "sdxl"),
         ("`Trigger:`", "The word it was trained on, put into the prompt whenever it is used.", ""),
         ("`Strength:`", "How strongly it pulls, from 0 to 2.", "1.0"),
-        *_FILE_ROWS[:1], _FILE_ROWS[2]],
+        _FILE_ROWS[0], *_FILE_ROWS[2:]],
     "vision": [
         ("`Ollama:`", "The model's name in Ollama, as `ollama list` shows it.", ""),
         _FILE_ROWS[1],
-        ("`Fetch`, a box", "Ticked: visor pulls it through Ollama when it is next idle.", "Unticked")],
+        ("`Fetch`, a box", "Ticked: visor pulls it through Ollama when it is next idle.", "Unticked"),
+        _OLLAMA_DELETE],
     "edit": [
         ("`File:`", "The model's file: in `diffusion_models/` beside its text encoder and VAE, or in `checkpoints/` "
                     "when it is one file with them inside.", ""),
@@ -341,6 +352,7 @@ def problems_of(model):
         number("strength", 0, 2, whole=False)
     if kind in ("image", "lora"):
         yes_no("fetch")
+    yes_no("delete")
     return problems
 
 
@@ -595,3 +607,163 @@ def folder_from(config_path):
     parser.read(config_path)
     visor = parser["visor"] if parser.has_section("visor") else {}
     return visor.get("models_folder") or os.path.join(visor.get("tasks", ""), "models")
+
+
+# ── Deleting models, and the ones no note names ───────────────────────────────
+
+# The kinds of model that are files in ComfyUI's models folder, and those that live in Ollama.
+FILE_KINDS = ("image", "lora", "edit", "video")
+OLLAMA_KINDS = ("language", "vision")
+# What a model's file ends in, among what else a models folder holds.
+MODEL_FILES = (".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".sft", ".onnx")
+
+
+def size_said(size):
+    """A file's size as a person reads it: 6.5 GB, 380 MB."""
+    if size >= 1e9:
+        return f"{size / 1e9:.1f} GB"
+    return f"{max(1, round(size / 1e6))} MB"
+
+
+def _same(path):
+    return os.path.normcase(os.path.realpath(path))
+
+
+def named_files(found, models_dir, but=None):
+    """Every file in the models folder some note names, as its main file or a part, by its real path: the
+    notes' own word, whatever they make of it, so even a note with a problem keeps what it names. but: a
+    note's name to leave out, to ask what the others name."""
+    return {_same(item["target"]) for name, (model, _, _) in found.items()
+            if model and name != but and model["kind"] in FILE_KINDS for item in files(model, models_dir)
+            if item["file"]}
+
+
+def ollama_name(tag):
+    """A model's name in Ollama, in full: `qwen3` is `qwen3:latest`."""
+    tag = (tag or "").strip()
+    return tag if ":" in tag.rsplit("/", 1)[-1] else tag + ":latest"
+
+
+def named_in_ollama(found, but=None):
+    """Every name in Ollama some note uses, in full: a note's own model, and the weights its recipe is made
+    from. but: a note's name to leave out."""
+    used = set()
+    for name, (model, _, _) in found.items():
+        if model and name != but and model["kind"] in OLLAMA_KINDS:
+            for tag in (model.get("ollama"), recipe_from(model)):
+                if tag:
+                    used.add(ollama_name(tag))
+    return used
+
+
+# What a file's own header says it is, as words its tensors' names hold: (folder, the words, kind, family), the
+# first that matches. A guess, which a note written from it says it is.
+GUESSES = (
+    ("checkpoints", "conditioner.embedders.1", "image", "sdxl"),
+    ("checkpoints", "cond_stage_model.", "image", "sd15"),
+    ("checkpoints", "txt_norm", "edit", "qwen-image-edit"),
+    ("checkpoints", "patch_embedding", "video", "wan"),
+    ("checkpoints", "adaln_single", "video", "ltxv"),
+    ("diffusion_models", "distilled_guidance_layer", "image", "chroma"),
+    ("diffusion_models", "txt_norm", "edit", "qwen-image-edit"),
+    ("loras", "lora_te2", "lora", "sdxl"),
+    ("loras", "input_blocks", "lora", "sdxl"),
+    ("loras", "down_blocks", "lora", "sd15"),
+)
+# What a folder's files are when the header says nothing visor knows; a folder not here holds parts of models
+# (text encoders, decoders, controls), which a model's note names, and which have no note of their own.
+FOLDER_GUESS = {"checkpoints": ("image", "sdxl"), "diffusion_models": ("image", "chroma"), "unet": ("image", "chroma"),
+                "loras": ("lora", "sdxl")}
+
+
+def header_names(path):
+    """The names of the tensors in a .safetensors file, from its header alone: [] for any other file."""
+    if not path.endswith(".safetensors"):
+        return []
+    try:
+        with open(path, "rb") as f:
+            length = int.from_bytes(f.read(8), "little")
+            if not 0 < length < 200_000_000:
+                return []
+            return list(json.loads(f.read(length)))
+    except (OSError, ValueError):
+        return []
+
+
+def guess(folder, path):
+    """What a file in the models folder is: (kind, family, how visor knows), or None for a part of a model."""
+    folder = folder.split("/")[0]
+    if folder not in FOLDER_GUESS:
+        return None
+    names = header_names(path)
+    for where, words, kind, family in GUESSES:
+        if where == ("diffusion_models" if folder == "unet" else folder) and any(words in n for n in names):
+            return kind, family, "from the names inside the file"
+    kind, family = FOLDER_GUESS[folder]
+    return kind, family, f"from the folder it is in, `{folder}/`, alone"
+
+
+def note_name(what, taken):
+    """A name for a new model note, from a file's or an Ollama model's name, unlike any in taken."""
+    base = what.rsplit("/", 1)[-1]
+    base = re.sub(r":latest$", "", os.path.splitext(base)[0] if "." in base and ":" not in base else base)
+    base = re.sub(r"[^a-z0-9._-]+", "-", base.lower()).strip("-._")[:36] or "model"
+    name, n = base, 2
+    while name in taken:
+        name, n = f"{base}-{n}", n + 1
+    return name
+
+
+def loose_files(found, models_dir, built_in=()):
+    """The model files in the models folder that no note names, nor visor's own features use: [{"id" (its path
+    in the folder, as VISOR.md says it), "path", "size", "guess" (what a note for it would be, or None)}]."""
+    named = named_files(found, models_dir) | {_same(path) for path in built_in}
+    loose = []
+    for root, folders, names in os.walk(models_dir):
+        folders[:] = sorted(f for f in folders if not f.startswith("."))
+        for filename in sorted(names):
+            path = os.path.join(root, filename)
+            if filename.startswith(".") or not filename.lower().endswith(MODEL_FILES) or _same(path) in named:
+                continue
+            rel = os.path.relpath(path, models_dir).replace(os.sep, "/")
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                continue
+            loose.append({"id": rel, "path": path, "size": size,
+                          "guess": guess(rel.rsplit("/", 1)[0] if "/" in rel else "", path)})
+    return loose
+
+
+def loose_in_ollama(found, sizes):
+    """The models Ollama has that no note uses: [{"id" (its name in Ollama), "size"}]."""
+    used = named_in_ollama(found)
+    return [{"id": tag, "size": size} for tag, size in sorted(sizes.items()) if ollama_name(tag) not in used]
+
+
+def note_for_file(item, sha, when):
+    """A new note for a loose file in the models folder (loose_files), from what visor guessed of it."""
+    kind, family, how = item["guess"]
+    folder, _, rest = item["id"].partition("/")
+    model = dict(blank(kind), file=rest, family=family, **{"sha-256": sha})
+    about = (f"Visor found `{item['id']}` on this server ({size_said(item['size'])}), named by no note, and wrote "
+             f"this note on {when}. It guessed `Kind: {kind}` and `Family: {family}` {how}: check them. "
+             "`SHA-256:` is the file's own: give `Download:` its address, so that `Fetch` can bring it back if it "
+             "is ever deleted.")
+    if folder in ("diffusion_models", "unet") and (kind == "edit" or family == "chroma"):
+        about += " It is one of three files: name its `Text encoder:` and `VAE:` too."
+    model["about"] = about
+    return model
+
+
+def note_for_ollama(item, capabilities, when):
+    """A new note for a model Ollama has that no note uses (loose_in_ollama), from what Ollama says it can do."""
+    kind = "vision" if "vision" in capabilities and "tools" not in capabilities else "language"
+    model = dict(blank(kind), ollama=item["id"])
+    if kind == "language":
+        model["thinks"] = "yes" if "thinking" in capabilities else "no"
+    can = ", ".join(capabilities) or "nothing"
+    model["about"] = (f"Visor found `{item['id']}` in Ollama ({size_said(item['size'])}), used by no note, and wrote "
+                      f"this note on {when}. It set `Kind:`" + (" and `Thinks`" if kind == "language" else "")
+                      + f" from what Ollama says the model can do ({can}): check them.")
+    return model

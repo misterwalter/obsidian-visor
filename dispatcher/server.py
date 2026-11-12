@@ -418,6 +418,7 @@ class Server:
             if "restart" in asked:
                 self.restart_asked = True
                 self.log(f"{server_note.NAME}: restart, at the next idle moment")
+            self.loose_asked = server_note.read_loose(text)
             body = sources.section(text)
             if body is not None:
                 reading, self._reading_problems = sources.parse(body)
@@ -440,7 +441,8 @@ class Server:
                                    (self.reading, self.reading_found, self._reading_problems),
                                    {"installed": installed, "up": installed and self.vpn_up(), "proxy": self.vpn_proxy},
                                    getattr(self, "logs_said", ()),
-                                   renamed=self.migration_problems)  # ONE-TIME MIGRATION (2026-11)
+                                   renamed=self.migration_problems,  # ONE-TIME MIGRATION (2026-11)
+                                   loose=self.loose_view())
         if fresh != text:
             write_file(path, fresh)
         self._server_written = fresh

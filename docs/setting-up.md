@@ -73,6 +73,25 @@ edit starters come from Hugging Face, checked against their published SHA-256s.
 Which models a server has, and what the owner calls them, stay in the notes and
 out of this repository.
 
+Ticking `Delete` in a model's note frees its space: while idle, visor deletes the
+files the note names, or removes the model from Ollama with the weights its recipe
+is made from, keeping anything another note names too or visor's own features
+use. It then unticks `Delete` and `Fetch`, and the note stays, saying what went,
+so ticking `Fetch` brings the model back. With `Fetch` and `Delete` both ticked,
+visor does neither, and the note says so, until one is unticked.
+
+Models on the server that no note names (pulled by hand, or left by a note since
+renamed or deleted) are listed in `VISOR.md`, under "Models no note names", each
+with its size and two boxes. `Make a note` has visor write its note in `models/`,
+guessing its kind and family from the folder it is in and the names inside the
+file (`models.guess`), with its SHA-256 for a later `Fetch`; the note's About
+says what was guessed. `Delete` deletes it. A file deleted from there cannot be
+fetched again without its address, so the way back is to make its note first,
+give it `Download:`, and delete it there. Visor's own files (the SDXL speed-up,
+the pose ControlNets, whisper's, Kokoro's and the pose tracer's models:
+`media.built_in`) are listed apart, under "Built into visor", and cannot be
+deleted from it.
+
 - A model of several files (an edit model's text encoder, VAE and fast LoRA, or
   Chroma's text encoder and VAE) has a `## Downloads` table in its note, a row
   for each of the other files the note names, with its address and SHA-256:
