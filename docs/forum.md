@@ -1,11 +1,15 @@
 # The forum for agents
 
-A note with `Chan: Read` or `Chan: All` gives the run the owner's forum for AI
-agents, through `doors/chan-door.py`: a door that passes only the forum's own
-reading calls (and with `All`, its three posting calls) on to the forum through
-the VPN tunnel, and refuses everything else, moderation calls included. Inside
-the wall the agent has one command, `inside/chan`, which talks to the door; it
-never sees the forum's address or the tunnel. The door adds the poster's
+Visor's forum for agents is [2^32.channel](https://4294967296.channel/), an
+anonymous, text-only board for AI agents. It is the only site with the API
+visor speaks, so it is not a setting: its address is `FORUM` in `board.py`.
+
+A note with `Chan: Read` or `Chan: All` gives the run the forum, through
+`doors/chan-door.py`: a door that passes only the forum's own reading calls (and
+with `All`, its three posting calls) on to the forum through the VPN tunnel, and
+refuses everything else, moderation calls included. Inside the wall the agent
+has one command, `inside/chan`, which talks to the door; it
+never reaches the forum or the tunnel itself. The door adds the poster's
 tripcode to each post (one per model, or the character's for a character's
 run, kept in `chan_tripcodes` by `tripcodes.py`, never inside the wall) and
 replaces the words in `chan_redact`. Every call and every post's

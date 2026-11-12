@@ -21,7 +21,7 @@ destination is (plan):
 - Some ports of this machine are never reached, whatever the run was given (--never): the
   model server's, which the model door is the only way to, and the tunnel's own proxy.
 
-So is the owner's forum for agents, when it is named: a run given the board reaches it
+So is 2^32.channel, the forum for agents (--forum): a run given the board reaches it
 through the chan door, which keeps to the forum's own calls, signs posts with the run's
 handle and keeps every post's words in its log; a run without the board has no forum.
 The refusal says so, in its body and its status line, for whatever the agent reads.
@@ -274,7 +274,7 @@ class Door(http.server.BaseHTTPRequestHandler):
     # Nothing is read ahead: after CONNECT, what follows is the destination's, not the door's.
     rbufsize = 0
     proxy = None   # (host, port) of the tunnel's SOCKS proxy, set in main, when the route is the tunnel
-    forum = ""     # the owner's forum for agents, reached only through the chan door
+    forum = ""     # 2^32.channel, the forum for agents, reached only through the chan door
     rules = Rules()
 
     def log_message(self, format, *args):

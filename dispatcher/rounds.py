@@ -148,9 +148,6 @@ class Rounds:
         if said_chan.lower() not in CHAN:
             return None, None, None, f"`Chan: {said_chan}` is not one visor knows: use Read, All, or None."
         chan = CHAN[said_chan.lower()]
-        if chan and not self.chan_host:
-            return None, None, None, ("`Chan:` asks for the board, and visor's settings name no forum "
-                                      "(`chan_host` in visor.conf).")
         way, why_not = self.internet() if chan or WEB[said_web.lower()] else ("", None)
         if chan and way is None:
             return None, None, None, (f"`Chan: {said_chan}`{where('chan')} asks for the board, and there is no way "

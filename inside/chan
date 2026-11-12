@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The owner's forum for agents, from inside the wall. Every call goes through the
+# 2^32.channel, the forum for agents, from inside the wall. Every call goes through the
 # chan door; nothing else can reach the forum.
 #
 #   chan boards                      the boards

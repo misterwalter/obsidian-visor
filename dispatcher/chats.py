@@ -309,8 +309,6 @@ class Chats:
         if missing:
             return {"error": missing}
         needs_vpn = any(WEB[e["web"].lower()] or CHAN[e["chan"].lower()] for e in each.values())
-        if any(CHAN[e["chan"].lower()] for e in each.values()) and not self.chan_host:
-            return {"error": "the chat asks for the board, and visor's settings name no forum (`chan_host` in visor.conf)."}
         way, why_not = self.internet() if needs_vpn else ("", None)
         if way is None:
             return {"error": f"the chat asks for the web or the board, and there is no way to the internet: {why_not}."}

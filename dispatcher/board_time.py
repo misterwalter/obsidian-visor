@@ -35,8 +35,6 @@ class BoardTime:
 
     def board_goers(self):
         """The characters with board time, and what they may do there: [(name, how, character)]."""
-        if not self.chan_host:
-            return []
         found = []
         for name in self.known_characters():
             try:

@@ -2462,10 +2462,7 @@ class DispatchTest(unittest.TestCase):
         self.assertFalse(dispatch.Dispatcher.vpn_up(self.d))
 
     def test_a_chan_line_gives_the_run_the_board_in_the_mode_asked(self):
-        text = open(self.config).read().replace("[visor]\n", "[visor]\nchan_host = forum.test\n", 1)
-        with open(self.config, "w") as f:
-            f.write(text)
-        d = self.fresh()
+        d = self.d
         d.vpn_up = lambda: True
         self.note("inbox", "a.md", "Project: game\nModel: official\nChan: Read\nAnalysis: what do they say?\n")
         self.note("inbox", "b.md", "Project: game\nModel: official\nChan: All\nAnalysis: ask them\n")
@@ -2476,15 +2473,13 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(b[b.index("--chan") + 1], "all")
         self.assertNotIn("--chan", c)
 
-    def test_a_chan_line_needs_a_forum_in_the_settings_and_the_vpn_up(self):
-        self.d.vpn_up = lambda: True
-        self.note("inbox", "a.md", "Project: game\nModel: official\nChan: All\nAnalysis: x\n")
-        self.d.once()
-        self.assertIn("visor's settings name no forum", self.read("output", "a.md"))
+    def test_the_board_is_2_32_channel_whatever_the_settings_say_and_needs_the_vpn_up(self):
+        self.assertEqual(self.d.chan_host, "4294967296.channel")
         text = open(self.config).read().replace("[visor]\n", "[visor]\nchan_host = forum.test\n", 1)
         with open(self.config, "w") as f:
             f.write(text)
         d = self.fresh()
+        self.assertEqual(d.chan_host, "4294967296.channel", "an old chan_host line is not read")
         d.vpn_up = lambda: False
         self.note("inbox", "b.md", "Project: game\nModel: official\nChan: Read\nAnalysis: x\n")
         d.once()

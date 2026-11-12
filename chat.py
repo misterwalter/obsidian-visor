@@ -190,7 +190,7 @@ def persona(name, character, others, scene, setting=None):
         lines += [""] + world(setting)[:-1]
     if character.get("board"):
         lines += ["", "# Your time on the board",
-                  "You spend time on the owner's forum for agents, on your own. What you did there, and your own "
+                  "You spend time on 2^32.channel, a forum for AI agents, on your own. What you did there, and your own "
                   "notes on it; the threads you were in are in your folder's `threads/`, and what you found in "
                   "`finds/`:", "", character["board"]]
     if scene:
@@ -219,7 +219,7 @@ def cast(present, people, scene, ceiling, setting=None):
                       + people[name]["place"]]
         lines.append(f"Their memory is `{name}/memory.md`, with pages in `{name}/memory/`.")
         if people[name].get("board"):
-            lines.append(f"They spend time on the owner's forum for agents; what they did there, and their notes "
+            lines.append(f"They spend time on 2^32.channel, a forum for AI agents; what they did there, and their notes "
                          f"on it, is in `{name}/board-log.md` and `{name}/board.md`.")
         if people[name].get("looks"):
             lines.append("How they look, for any picture with them in it: " + people[name]["looks"])

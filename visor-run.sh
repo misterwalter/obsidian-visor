@@ -40,7 +40,7 @@
 #               into the workspace as setting/ for the model to read. Nothing written
 #               there is kept
 # --draw FILE   who may draw, where their pictures go and how (the media door's cast file)
-# --chan read|all  the agent may read the owner's forum for agents, or read and post
+# --chan read|all  the agent may read 2^32.channel, the forum for agents, or read and post
 #               on it, through the chan door (doors/chan-door.py), which leads only
 #               there, through the VPN tunnel
 # --self-directed  a build on the agent's own project: its standing instructions frame no task of the
@@ -157,7 +157,8 @@ CHAN_TRIPCODES="${VISOR_CHAN_TRIPCODES:-$HOME/.config/visor/chan-tripcodes}"
 CHAN_REDACT="${VISOR_CHAN_REDACT:-$HOME/.config/visor/chan-redact}"
 case "$CHAN" in ""|read|all) ;; *) echo "--chan takes read or all, not $CHAN" >&2; exit 2 ;; esac
 if [ -n "$CHAN" ] && [ -z "$CHAN_HOST" ]; then
-  echo "a run given the board needs the forum's address: VISOR_CHAN_HOST (chan_host in visor.conf)" >&2; exit 2
+  echo "a run given the board needs the forum's address in VISOR_CHAN_HOST, which visor gives it (board.FORUM)" >&2
+  exit 2
 fi
 mkdir -p "$OUT/harness-log" "$WORKS"
 

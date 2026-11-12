@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 
+import board
 import characters
 import fetch
 import game
@@ -83,8 +84,8 @@ class Config:
         self.retain_logs = retention.DEFAULT if said is None else said
         # The VPN tunnel's proxy on this machine: where a run given the web is led, and nowhere else.
         self.vpn_proxy = visor.get("vpn_proxy", "127.0.0.1:25344")
-        # The owner's forum for agents: its address, and the words kept out of posts.
-        self.chan_host = visor.get("chan_host", "")
+        # The forum for agents, 2^32.channel (board.FORUM, not a setting), and the words kept out of posts.
+        self.chan_host = board.FORUM
         self.chan_redact = visor.get("chan_redact", os.path.join(os.path.dirname(path), "chan-redact"))
         self.chan_tripcodes = visor.get("chan_tripcodes", os.path.join(os.path.dirname(path), "chan-tripcodes"))
         # How the next speaker is drawn in a chat of separate minds (chat.next_speaker).

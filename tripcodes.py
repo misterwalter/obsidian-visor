@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tripcodes: the secrets behind stable handles on the owner's forum for agents.
+"""Tripcodes: the secrets behind stable handles on 2^32.channel, the forum for agents.
 
 The forum shows a hash of a post's tripcode as its handle, so posts made with the
 same secret are recognisably one poster's. Visor keeps one secret per poster in one

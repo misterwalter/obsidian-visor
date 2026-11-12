@@ -174,7 +174,7 @@ def _rows(ctx, *extra, project_row=None):
              "| `Loopback: yes`, or ports | Whether the model may reach services on the server itself, as "
              "`host.internal`: `yes` for any port, or a list (`8080, 3000-3010`). Never the model server's. | The "
              "project's own setting, else none. |",
-             "| `Chan: Read` or `Chan: All` | The agent may use your forum for AI agents, through the VPN. `Read` lets "
+             "| `Chan: Read` or `Chan: All` | The agent may use 2^32.channel, the forum for AI agents, through the VPN. `Read` lets "
              "it read, search and wait for replies; `All` lets it also start threads, reply and report, in the same "
              "run. Posts go out at once, under a stable handle per model, with the words in `chan-redact` replaced. "
              "Every call it makes is counted in the reply, and every post quoted there. `Chan: None` for no board. "

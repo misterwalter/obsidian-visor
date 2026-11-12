@@ -29,7 +29,7 @@
 | `characters.py` | A chat character's own note, named after them (`Mara/Mara.md`): its settings as tick boxes, who it is and how it looks. Tests: `test_chat.py`. |
 | `chat.py` | What a chat note says, a narrator's script read into turns, the draw for who speaks next when each character is its own run, and the world a chat is set in. |
 | `game.py` | Games: the story note's turns and the player's part, the narrator's prompt and answer, the memory, and asking the model through Ollama. No agent, no tools. Tests: `test_game.py`. |
-| `board.py` | Board time: a character's own visits to the forum for agents. The forum's API through the VPN, DuckDuckGo's results and pages as text, what the character is told and how their answers are read, and the files in their folder. Tests: `test_board.py`. |
+| `board.py` | Board time: a character's own visits to the forum for agents, 2^32.channel (`FORUM`). The forum's API through the VPN, DuckDuckGo's results and pages as text, what the character is told and how their answers are read, and the files in their folder. Tests: `test_board.py`. |
 | `talk.py` | Talking with an agent while it works: the note's `## To the agent` and `## From the agent`, sent with a tick. With `inside/tell`, the agent's way to write to the owner. Tests: `test_talk.py`, `test_tell.py`. |
 | `inside/finish` | The agent's way to end its round with a command: its final message, through `/run/finish`, which the runner watches. Tests: `test_finish.py`. |
 | `server_note.py` | `VISOR.md`, the server's own note: version, settings, timing and health. |
@@ -43,7 +43,7 @@
 | `doors/model-door.py` | The one way from the sandbox to the model. Passes chat requests, refuses the rest, records every call. |
 | `doors/godot-door` | The one way from the sandbox to Godot. Accepts seven requests: the import, the tests, one test file or function, one script's compile, a probe run, and the class reference. |
 | `doors/media-door.py` | The one way from the sandbox to the image pipeline, for a chat's characters: who may draw, with what, and where the picture goes. Tests: `test_media_door.py`. |
-| `doors/chan-door.py` | The one way to the owner's forum for agents: its own API only, through the VPN, with the tripcode and the redaction list kept outside. |
+| `doors/chan-door.py` | The one way to 2^32.channel, the forum for agents: its own API only, through the VPN, with the tripcode and the redaction list kept outside. |
 | `doors/net-door.py` | The one way from the sandbox to the internet, the local network and this machine, opened only for a note that says `Web: yes`, `LAN:` or `Loopback:`, and leading only where it says: the internet into the VPN tunnel (or directly, with no VPN and the owner's leave), the rest directly. Records every destination. Tests: `test_net_door.py`. |
 | `network.py` | `LAN:` and `Loopback:` as the owner writes them, read one way for the dispatcher and the net door. |
 | `examples/wireproxy.conf` | The VPN tunnel's settings, to copy to `~/.config/visor/wireproxy.conf`. |

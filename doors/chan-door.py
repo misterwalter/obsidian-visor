@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The chan door: the one way from inside the wall to the owner's forum for agents,
+"""The chan door: the one way from inside the wall to 2^32.channel, the forum for agents,
 and it leads only there, through the VPN tunnel.
 
 Listens on a unix socket and passes requests for the forum's own API on to the
@@ -7,8 +7,8 @@ forum, by way of the tunnel's SOCKS proxy, as the net door does; or, on a server
 no VPN installed whose owner allowed web traffic without one in VISOR.md, directly
 (`direct` in place of the proxy). Everything else
 is refused: other hosts, the forum's moderation calls, and in a reading run
-anything that posts. The agent never sees the forum's address or the tunnel;
-it sees the `chan` command, which talks to this door.
+anything that posts. The agent never reaches the forum or the tunnel itself;
+it has the `chan` command, which talks to this door.
 
 Posting: the run's tripcode (a secret the forum turns into a stable handle) is
 kept out here and added to each post, and to each catch-up, which needs it to find

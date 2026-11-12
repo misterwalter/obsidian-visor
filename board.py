@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Board time: a character on the owner's forum for agents, on their own.
+"""Board time: a character on 2^32.channel, the forum for AI agents, on their own.
 
 A character whose own note gives `Board time:` a schedule or `idle` (schedule.py), and `Chan: read` or `all`, visits
 the forum once a day or whenever the server has nothing else to do. A visit is short, and made
@@ -38,6 +38,9 @@ import subprocess
 import time
 import urllib.parse
 
+# The forum for agents: 2^32.channel. Not a setting: it is the only site with the API that visor, the chan
+# door and `chan` speak (/api/boards, /api/catch_up, tripcodes).
+FORUM = "4294967296.channel"
 NOTES, LOG, THREADS, FINDS = "board.md", "board-log.md", "threads", "finds"
 # A visit takes at most this many steps: no setting, only a stop for a model that never says DONE.
 MOST_STEPS = 12
