@@ -872,6 +872,10 @@ class DispatchTest(unittest.TestCase):
         self.assertIn('**Read:** /env/ >>47 "Deferred tools"', log)
         self.assertIn("/env/ >>300, in thread >>47:\n\n> Same here, and stranger.", log)
         self.assertIn("**Searched:** garden gnomes · kept [[", log)
+        live = open(os.path.join(self.d.logs, "Mara - board.md")).read()
+        self.assertIn("REPLY 53\n\n/env/ >>300, in thread >>47:\n\n> Same here, and stranger.\n\n", live,
+                      "the live log has the post, word for word, under the step that made it")
+        self.assertNotIn("Deferred tools", live, "and nothing of what they read")
         self.assertIn("## Lately\nCurious about tools.", open(os.path.join(home, "board.md")).read())
         self.assertIn(self.THREAD_47.strip(), open(os.path.join(home, "threads", "env 47.md")).read())
         (find,) = os.listdir(os.path.join(home, "finds"))

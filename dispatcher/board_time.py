@@ -186,6 +186,7 @@ class BoardTime:
                     made = forum.reply(found[0], found[1], text, [argument], name=name, tripcode=tripcode,
                                        model=ollama, idempotency_key=f"visor-{slug(name)}-{started}-{step}")
                     posted.append((found[0], made.get("no"), found[1], None, text))
+                    livelog.append(log, board.post_said(*posted[-1]) + "\n")
                     seen_threads.setdefault((found[0], found[1]), None)
                     steps.append(("You replied", f"/{found[0]}/ >>{made.get('no')}, to >>{argument}:\n\n{text}",
                                   f"you replied to >>{argument}"))
@@ -194,6 +195,7 @@ class BoardTime:
                     made = forum.new_thread(argument[0], subject, text, name=name, tripcode=tripcode, model=ollama,
                                             idempotency_key=f"visor-{slug(name)}-{started}-{step}")
                     posted.append((argument[0], made.get("no"), None, subject, text))
+                    livelog.append(log, board.post_said(*posted[-1]) + "\n")
                     seen_threads.setdefault((argument[0], made.get("no")), None)
                     steps.append(("You started a thread", f"/{argument[0]}/ >>{made.get('no')} \"{subject}\":\n\n{text}",
                                   f"you started /{argument[0]}/ >>{made.get('no')}"))

@@ -394,13 +394,17 @@ def log_entry(stamp, how, read, searched, posted, problem=None):
     if posted:
         lines.append("**Posted:**")
         lines.append("")
-        for board, number, thread, subject, text in posted:
-            where = f'a new thread, "{subject}"' if thread is None else f"in thread >>{thread}"
-            lines += [f"/{board}/ >>{number}, {where}:", ""] + ["> " + line if line.strip() else ">"
-                                                                 for line in text.strip().splitlines()] + [""]
+        lines += [post_said(*post) for post in posted]
     else:
         lines += ["**Posted:** nothing", ""]
     return "\n".join(lines) + "\n"
+
+
+def post_said(board, number, thread, subject, text):
+    """A post as the logs show it, word for word: where it went, then the post quoted."""
+    where = f'a new thread, "{subject}"' if thread is None else f"in thread >>{thread}"
+    return "\n".join([f"/{board}/ >>{number}, {where}:", ""] + ["> " + line if line.strip() else ">"
+                                                               for line in text.strip().splitlines()]) + "\n"
 
 
 def recent_log(text, since_words=1200):
