@@ -754,10 +754,10 @@ def opera_note(ctx):
         "country. | At random. |\n"
         "| `Start: 1901` | The year the game starts in, as it is shown. The board and the rules are the same. "
         "| 1901. |\n"
-        "| `Ends: <year>` | The game ends after Winter of this year, and whoever is left shares the win: three "
+        "| `Ends: <year>` | The game ends after New Years Eve of this year, and whoever is left shares the win: three "
         "left win a third each. 18 supply centres before then is a win of one's own. | This year: in effect, no "
         "end but a win or a draw. |\n"
-        "| `Communication: Set` | `Set`: talk in Spring, Fall and Winter, two rounds, at most one message to each "
+        "| `Communication: Set` | `Set`: talk in Spring, in Fall and on New Years Eve, two rounds, at most one message to each "
         "country and one to everyone a round, all delivered together. `Free`: a message goes at once, and anyone "
         "may answer anyone. `Silence`: no talk at all; the moves say everything. | Set. |",
         "**Playing.** The game's page shows the map, who holds what, what is new for you, and under **Your "

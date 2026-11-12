@@ -10,7 +10,7 @@ models of its own: what a note asks for (read_setup, assign), what happens next 
 written by hand or by a model forgivingly (read_order), and the game's page in the notes (page).
 
 Talk, by the note's `Communication:` (kept in a game's state as the board game's own words):
-- Set (sealed): in Spring, Fall and Winter, two rounds; in each, at most one message to each country
+- Set (sealed): in Spring, in Fall and on New Years Eve, two rounds; in each, at most one message to each country
   and one to everyone, all of a round delivered together once everyone has written;
 - Free (open): a message is delivered at once, and whoever receives one may answer anyone; talk ends
   when every character has had their say on what they last received (and the owner is ready);
@@ -37,7 +37,11 @@ ROUNDS = 2                 # talk rounds a phase, sealed
 FIRST_YEAR = 1901          # the engine's first year; a game shown from another adds the difference
 EVERYONE = "EVERYONE"
 KEYS = ("opera", "characters", "you", "start", "ends", "communication", retention.KEY)
-SEASONS = {"S": "Spring", "F": "Fall", "W": "Winter"}
+# Each phase of a year: its name, and the letter after the year that sorts its map into the order of play.
+PHASES = {"SM": ("Spring", "a"), "SR": ("Summer", "b"), "FM": ("Fall", "c"), "FR": ("Winter", "d"),
+          "WA": ("New Years Eve", "e")}
+KIND_SAID = {"M": "", "R": ", retreats", "A": ", builds"}
+SEASONS = {"S", "F", "W"}
 NOTEBOOK_WORDS = 300
 WIN = 18
 
@@ -154,15 +158,17 @@ def year_of(phase, start=FIRST_YEAR):
 
 
 def phase_said(phase, start=FIRST_YEAR):
-    """S1901M as the game shows it: "Spring 1901"; "Spring 1901, retreats"; "Winter 1901, builds"."""
+    """S1901M as the game shows it: "Spring 1901"; "Summer 1901, retreats"; "New Years Eve 1901, builds"."""
     if phase[:1] not in SEASONS:
         return "the end"
-    return f"{SEASONS[phase[0]]} {year_of(phase, start)}" + {"M": "", "R": ", retreats", "A": ", builds"}[phase[-1]]
+    return f"{PHASES[phase[0] + phase[-1]][0]} {year_of(phase, start)}" + KIND_SAID[phase[-1]]
 
 
 def map_name(phase, start=FIRST_YEAR):
-    """The map of a phase: "1901 Spring", "1901 Spring retreats", "1901 Winter"."""
-    return f"{year_of(phase, start)} {SEASONS[phase[0]]}" + (" retreats" if phase[-1] == "R" else "")
+    """The map of a phase, with a letter after the year so a year's maps sort in the order they are played:
+    "1901a Spring", "1901b Summer retreats", "1901c Fall", "1901d Winter retreats", "1901e New Years Eve builds"."""
+    name, letter = PHASES[phase[0] + phase[-1]]
+    return f"{year_of(phase, start)}{letter} {name}" + KIND_SAID[phase[-1]].replace(",", "")
 
 
 def past_the_end(phase, ends, start=FIRST_YEAR):
@@ -551,7 +557,7 @@ def rules(state, power, who, character, memory):
     """The standing part of a character's prompt: who they are, and the game."""
     players = ", ".join(f"{country(p)}: {state['players'][p] or 'the owner'}" for p in POWERS if p != power)
     press = {
-        "sealed": (f"Talk happens in Spring, Fall and Winter, in {ROUNDS} rounds. In each round you may send at most one "
+        "sealed": (f"Talk happens in Spring, in Fall and on New Years Eve, in {ROUNDS} rounds. In each round you may send at most one "
                    "message to each country and one to Everyone. Everyone writes a round at once, and it is all "
                    "delivered together. After the last round come the orders, so a message then cannot be answered "
                    "before them."),
@@ -572,11 +578,12 @@ def rules(state, power, who, character, memory):
               "betrayal is a move like any other. Play it as yourself: your temperament, your loyalties and grudges, "
               "your way of speaking.",
               "",
-              "How a year goes: Spring moves, retreats if any unit was dislodged, Fall moves, retreats, then Winter, "
+              "How a year goes: Spring moves, Summer retreats if any unit was dislodged, Fall moves, Winter retreats, then "
+              "New Years Eve, "
               "when each country builds or disbands until it has as many units as supply centres. Supply centres "
               "change hands only after Fall. Moves are written at the same time and resolved together: a move "
               "succeeds if it has more support than anything opposing it, and equal strengths bounce.",
-              f"{WIN} supply centres is a win of your own, and ends the game. Otherwise the game ends after Winter "
+              f"{WIN} supply centres is a win of your own, and ends the game. Otherwise the game ends after New Years Eve "
               f"{state['ends']}, and every country still in it then shares the win equally: three left win a third "
               "each, five a fifth, so fewer survivors means a bigger share. Anyone may propose a draw with their "
               "orders; if everyone left accepts it at the next moves, the game ends then, shared the same way. A "
@@ -608,7 +615,7 @@ def situation(state, power, places):
     phase = view["phase"]
     left = years_left(phase, state["ends"], state["start"])
     lines = [f"# Now: {phase_said(phase, state['start'])}",
-             f"The game ends after Winter {state['ends']}: {left} year{'s' if left != 1 else ''} after this one.", "",
+             f"The game ends after New Years Eve {state['ends']}: {left} year{'s' if left != 1 else ''} after this one.", "",
              "# The board", position(state, places, power)]
     last = state["history"][-1] if state["history"] else None
     if last:
@@ -976,7 +983,7 @@ def page(state, places, map_file, waiting_on=(), news=(), link=str, last_map=Non
         who = f"**You play {country(you)}.** " if you else "**Seven characters play this one by themselves.** "
         if you and you in state["out"]:
             who = f"**You played {country(you)}, and are out of the game.** It goes on without you. "
-        lines += [who + f"The game ends after Winter {state['ends']} ({left} year{'s' if left != 1 else ''} after "
+        lines += [who + f"The game ends after New Years Eve {state['ends']} ({left} year{'s' if left != 1 else ''} after "
                   f"this one); whoever is left then shares the win. {WIN} supply centres is a win of one's own. "
                   f"Communication: {SAID[state['press']].capitalize()}.", ""]
     if last_map and state["history"]:

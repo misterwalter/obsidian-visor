@@ -121,7 +121,7 @@ class OperaGamesTest(unittest.TestCase):
         self.assertIn("started the Opera game Grand", said)
         self.assertTrue(os.path.exists(page), "the note is the game's page")
         self.assertIn("**Seven characters play this one by themselves.**", self.page(page))
-        self.assertTrue(os.path.exists(os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901 Spring.svg")))
+        self.assertTrue(os.path.exists(os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901a Spring.svg")))
         self.run_until(lambda: self.state_of()["over"] and not self.state_of()["recap_due"])
         state = self.state_of()
         self.assertEqual(state["over"]["how"], "end")
@@ -129,7 +129,7 @@ class OperaGamesTest(unittest.TestCase):
         text = self.page(page)
         self.assertTrue(text.startswith("Opera: a quick one\n"), "the owner's lines stay at the top")
         self.assertIn("**The end year came:** the win is shared 7 ways.", text)
-        with open(os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901 Spring.svg")) as f:
+        with open(os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901a Spring.svg")) as f:
             spring = f.read()
         self.assertIn("Spring 1901", spring, "the map says the phase as the game shows it")
         self.assertIn(">PAR</text>", spring, "each province carries the code its orders use")
@@ -205,7 +205,7 @@ class OperaGamesTest(unittest.TestCase):
         drawn_orders = self.state_of()["drawn"]["orders"]
         self.assertEqual(list(drawn_orders), ["AUSTRIA"], "only the owner's")
         self.assertEqual(sorted(drawn_orders["AUSTRIA"]), ["A BUD S A VIE - GAL", "A VIE - GAL"])
-        board = os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901 Spring.svg")
+        board = os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901a Spring.svg")
         with open(board) as f:
             drawn = f.read()
         self.assertIn("Spring 1901", drawn)
@@ -214,13 +214,13 @@ class OperaGamesTest(unittest.TestCase):
         self.run_until(lambda: self.state_of()["view"]["phase"] != "S1901M")
         state = self.state_of()
         self.assertIn("A GAL", state["view"]["powers"]["AUSTRIA"]["units"])
-        spring = os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901 Spring.svg")
+        spring = os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901a Spring.svg")
         with open(spring) as f:
             self.assertIn("Spring 1901", f.read())
         self.assertIn("A Vienna to Galicia", self.page(os.path.join(self.tasks, "opera", "Grand", "history.md")))
         # Last phase's map, everyone's orders on it, above the board now.
         text = self.page(page)
-        self.assertIn("**Spring 1901: everyone's orders.**\n\n![[Grand 1901 Spring.svg]]", text)
+        self.assertIn("**Spring 1901: everyone's orders.**\n\n![[Grand 1901a Spring.svg]]", text)
         self.assertLess(text.index("everyone's orders"), text.index("the board now"))
 
     def test_a_draw_proposed_and_accepted_by_everyone_left_ends_the_game_shared(self):

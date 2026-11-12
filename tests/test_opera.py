@@ -101,9 +101,13 @@ class SetupTest(unittest.TestCase):
 
     def test_years_are_shown_from_the_game_s_own_start(self):
         self.assertEqual(opera.phase_said("S1901M"), "Spring 1901")
-        self.assertEqual(opera.phase_said("F1903R", 2026), "Fall 2028, retreats")
-        self.assertEqual(opera.phase_said("W1901A"), "Winter 1901, builds")
-        self.assertEqual(opera.map_name("F1902R"), "1902 Fall retreats")
+        self.assertEqual(opera.phase_said("F1903R", 2026), "Winter 2028, retreats")
+        self.assertEqual(opera.phase_said("W1901A"), "New Years Eve 1901, builds")
+        self.assertEqual(opera.map_name("F1902R"), "1902d Winter retreats")
+        self.assertEqual(opera.map_name("S1901M"), "1901a Spring")
+        self.assertEqual(opera.map_name("S1901R"), "1901b Summer retreats")
+        self.assertEqual(opera.map_name("F1901M", 2026), "2026c Fall")
+        self.assertEqual(opera.map_name("W1901A"), "1901e New Years Eve builds")
         self.assertTrue(opera.past_the_end("S1911M", 1910))
         self.assertFalse(opera.past_the_end("W1910A", 1910))
         self.assertEqual(opera.years_left("S1903M", 1910), 7)
@@ -256,11 +260,11 @@ class PromptsTest(unittest.TestCase):
         said = opera.rules(state, "FRANCE", "Ines", {"who": "A schemer."}, "I once lost a bet.")
         self.assertIn("You play France", said)
         self.assertIn("Austria: the owner", said)
-        self.assertIn("ends after Winter 1910", said)
+        self.assertIn("ends after New Years Eve 1910", said)
         self.assertIn("three left win a third each", said)
         self.assertIn("I once lost a bet.", said)
         now = opera.situation(state, "FRANCE", PLACES)
-        self.assertIn("The game ends after Winter 1910: 9 years after this one.", now)
+        self.assertIn("The game ends after New Years Eve 1910: 9 years after this one.", now)
 
     def test_a_model_is_held_to_legal_orders_and_real_recipients(self):
         state = a_game()
@@ -284,8 +288,8 @@ class PageTest(unittest.TestCase):
 
     def test_the_owner_writes_messages_then_orders_and_reads_back_how_they_were_read(self):
         state = a_game()
-        text = opera.page(state, PLACES, "Test 1901 Spring.svg")
-        self.assertIn("![[Test 1901 Spring.svg]]", text)
+        text = opera.page(state, PLACES, "Test 1901a Spring.svg")
+        self.assertIn("![[Test 1901a Spring.svg]]", text)
         self.assertIn("**You play Austria.**", text)
         self.assertIn("### To England", text)
         self.assertIn("- [ ] Ready: send these", text)

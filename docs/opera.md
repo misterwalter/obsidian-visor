@@ -7,11 +7,11 @@ is the owner's (`You:` names one, or a list to be dealt one of). A country in
 brackets after a name, `Characters: Mara (France), Tom`, gives that character
 that country; the rest are dealt at random.
 `Start:` (1901) is the year shown at the start, `Ends:` (this year) the year
-after whose Winter everyone left shares the win, and `Communication:` how the
-players talk: `Set` (two rounds in Spring, Fall and Winter, one message to each
-country and one to everyone a round, delivered together), `Free` (a message goes
-at once, and anyone may answer anyone, until everyone has had their say) or
-`Silence` (none). Every line's name is fixed, so a character may be called
+after whose New Years Eve everyone left shares the win, and `Communication:` how
+the players talk: `Set` (two rounds in Spring, in Fall and on New Years Eve, one
+message to each country and one to everyone a round, delivered together), `Free`
+(a message goes at once, and anyone may answer anyone, until everyone has had
+their say) or `Silence` (none). Every line's name is fixed, so a character may be called
 anything, `Start` or `Press` included. `sample-opera.md` has every line.
 
 **The rules.** The board, the legal orders and the adjudication are the
