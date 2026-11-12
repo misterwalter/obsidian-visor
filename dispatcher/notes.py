@@ -114,13 +114,8 @@ def prompt_words(owner_text):
     return settings.plain(text).strip()
 
 
-# A sample note's guide is a callout, `> [!guide]- How this note works`, folded away in
-# the notes app. It is for the owner: no model is shown it, and nothing draws or reads it.
-GUIDE = re.compile(r"^>[ \t]*\[!guide\][^\n]*(?:\n>[^\n]*)*\n?", re.MULTILINE | re.IGNORECASE)
-
-
-def drop_guide(text):
-    return GUIDE.sub("", text)
+# A note's guide (settings.guide) is for the owner: no model is shown it, and nothing draws or reads it.
+GUIDE, drop_guide = settings.GUIDE, settings.drop_guide
 
 
 def unflagged(text):

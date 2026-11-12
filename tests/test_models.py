@@ -69,6 +69,26 @@ class ModelsTest(unittest.TestCase):
                 self.assertEqual(models.read(text), (model, []), name)
                 self.assertIn("\nOn this server: yes\n", text)
 
+    def test_each_kind_s_note_has_its_guide_folded_away_and_read_past(self):
+        for kind in models.KINDS:
+            model = models.blank(kind)
+            text = models.render("m", model)
+            self.assertFalse(text.startswith("#"), "no heading: the name is the file's")
+            self.assertIn(f"model's note works\n> **A", text, kind)
+            guide = text[text.index("> [!guide]-"):text.index("\n" + models.ABOUT)]
+            self.assertTrue(all(line.startswith(">") for line in guide.strip().splitlines()), "all of it folded")
+            for name, _ in models.LINES[kind]:
+                self.assertIn(f"`{name}", guide, f"{kind}'s guide explains {name}")
+            read, _ = models.read(text)
+            self.assertEqual(read["unused"], [], "nothing in the guide is taken for a setting")
+
+    def test_a_recipe_s_system_line_is_said_to_have_no_effect(self):
+        model = dict(models.blank("language"), ollama="coder", modelfile="FROM qwen3:8b\nSYSTEM You are terse.")
+        text = models.render("coder", model)
+        self.assertTrue(text.startswith("> [!warning] The recipe's `SYSTEM` line has no effect\n"))
+        self.assertEqual(models.read(text), (model, []), "a warning, not a problem: the model is still offered")
+        self.assertNotIn("[!warning]", models.render("coder", dict(model, modelfile="FROM qwen3:8b")))
+
     def test_a_note_in_the_owner_s_own_words_is_read(self):
         self.write("sketchy.md", "Kind: image\nFile: sketchy.safetensors\nFamily: sd15\nSteps: 20\n\n## About\n\nPencil.\n")
         found = models.load(self.folder)
@@ -140,7 +160,8 @@ class ModelsTest(unittest.TestCase):
         for name, (model, problems, _) in found.items():
             self.assertEqual(problems, [], name)
             with open(os.path.join(HERE, "examples", "models", name + ".md")) as f:
-                self.assertEqual(f.read(), models.render(name, model), f"{name} is in the form visor writes")
+                self.assertEqual(f.read(), models.render(name, model, guide=False),
+                                 f"{name} is in the form visor writes, but for the guide visor adds to it")
         self.assertEqual(models.images(found)[1], "dreamshaper")
         # One of each kind, small enough for a modest machine, each fetchable from its note.
         self.assertEqual(sorted(m["kind"] for m, _, _ in found.values()), ["edit", "image", "language", "video", "vision"])

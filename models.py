@@ -95,12 +95,110 @@ def one_file(family, text_encoder, vae):
 # encoder:`); a Wan one, as an all-in-one merge, holds its text encoder and decoder too.
 VIDEO_FAMILIES = ("ltxv", "wan")
 WORDS = ("kind", "on this server") + tuple(dict.fromkeys(n.lower() for lines in LINES.values() for n, _ in lines))
-WHAT = {"language": "A language model: name it on a note as", "image": "An image model: name it on an Image note as",
-        "lora": "A LoRA, an add-on to image models of its family: name it as",
-        "vision": "A model that looks at pictures, to check and caption them: name it as",
-        "edit": "A model that edits a picture by instruction: name it on an Edit note as",
-        "video": "A model that makes a short video, from what happens and a picture or video to start from: "
-                 "name it on a Video note as"}
+# A model note's guide (settings.guide), folded away below its settings: what the model is and where it is named,
+# then a row for each of its lines (the line, what it does, what it stands at when left empty).
+LEAD = {"language": "**A language model, `{name}`.** It writes and answers. A note or a project names it on "
+                    "its `Model:` line.",
+        "image": "**An image model, `{name}`.** It draws pictures. An Image note names it on its `Model:` line.",
+        "lora": "**A LoRA, `{name}`.** An add-on that teaches the image models of its family a character or a "
+                "style. A character's note names it on its `LoRA:` line.",
+        "vision": "**A vision model, `{name}`.** It looks at pictures, to check them and caption them.",
+        "edit": "**An edit model, `{name}`.** It changes a picture by instruction. An Edit or Character set note "
+                "names it on its `Model:` line.",
+        "video": "**A video model, `{name}`.** It makes a short video from what happens and a picture or video to "
+                 "start from. A Video note names it on its `Model:` line."}
+HOW = ("Its name is this note's file name. Change a value after its colon: a minute after you stop editing, "
+       "visor writes the note back in this form, with any line you left out added. `On this server` is visor's, "
+       "what it found here. `## About` is yours: its first sentence is shown beside the model's name wherever "
+       "visor offers a choice of models.")
+FETCH = ("**Fetch.** Give the address the file downloads from and its SHA-256, and tick `Fetch`: visor downloads "
+         "it through the VPN when it is next idle, and keeps it only if the hash matches. A model of several files "
+         "has a row for each of the others under `## Downloads`.")
+RECIPE = ("**Its recipe**, a `## Modelfile` section at the end with a code block, is registered in Ollama whenever "
+          "it changes. `FROM` says which weights it is made from. `PARAMETER num_ctx` is its context length, how "
+          "much it can see at once, and the one place that is set: visor reads it back from Ollama for the agents, "
+          f"chats and games. The harnesses are set for {SUGGESTED_CONTEXT}: much less and they spend their time "
+          "summarising, more takes more memory, and Ollama gives no more than the weights were trained for. With "
+          f"none, Ollama uses {OLLAMA_CONTEXT}. A `SYSTEM` line has no effect: visor sends its own instructions "
+          "with every request.")
+_STEPS = ("`Steps:`, `CFG:`, `Sampler:`, `Scheduler:`", "How it draws: how many steps, how closely it follows the "
+          "prompt, and ComfyUI's sampler and scheduler.")
+_FILE_ROWS = [("`Download:`, `SHA-256:`", "Where the main file comes from, and its hash, for `Fetch`.", ""),
+              ("`Default`, a box", "Ticked: a note that names no model of this kind gets this one.", "Unticked"),
+              ("`Fetch`, a box", "Ticked: visor downloads what is missing when it is next idle.", "Unticked")]
+ROWS = {
+    "language": [
+        ("`Ollama:`", "The model's name in Ollama: what visor registers its recipe as, or, with no recipe, a model "
+                      "as `ollama list` shows it.", ""),
+        ("`Thinks`, a box", "Ticked: it can think before it answers. A note asks it to with `Thinking:`.", "Unticked"),
+        ("`Max tokens:`", "The longest answer an agent asks it for at once.", "8192"),
+        ("`Fetch`, a box", "Ticked: visor gets the weights through Ollama (directly, not through the VPN).",
+         "Unticked")],
+    "image": [
+        ("`File:`", "The model's file, in the models folder's `checkpoints/` (Chroma's in `diffusion_models/`).", ""),
+        ("`Family:`", f"What kind of model it is: {', '.join(FAMILIES)}. An Image note's `Fix hands` and `Finish` "
+                      f"work with the {' and '.join(IMPROVES)} families, {{improves}}.", "sdxl"),
+        ("`Fast`, a box", "Ticked: an SDXL model draws in 8 steps with its speed-up add-on, unless a note ticks "
+                          "`Full quality`.", "Unticked"),
+        (*_STEPS, "30, 4, dpmpp_2m_sde, karras"),
+        ("`Clip skip:`", "How many of the text encoder's last layers to skip: Pony models want 2.", "None skipped"),
+        ("`Prefix:`", "Words put before every prompt, such as Pony's `score_9, score_8_up,`.", ""),
+        ("`Prompt guide:`", "How to write a prompt for it, in your words: tags or sentences, in what order, an "
+                            "example. Narrators and characters are given it when they write one.", ""),
+        ("`Negative:`", "What to keep out, when a note says nothing after its own `Negative:`.", "Visor's own"),
+        ("`Size:`", "Its picture size, as 832x1216, when a note asks for none.", "1024x1024 (SD 1.5: 512x768)"),
+        ("`V-pred`, a box", "Ticked: it is a v-prediction model, as some SDXL fine-tunes are.", "Unticked"),
+        ("`Text encoder:`, `VAE:`", "Chroma's other two files.", ""),
+        *_FILE_ROWS],
+    "lora": [
+        ("`File:`", "The LoRA's file, in the models folder's `loras/`.", ""),
+        ("`Family:`", f"The image models it adds onto: {', '.join(FAMILIES)}.", "sdxl"),
+        ("`Trigger:`", "The word it was trained on, put into the prompt whenever it is used.", ""),
+        ("`Strength:`", "How strongly it pulls, from 0 to 2.", "1.0"),
+        *_FILE_ROWS[:1], _FILE_ROWS[2]],
+    "vision": [
+        ("`Ollama:`", "The model's name in Ollama, as `ollama list` shows it.", ""),
+        _FILE_ROWS[1],
+        ("`Fetch`, a box", "Ticked: visor pulls it through Ollama when it is next idle.", "Unticked")],
+    "edit": [
+        ("`File:`", "The model's file: in `diffusion_models/` beside its text encoder and VAE, or in `checkpoints/` "
+                    "when it is one file with them inside.", ""),
+        ("`Family:`", f"What kind of model it is: {', '.join(EDIT_FAMILIES)}.", "qwen-image-edit"),
+        ("`Text encoder:`, `VAE:`", "Its other two files. Leave both empty when `File:` holds them.", ""),
+        ("`Fast LoRA:`, `Fast steps:`", "Its speed-up add-on, and the steps it takes with it, used unless a note "
+                                        "ticks `Full quality`.", "None, 4"),
+        (*_STEPS, "20, 2.5, euler, simple"),
+        ("`Shift:`", "How its sampling leans towards the big shapes first.", "3"),
+        *_FILE_ROWS],
+    "video": [
+        ("`File:`", "The model's file, in the models folder's `checkpoints/`.", ""),
+        ("`Family:`", f"What kind of model it is: {', '.join(VIDEO_FAMILIES)}.", "wan"),
+        ("`Text encoder:`", "An LTX-Video model's T5 text encoder. A Wan merge holds its own.", ""),
+        (*_STEPS, "Its family's own"),
+        ("`Sigmas:`", "The noise schedule a model made for few steps was trained with, as numbers from 1 down to 0.",
+         "Worked out from `Steps:`"),
+        ("`Shift:`", "How its sampling leans towards the big shapes first.", "Its family's own"),
+        ("`Frames per second:`, `Size:`", "The video's speed and size, as 832x480.", "Its family's own"),
+        ("`Prefix:`, `Prompt guide:`, `Negative:`", "As for an image model: words before every prompt, how to write "
+                                                    "one, and what to keep out.", ""),
+        *_FILE_ROWS]}
+
+
+def guide_text(name, model):
+    """The guide folded into a model's note."""
+    kind = model["kind"]
+    improves = ("this one among them" if (model.get("family") or "").lower() in IMPROVES else "not this one")
+    table = "| Line | Meaning | If left out |\n|---|---|---|\n" + "".join(
+        f"| {line} | {meaning.format(improves=improves)} | {default} |\n" for line, meaning, default in ROWS[kind])
+    parts = [LEAD[kind].format(name=name) + " " + HOW, table.rstrip("\n")]
+    parts.append(RECIPE if kind == "language" else FETCH if kind != "vision" else "")
+    article = "an" if kind[0] in "aeiou" else "a"
+    return settings.guide(f"How {article} {kind} model's note works", "\n\n".join(p for p in parts if p))
+
+
+def system_ignored(model):
+    """Whether a language model's recipe has a SYSTEM line, which visor's own instructions always replace."""
+    return bool(re.search(r"^\s*SYSTEM\b", model.get("modelfile") or "", re.MULTILINE | re.IGNORECASE))
 
 
 def blank(kind):
@@ -114,6 +212,7 @@ def read(text):
     """What a model's note says: (the model's settings, problems). Settings are the note's
     own words, lower-cased keys; read_* turn them into what the rest of visor uses."""
     top, _, about = text.partition("\n" + ABOUT)
+    top = settings.drop_guide(top)
     found = {e["key"]: e["value"].strip() for e in settings.scan(top, WORDS)[0] if e["boxes"] is None}
     kind = (found.get("kind") or "").lower()
     if kind not in LINES:
@@ -257,42 +356,30 @@ def recipe_from(model):
     return found.group(1) if found else None
 
 
-def render(name, model, found="", problems=()):
-    """A model's note, whole: what it is, its settings, what visor found, and About. Its name is its file's
-    name alone, so the note has no heading to repeat it."""
-    lines = [f"{WHAT[model['kind']]} `{name}`. Change a value after its colon; visor reads this "
-             "note and writes it back in this form a minute after you stop editing it. `On this server` is "
-             "visor's: what it found."
-             + (" To have visor fetch the file, give the address it downloads from and its SHA-256, and tick "
-                "`Fetch`: it downloads through the VPN when it is next idle, and keeps the file only if the "
-                "hash matches. A model of several files has a row for each of the others under `Downloads`."
-                if model["kind"] in ("image", "lora", "edit", "video") else "")
-             + (" `Sigmas:` is the noise schedule a model distilled for a few steps was made for, as numbers from "
-                "1 down to 0; left empty, visor works one out from `Steps:`." if model["kind"] == "video" else "")
-             + (" `Prompt guide:` is how to write a prompt for this model, in your words: what it takes (tags or "
-                "plain sentences), in what order, and an example. A game's narrator and a chat's characters are "
-                "given it when they write one. An Image note's `Fix hands` and `Finish` work with the "
-                + " and ".join(IMPROVES) + " families" + (", not this one." if model["family"].lower() not in IMPROVES
-                                                          else ", this one among them.")
-                if model["kind"] == "image" else "")
-             + (" Its recipe goes in a `## Modelfile` section at the end, as a code block: visor registers it in "
-                "Ollama when it changes. The recipe's `PARAMETER num_ctx` is the model's context length, how much "
-                "it can see at once, and the one place it is set: visor reads it back from Ollama for the agents, "
-                "chats and games. Ollama loads no more than the weights were trained for. "
-                f"The agents' harnesses are set for {SUGGESTED_CONTEXT}: much less and they spend their time "
-                "summarising. More takes more memory. With none, Ollama uses its default, "
-                f"{OLLAMA_CONTEXT}. Ticking `Fetch` has visor download the weights through Ollama (directly, "
-                "not through the VPN)." if model["kind"] == "language" else ""), ""]
+def render(name, model, found="", problems=(), guide=True):
+    """A model's note, whole: its settings, what visor found, a guide to it folded away, and About. Its name is
+    its file's name alone, so the note has no heading to repeat it. Without guide, the note as the starters in
+    examples/models/ keep it: the guide is written in one place, here, and visor adds it when it writes the note
+    back."""
+    lines = []
     if problems:
         lines += ["> [!warning] Visor cannot use this model until this is fixed"]
         lines += [f"> - {problem}" for problem in problems] + [""]
+    if model["kind"] == "language" and system_ignored(model):
+        lines += ["> [!warning] The recipe's `SYSTEM` line has no effect",
+                  "> Visor sends its own instructions with every request, and Ollama uses a recipe's `SYSTEM` only "
+                  "when a request has none. Take it out, or keep it for running the model yourself with `ollama run`.",
+                  ""]
     lines.append(f"Kind: {model['kind']}")
     names = [n for n, _ in LINES[model["kind"]]]
     lines += [f"{n}: {model.get(n.lower(), '')}".rstrip() for n in names if n.lower() not in SWITCHES]
     lines += [settings.UNUSED + line for line in model.get("unused") or []]
     lines += [""] + [settings.toggle(n, (model.get(n.lower()) or "").lower() in YES, SWITCHES[n.lower()])
                      for n in names if n.lower() in SWITCHES]
-    lines += ["", f"On this server: {found}".rstrip(), "", ABOUT, "", model.get("about") or PANEL_HINT, ""]
+    lines += ["", f"On this server: {found}".rstrip(), ""]
+    if guide:
+        lines += [guide_text(name, model).rstrip("\n"), ""]
+    lines += [ABOUT, "", model.get("about") or PANEL_HINT, ""]
     parts = [(label, model[key], *(model.get("downloads") or {}).get(key, ("", ""))) for key, label, _ in PARTS
              if model.get(key)]
     if parts:

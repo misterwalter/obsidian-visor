@@ -1,5 +1,3 @@
-A model that edits a picture by instruction: name it on an Edit note as `pix2pix`. Change a value after its colon; visor reads this note and writes it back in this form a minute after you stop editing it. `On this server` is visor's: what it found. To have visor fetch the file, give the address it downloads from and its SHA-256, and tick `Fetch`: it downloads through the VPN when it is next idle, and keeps the file only if the hash matches. A model of several files has a row for each of the others under `Downloads`.
-
 Kind: edit
 File: instruct-pix2pix-00-22000.safetensors
 Family: instruct-pix2pix

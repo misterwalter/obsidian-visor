@@ -2,11 +2,9 @@
 """The sample notes visor keeps in the notes folder: one for each kind of job, ready to
 copy into inbox/, each with its own guide folded away beneath its header.
 
-A guide is a callout, `> [!guide]- How this note works`. The notes app shows it folded,
-with its tables drawn when opened, and visor drops it before anything reads the note
-(dispatch.drop_guide): no model is shown it, nothing draws it or reads it aloud. So a
-copied sample can keep its guide. A guide has no headings of its own, since a chat
-note is read by its headings.
+A guide is a callout, `> [!guide]- How this note works` (settings.guide), which visor
+drops before anything reads the note, so a copied sample can keep its guide. A guide
+has no headings of its own, since a chat note is read by its headings.
 
 Everything here is text, made from what the dispatcher says this server has (see
 Dispatcher.samples): the projects, characters and models are named only there, since
@@ -19,10 +17,7 @@ import settings
 YOU = "## You"
 
 
-def guide(title, body):
-    """A folded callout holding body."""
-    lines = [f"> [!guide]- {title}"] + [("> " + line).rstrip() for line in body.strip("\n").splitlines()]
-    return "\n".join(lines) + "\n"
+guide = settings.guide
 
 
 COPY = ("Copy this note into `inbox/` under a name of your own and fill it in. It is one of the samples in "

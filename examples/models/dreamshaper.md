@@ -1,5 +1,3 @@
-An image model: name it on an Image note as `dreamshaper`. Change a value after its colon; visor reads this note and writes it back in this form a minute after you stop editing it. `On this server` is visor's: what it found. To have visor fetch the file, give the address it downloads from and its SHA-256, and tick `Fetch`: it downloads through the VPN when it is next idle, and keeps the file only if the hash matches. A model of several files has a row for each of the others under `Downloads`. `Prompt guide:` is how to write a prompt for this model, in your words: what it takes (tags or plain sentences), in what order, and an example. A game's narrator and a chat's characters are given it when they write one. An Image note's `Fix hands` and `Finish` work with the sdxl and sd15 families, this one among them.
-
 Kind: image
 File: DreamShaper_8_pruned.safetensors
 Family: sd15

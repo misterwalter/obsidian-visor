@@ -23,6 +23,11 @@ and it is otherwise passed over: only a scan asked for it returns it.
 A value may name what it means by an Obsidian link or embed, in any of its forms:
 `named` reads each as the name of what it points to. Every reader of settings reads
 values through it, and a note visor writes back keeps the form the owner wrote.
+
+A guide is a callout, `> [!guide]- How this note works`, that explains a note to the
+owner. The notes app shows it folded, with its tables drawn when opened, and visor
+drops it (`drop_guide`) before anything reads the note: no model is shown it, nothing
+draws it or reads it aloud. The sample notes and the model notes carry one.
 """
 
 import re
@@ -231,6 +236,20 @@ def group(title, options, chosen, notes=None):
         mark = "x" if name.lower() == (chosen or "").lower() else " "
         lines.append(f"- [{mark}] {name}" + (f" ({note})" if note else ""))
     return lines
+
+
+def guide(title, body):
+    """A guide: body in a folded callout titled title."""
+    lines = [f"> [!guide]- {title}"] + [("> " + line).rstrip() for line in body.strip("\n").splitlines()]
+    return "\n".join(lines) + "\n"
+
+
+GUIDE = re.compile(r"^>[ \t]*\[!guide\][^\n]*(?:\n>[^\n]*)*\n?", re.MULTILINE | re.IGNORECASE)
+
+
+def drop_guide(text):
+    """A note without its guides."""
+    return GUIDE.sub("", text)
 
 
 def toggle(name, on, note=None):

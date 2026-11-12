@@ -4569,6 +4569,9 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(sorted(os.listdir(folder)), sorted(os.listdir(os.path.join(dispatch.HERE, "examples", "models"))))
         self.assertIn("small", self.d.models)
         self.assertEqual((self.d.media.default_image, self.d.media.default_edit), ("dreamshaper", "pix2pix"))
+        self.d.once()
+        written = open(os.path.join(folder, "pix2pix.md")).read()
+        self.assertIn("> [!guide]- How an edit model's note works\n", written, "visor adds the guide the starters leave out")
 
     def test_each_model_note_says_what_is_on_this_server(self):
         self.give_image_models("anime-xl")
