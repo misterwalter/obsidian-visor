@@ -70,7 +70,7 @@ LINES = {
     "vision": [("Default", "no"), ("Fetch", "no"), ("Delete", "no")],
     "edit": [("File", ""), ("Family", "qwen-image-edit"), ("Text encoder", ""), ("VAE", ""), ("Fast LoRA", ""),
              ("Fast steps", "4"), ("Steps", "20"), ("CFG", "2.5"), ("Shift", "3"), ("Sampler", "euler"),
-             ("Scheduler", "simple"), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
+             ("Scheduler", "simple"), ("Prompt guide", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
     "video": [("File", ""), ("Family", "wan"), ("Text encoder", ""), ("Steps", ""), ("CFG", ""), ("Sampler", ""),
               ("Scheduler", ""), ("Sigmas", ""), ("Shift", ""), ("Frames per second", ""), ("Size", ""), ("Prefix", ""),
               ("Prompt guide", ""), ("Negative", ""), ("Default", "no"), ("Download", ""), ("SHA-256", ""), ("Fetch", "no"), ("Delete", "no")],
@@ -164,7 +164,8 @@ ROWS = {
         ("`Clip skip:`", "How many of the text encoder's last layers to skip: Pony models want 2.", "None skipped"),
         ("`Prefix:`", "Words put before every prompt, such as Pony's `score_9, score_8_up,`.", ""),
         ("`Prompt guide:`", "How to write a prompt for it, in your words: tags or sentences, in what order, an "
-                            "example. Narrators and characters are given it when they write one.", ""),
+                            "example. Narrators and characters are given it when they write one, and the Prompt "
+                            "writer chosen in `VISOR.md` rewrites characters' appearances to suit it.", ""),
         ("`Negative:`", "What to keep out, when a note says nothing after its own `Negative:`.", "Visor's own"),
         ("`Size:`", "Its picture size, as 832x1216, when a note asks for none.", "1024x1024 (SD 1.5: 512x768)"),
         ("`V-pred`, a box", "Ticked: it is a v-prediction model, as some SDXL fine-tunes are.", "Unticked"),
@@ -190,6 +191,8 @@ ROWS = {
                                         "ticks `Full quality`.", "None, 4"),
         (*_STEPS, "20, 2.5, euler, simple"),
         ("`Shift:`", "How its sampling leans towards the big shapes first.", "3"),
+        ("`Prompt guide:`", "How to write an instruction for it, in your words. The Prompt writer chosen in "
+                            "`VISOR.md` rewrites characters' appearances to suit it.", ""),
         *_FILE_ROWS],
     "video": [
         ("`File:`", "The model's file, in the models folder's `checkpoints/`.", ""),
@@ -500,7 +503,7 @@ def edit_spec(model):
             "vae": model["vae"], "fast_lora": model["fast lora"] or None, "fast_steps": int(model["fast steps"] or 4),
             "steps": int(model["steps"] or 20), "cfg": float(model["cfg"] or 2.5), "shift": float(model["shift"] or 3),
             "sampler": model["sampler"] or "euler", "scheduler": model["scheduler"] or "simple",
-            "about": model.get("about", "")}
+            "guide": model.get("prompt guide", ""), "about": model.get("about", "")}
 
 
 def edits(found):

@@ -2,17 +2,21 @@
 them: edits, character sets, training a LoRA, and scenes that refine themselves."""
 
 import collections
+import hashlib
+import json
 import os
 import random
 import re
 import shutil
 import time
+import urllib.request
 
 import characters
 import kinds
 import livelog
 import media
 import models
+import prompt_writer
 import settings
 import vision
 
@@ -68,6 +72,51 @@ class Looks:
         lora = models.loras(self.model_notes).get(characters.named(character, "lora").lower())
         return dict(lora) if lora and lora["family"] == family else None
 
+    # ── A character's appearance, as a model's prompt guide asks for it (prompt_writer.py) ──
+
+    def _appearance(self, who, character, guide):
+        """A character's appearance as it goes into a prompt for a model with this guide: (the words, and a line for
+        the reply, or None). Rewritten by VISOR.md's Prompt writer when there is one and the model has a guide,
+        once for each appearance, guide and writer, and kept; the line shows the rewrite the first time, and what
+        it may have dropped. Otherwise the appearance as written, and no line."""
+        looks = (character.get("looks") or "").strip()
+        writer = self.prompt_writer
+        if not looks or not (guide or "").strip() or not writer:
+            return looks, None
+        key = hashlib.sha256(json.dumps([writer, guide, looks]).encode()).hexdigest()
+        path = os.path.join(self.state_dir, "appearances.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                kept = json.load(f)
+        except (OSError, ValueError):
+            kept = {}
+        if key in kept:
+            return kept[key], None
+        result = prompt_writer.rewrite(lambda asked: self._ask_writer(writer, asked), guide, looks)
+        if result["problem"]:
+            return looks, (f"{self.character_link(who)}'s appearance went in as written: {self.model_link(writer)}, "
+                           f"the prompt writer, could not rewrite it for this model's prompt guide, as {result['problem']}.")
+        kept[key] = result["text"]
+        write_file(path, json.dumps(kept, indent=1, ensure_ascii=False))
+        line = (f"{self.character_link(who)}'s appearance, rewritten by {self.model_link(writer)} for this model's "
+                f"prompt guide, and kept for next time: {result['text']}")
+        if result["dropped"]:
+            line += (f" *(It may have left out: {', '.join(result['dropped'])}. If it did, say it in their "
+                     "Appearance more plainly, or in the model's guide.)*")
+        return result["text"], line
+
+    def _ask_writer(self, writer, asked):
+        """The prompt writer's answer: at temperature 0, without thinking, unloaded straight after, so that the
+        picture's own models have the memory."""
+        body = {"model": self.models[writer], "messages": asked, "stream": False, "keep_alive": 0,
+                "options": {"temperature": 0, "num_predict": 400}}
+        if self.can_think(writer):
+            body["think"] = False
+        request = urllib.request.Request(f"http://{self.ollama}/api/chat", data=json.dumps(body).encode(),
+                                         headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=600) as reply:
+            return json.load(reply)["message"]["content"]
+
     def _dress(self, options, cast):
         """Put the characters into an image job's options: each one's LoRA and trigger word, and
         how they look. Returns ([(name, reference)] to edit in afterwards, at most two, and a line
@@ -76,7 +125,8 @@ class Looks:
             return [], ""
         name = (options.get("model") or self.media.default_image or "").strip().lower()
         family = (self.media.image_models.get(name) or {}).get("kind")
-        loras, words, edit_in, said = [], [], [], []
+        guide = (self.media.image_models.get(name) or {}).get("guide")
+        loras, words, edit_in, said, rewritten = [], [], [], [], []
         for who, character in cast:
             lora = self._character_lora(character, family)
             theirs = characters.named(character, "lora")
@@ -103,11 +153,14 @@ class Looks:
                 else:
                     said.append(f"{self.character_link(who)}, {lacking}, and there is no edit model to bring their reference picture in: "
                                 "drawn from their description alone")
-            if character.get("looks"):
-                words.append(f"{who}, {character['looks']}")
+            appearance, line = self._appearance(who, character, guide)
+            if appearance:
+                words.append(f"{who}, {appearance}")
+            if line:
+                rewritten.append(line)
         options["loras"] = loras
         options["prompt"] = ", ".join(words + [options.get("prompt") or ""]).strip(", ")
-        return edit_in, "**Characters:** " + "; ".join(said) + "."
+        return edit_in, "**Characters:** " + "; ".join(said) + "." + "".join(f"\n\n{line}" for line in rewritten)
 
     def _edit_in(self, name, images, edit_in, header, job):
         """Edit characters into pictures from their reference pictures, beside the originals: every
@@ -118,7 +171,17 @@ class Looks:
                        "Make the two people in picture 1 look like the person in picture 2 and the person in "
                        "picture 3, in that order from the left")
         instruction += ": the same face, hair and build. Keep everything else in picture 1 exactly as it is."
-        names, log, lines = " and ".join(who), self.live_log(name, "image"), []
+        # Their appearances too, as the edit model's guide asks for them; what was rewritten is said with the result.
+        edit_model = self.media.edit_models.get(self.media.default_edit or "") or {}
+        rewritten = []
+        for who_, reference in edit_in:
+            _, character = self._character_named(who_, "Characters")
+            appearance, line = self._appearance(who_, character, edit_model.get("guide"))
+            if appearance:
+                instruction += f" {who_}'s appearance: {appearance.rstrip('.')}."
+            if line:
+                rewritten.append(line)
+        names, log, lines = " and ".join(who), self.live_log(name, "image"), [f"{line}\n" for line in rewritten]
         many = f"{len(images)} picture{'s' if len(images) != 1 else ''}"
         self._doing(name, log, f"Editing {names} into the {many} from their reference picture, with the edit model")
         def arrived(path, seed, n):
@@ -141,6 +204,8 @@ class Looks:
     def _media_edit(self, name, header, owner_text, job, earlier=""):
         """Edit a picture by instruction, going by up to two more pictures."""
         pictures = [p for p in self._attachments(owner_text) if p.lower().endswith(PICTURES)]
+        edit_model = self.media.edit_models.get((header["model"] or self.media.default_edit or "").strip().lower()) or {}
+        appearances, rewritten = [], []
         for who, character in self._cast_of(header):
             reference = self._reference(who, character)
             if not reference:
@@ -149,9 +214,14 @@ class Looks:
                                        "`Reference:` line.")
             if reference not in pictures:
                 pictures.append(reference)
-        options = {"prompt": self._instruction(header, owner_text), "model": header["model"],
+            appearance, line = self._appearance(who, character, edit_model.get("guide"))
+            if appearance:
+                appearances.append(f"{who}'s appearance: {appearance.rstrip('.')}.")
+            if line:
+                rewritten.append(line)
+        options = {"prompt": " ".join([self._instruction(header, owner_text)] + appearances), "model": header["model"],
                    "count": header["count"], "seed": header["seed"], "quality": header["quality"],
-                   "negative": header["negative"]}
+                   "negative": header["negative"], "size": header["size"], "redraw": header["redraw"]}
         saved, took = [], time.time()
         result = media.edit(self.media, options, pictures, job,
                             on_image=self._arrived(name, "edit", saved, self.live_log(name, "edit")))
@@ -161,7 +231,14 @@ class Looks:
                  + f" · from {self.link(pictures[0])}"
                  + (f", going by {', '.join(self.link(p) for p in pictures[1:3])}" if len(pictures) > 1 else "")
                  + (f" · seeds {saved[0][1]} to {saved[-1][1]}" if len(saved) > 1 else f" · seed {spec['seed']}")
+                 + (f" · {spec['megapixels']:g} megapixels" if spec.get("megapixels", 1.0) != 1.0 else "")
+                 + (f" · redrawing {round(spec['denoise'] * 100)}%" if spec.get("denoise", 1.0) < 1.0 else "")
                  + f" · took {round((time.time() - took) / 60)} minutes", ""]
+        if spec.get("kind") in models.ONE_PICTURE_EDITS and (spec.get("denoise", 1.0) < 1.0
+                                                             or spec.get("megapixels", 1.0) != 1.0):
+            lines += [f"`Size:` and `Redraw:` make no difference to {self.model_link(spec['name'])}, which edits at a "
+                      "size of its own and draws every picture again whole.", ""]
+        lines += [line for r in rewritten for line in (r, "")]
         if len(pictures) > 1 and spec.get("kind") in models.ONE_PICTURE_EDITS:
             lines += [f"{self.model_link(spec['name'])} edits one picture and goes by no others: only "
                       f"{self.link(pictures[0])} was used. An edit model of the qwen-image-edit family goes by "
@@ -210,6 +287,11 @@ class Looks:
         chosen, sources = [], []
         asked = {"variations": variations, "count": int(count), "changed": False, "stopped": None}
         path = os.path.join(self.folder("working"), name)
+        # Their appearance, in every picture's instruction: as the edit model's guide asks for it.
+        edit_model = self.media.edit_models.get((header["model"] or self.media.default_edit or "").strip().lower()) or {}
+        appearance, rewritten = self._appearance(who, character, edit_model.get("guide"))
+        size = (header["size"] or "full").strip().lower()
+        media.edit_scale(size)  # a size it does not know is said before anything is drawn
 
         def plan(n):
             """The nth picture's prompt and pictures, by the note as it is now; None when there are no more."""
@@ -232,9 +314,9 @@ class Looks:
             chosen.append(variation)
             sources.append(these)
             return (f"The same person as in picture 1, {variation.rstrip('.')}. Keep their face, hair, build and "
-                    "skin exactly as in picture 1.", these)
+                    "skin exactly as in picture 1." + (f" Their appearance: {appearance.rstrip('.')}." if appearance
+                                                       else ""), these)
 
-        half = (header["half-size sources"] or "no").strip().lower() in models.YES
         candidates = os.path.join(folder, "candidates")
         os.makedirs(candidates, exist_ok=True)
         made, took = [], time.time()
@@ -250,8 +332,8 @@ class Looks:
             livelog.append(self.live_log(name, "character set"),
                            f"*{time.strftime('%H:%M')}* {n}: ![[{target}]] · {asked_for}\n")
         result = media.edit(self.media, {"model": header["model"], "seed": str(seed), "quality": header["quality"],
-                                         "negative": header["negative"]},
-                            [], job, on_image=arrived, plan=plan, half=half)
+                                         "negative": header["negative"], "size": size},
+                            [], job, on_image=arrived, plan=plan)
         total = len(others) + (1 if named else 0)
         if named and each == 1:
             went_by = f"from {self.link(named)}, their Reference: picture"
@@ -265,7 +347,7 @@ class Looks:
             if named:
                 went_by += f", {self.link(named)} (their Reference:) always first"
         lines = [f"## Candidates for {who}, {_stamp()}", "",
-                 f"{len(made)} pictures, {went_by}" + (", at half size" if half and not single else "")
+                 f"{len(made)} pictures, {went_by}" + (f", at {size} size" if size != "full" and not single else "")
                  + f" · from {len(asked['variations'])} variations, each drawn at random from the least used so far"
                  f" · with {self.model_link(result['spec']['name'])} · seed {seed} · took {round((time.time() - took) / 60)} minutes",
                  ""]
@@ -278,9 +360,11 @@ class Looks:
                        f"{wanted}` came to one." if single else
                        f"`Source count: {wanted}`, but `{characters.LOOKS_FOLDER}/` has only {each}: each went by "
                        "all of them."), ""]
-        if half and single:
-            lines += [f"`Half-size sources` makes no difference to {self.model_link(result['spec']['name'])}, which goes by one "
-                      "picture only.", ""]
+        if size != "full" and single:
+            lines += [f"`Size: {size}` makes no difference to {self.model_link(result['spec']['name'])}, which edits at "
+                      "a size of its own.", ""]
+        if rewritten:
+            lines += [rewritten, ""]
         if header["negative"] and not result["spec"].get("cfg", 1.0) > 1.0:
             lines += ["`Negative:` has no effect on fast quality, which follows the prompt alone: tick "
                       "`Quality: full` for it to count, at several times the time.", ""]

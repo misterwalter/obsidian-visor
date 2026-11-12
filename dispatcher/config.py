@@ -68,6 +68,7 @@ class Config:
         # After each build, a read-only round on the branch reviews it against the task.
         self.review = visor.getboolean("review", fallback=False)
         self.chosen_reviewer = visor.get("reviewer", "").strip().lower()
+        self.chosen_prompt_writer = visor.get("prompt_writer", "none").strip().lower()
         self.runner = visor.get("runner", os.path.join(HERE, "visor-run.sh"))
         self.results = visor.get("results", "/srv/code/results")
         self.work = visor.get("work", "/srv/code/work")

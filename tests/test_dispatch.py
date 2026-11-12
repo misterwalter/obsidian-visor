@@ -768,7 +768,7 @@ class DispatchTest(unittest.TestCase):
 
     def test_a_new_character_note_makes_their_folder_with_everything_in_it(self):
         self.note("inbox", "Mara.md", "New character: Mara\nModel: second\nSpeak: bf_emma\n\nA ferry pilot. Dry.\n\n"
-                                      "## How they look\n\nGrey plait, oilskin coat.\n")
+                                      "## Appearance\n\nGrey plait, oilskin coat.\n")
         self.d.once()
         home = os.path.join(self.tasks, "characters", "Mara")
         self.assertEqual(sorted(os.listdir(home)), ["Mara.md", "looks", "memory", "memory.md"])
@@ -776,7 +776,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("Model\n- [ ] official\n- [x] second\n", config)
         self.assertIn("Speak: bf_emma\n", config)
         self.assertIn("## Who they are\n\nA ferry pilot. Dry.\n", config)
-        self.assertIn("## How they look\n\nGrey plait, oilskin coat.\n", config)
+        self.assertIn("## Appearance\n\nGrey plait, oilskin coat.\n", config)
         self.assertEqual(open(os.path.join(home, "memory.md")).read(), "# Memory\n\nNothing yet.\n")
         self.assertEqual(os.stat(os.path.join(home, "looks")).st_mode & 0o2070, 0o2070, "open to visor's group")
         note = self.read("output", "Mara.md")
@@ -2732,7 +2732,7 @@ class DispatchTest(unittest.TestCase):
     def stand_in(self, made, seen, key="edit", between=None):
         """A stand-in for media.edit or media.generate: records what it was asked, makes pictures. Given a plan
         (a character set), it asks it for each picture as media.edit does, and calls between(n) after the nth."""
-        def fake(settings, options, *rest, on_image=None, each=None, plan=None, half=False, **_):
+        def fake(settings, options, *rest, on_image=None, each=None, plan=None, **_):
             job = rest[-1] if rest else _["job"]
             prompts = sources = None
             if plan:
@@ -2747,7 +2747,7 @@ class DispatchTest(unittest.TestCase):
                     if between:
                         between(len(prompts))
             seen.append(dict(options, pictures=rest[0] if len(rest) == 2 else None, prompts=prompts, each=each,
-                             sources=sources, half=half))
+                             sources=sources))
             n = len(prompts) if prompts is not None else len(each) if each else int(options.get("count") or 1)
             files = []
             for i in range(n):
@@ -2808,6 +2808,58 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("1 image drawn; ComfyUI stopped; then what the note asks after drawing", log)
         self.assertIn("Editing Tom into the 1 picture from their reference picture, with the edit model", log)
         self.assertIn("Editing Tom in: 1 of 1 done: ![[quay as cast 1.png]]", log)
+
+    def test_a_character_s_appearance_is_rewritten_for_the_image_model_s_guide_once_and_shown(self):
+        self.give_image_models("photo-xl")
+        note = os.path.join(self.tasks, "models", "photo-xl.md")
+        guide = "Booru tags only, comma-separated: long_hair, red_eyes."
+        with open(note) as f:
+            text = f.read()
+        with open(note, "w") as f:
+            f.write(text.replace("\nPrompt guide:\n", f"\nPrompt guide: {guide}\n", 1))
+        self.character("Mara", "A ferry pilot.", looks="A woman in her thirties with a grey plait and an oilskin coat.")
+        self.d.once()
+        self.assertIn("Prompt writer\n- [x] none (appearances go in as written)\n", self.server_note())
+        self.edit_server_note("Prompt writer\n- [x] none (appearances go in as written)\n- [ ] official",
+                              "Prompt writer\n- [ ] none (appearances go in as written)\n- [x] official")
+        asked = []
+        def writer(model, messages):
+            asked.append((model, messages))
+            return "long_hair, red_eyes, grey_plait, oilskin_coat, woman"  # an example from the guide copied in
+        self.d._ask_writer = writer
+        drawn = []
+        with mock.patch.object(dispatch.media, "generate", self.stand_in(None, drawn, "drawn")):
+            for name, prompt in (("quay.md", "on a quay"), ("again.md", "by the sea")):
+                self.note("inbox", name, f"Image: {prompt}\nModel: photo-xl\nCharacters: Mara\n")
+                self.clock += 1000
+                self.d.once()
+        self.assertEqual(len(asked), 1, "once for each appearance and guide: kept after")
+        self.assertEqual(asked[0][0], "official")
+        self.assertIn(guide, asked[0][1][1]["content"])
+        self.assertTrue(drawn[0]["prompt"].startswith("Mara, grey_plait, oilskin_coat, woman, on a quay"), drawn[0]["prompt"])
+        self.assertTrue(drawn[1]["prompt"].startswith("Mara, grey_plait, oilskin_coat, woman, by the sea"))
+        first = self.read("output", "quay.md")
+        self.assertIn("[[characters/Mara/Mara|Mara]]'s appearance, rewritten by [[models/official|official]] for this "
+                      "model's prompt guide, and kept for next time: grey_plait, oilskin_coat, woman *(It may have left "
+                      "out: thirties. If it did, say it in their Appearance more plainly, or in the model's guide.)*",
+                      first)
+        self.assertNotIn("rewritten by", self.read("output", "again.md"), "shown the first time only")
+
+    def test_an_older_how_they_look_section_is_read_as_their_appearance(self):
+        path = self.character("Mara", "A ferry pilot.")
+        with open(path) as f:
+            text = f.read()
+        with open(path, "w") as f:
+            f.write(text.replace(dispatch.characters.LOOKS, "## How they look").replace(
+                dispatch.characters.LOOKS_HINT, "Grey plait."))
+        character = self.d.sync_character("Mara", settled_only=False)[0]
+        self.assertEqual(character["looks"], "Grey plait.")
+
+    def test_a_character_set_says_their_appearance_in_every_picture_s_instruction(self):
+        self.character("Mara", "A ferry pilot.", looks="Grey plait, oilskin coat.")
+        asked, note = self.set_asked("Character set: Mara\nCount: 2\n", "front.png", reference="front.png")
+        self.assertTrue(all(p.endswith("Their appearance: Grey plait, oilskin coat.") for p in asked["prompts"]),
+                        asked["prompts"])
 
     def test_a_character_set_makes_candidates_and_a_vision_model_sets_aside_the_wrong_ones(self):
         self.more_models(seers=["looker"])
@@ -2950,13 +3002,13 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("- [ ] lying on a bed", note, "the owner's change kept")
 
     def test_a_character_set_goes_by_source_count_pictures_drawn_for_each_the_reference_first(self):
-        asked, note = self.set_asked("Character set: Mara\nCount: 6\nSource count: 2\n- [x] Half-size sources\n",
+        asked, note = self.set_asked("Character set: Mara\nCount: 6\nSource count: 2\nSize: half\n",
                                      "bed.png", "drinks.png", "eating.png", "front.png", reference="front.png")
         drawn = [[os.path.basename(p) for p in these] for these in asked["sources"]]
         self.assertEqual(len(drawn), 6)
         self.assertTrue(all(these[0] == "front.png" and len(these) == 2 and these[1] != "front.png" for these in drawn))
         self.assertGreater(len({these[1] for these in drawn}), 1, "drawn afresh for each picture")
-        self.assertTrue(asked["half"])
+        self.assertEqual(asked["size"], "half")
         self.assertIn("each going by 2 of the 4 pictures in `looks/`, drawn at random for it, "
                       "[[characters/Mara/looks/front.png|front.png]] (their Reference:) always first, at half size", note)
         self.assertIn(f"· from [[characters/Mara/looks/front.png|front.png]], [[characters/Mara/looks/{drawn[0][1]}|{drawn[0][1]}]]",

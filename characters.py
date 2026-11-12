@@ -4,7 +4,7 @@
 A character's folder holds two notes. Their own note, named after them
 (`characters/Mara/Mara.md`, so that a link to them, `[[Mara]]`, finds it), is who
 they are and what they may do: their settings as groups of tick boxes (settings.py), then who they are
-and how they look, in words. `memory.md` is their own, the front page of what
+and their appearance, in words. `memory.md` is their own, the front page of what
 they remember, with longer pages beside it in `memory/`. Their `looks/` folder
 holds pictures of them: `Reference:` names the one that is them, and `LoRA:` a
 LoRA trained on them (a model note), so that any picture of them looks like them.
@@ -29,10 +29,26 @@ import settings
 
 # How a character's own note begins, after its title: how visor knows it in a folder renamed in the notes app.
 INTRO = "One of visor's characters."
-WHO, LOOKS = "## Who they are", "## How they look"
+WHO, LOOKS = "## Who they are", "## Appearance"
+# An older note's heading for the same section, read as it.
+OLD_LOOKS = "## How they look"
 WHO_HINT = "*(Say who they are here, in a sentence or a page: it is in front of the model every turn.)*"
-LOOKS_HINT = ("*(Optional. How they look, in the words a picture would be drawn from: anyone who draws them, "
-              "themselves included, is given this.)*")
+LOOKS_HINT = ("*(Optional. Their appearance, and anything every picture of them should have, in the words a "
+              "picture would be drawn from: anyone who draws or edits a picture of them, themselves included, is "
+              "given this. Short phrases suit every kind of image model: `two heads, the second growing from the "
+              "first one's neck, always scowling`.)*")
+
+
+def split_looks(text):
+    """A note's text before its appearance section, and the section: under `## Appearance`, or an older note's
+    `## How they look`."""
+    for heading in (LOOKS, OLD_LOOKS):
+        before, found, after = text.partition("\n" + heading)
+        if found:
+            return before, after
+    return text, ""
+
+
 CHOICES = {
     "thinking": ("no", "low", "medium", "high"),
     "quality": ("fast", "full"),
@@ -148,12 +164,12 @@ def render(name, character, models, image_models, problems=()):
 
 def in_setting(character, note):
     """A character as the world of a chat has them. A setting's canon may hold a note named
-    after them, written like their own: who they are there, then `## How they look` if
+    after them, written like their own: who they are there, then `## Appearance` if
     that differs too. The specific beats the general: the note is who they are in that
     world wherever it disagrees with their own, and its looks replace theirs."""
     if not note or not note.strip():
         return character
-    place, _, looks = ("\n" + note).partition("\n" + LOOKS)
+    place, looks = split_looks("\n" + note)
     return dict(character, place=place.strip(), looks=looks.strip() or character.get("looks", ""))
 
 
@@ -161,7 +177,7 @@ def read(text, standing, models, image_models):
     """What a character's note says: (the character, problems). The character is `standing` with
     whatever the note now sets; a setting the note no longer shows keeps its value."""
     top, _, rest = text.partition("\n" + WHO)
-    who, _, looks = rest.partition("\n" + LOOKS)
+    who, looks = split_looks(rest)
     character = dict(standing,
                      who="" if who.strip() == WHO_HINT else who.strip(),
                      looks="" if looks.strip() == LOOKS_HINT else looks.strip())

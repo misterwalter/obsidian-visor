@@ -71,7 +71,20 @@ models, and the job's scratch folder (`~/.local/state/visor/media/<job>/`).
   `TextEncodeQwenImageEditPlus` with up to three pictures, `ModelSamplingAuraFlow`,
   `KSampler`), with the model's 4-step LoRA unless `Full quality` is ticked. The first
   picture is the one edited; the others, and `Characters:` references, are what
-  it goes by.
+  it goes by, and each character's `## Appearance` is added to the instruction.
+  `Size` (full, half or quarter) is the megapixels of every picture, and
+  `Redraw: 100%` ComfyUI's denoise (`media.redraw`, 1 to 100): below 100 the
+  picture starts from picture 1 itself, keeping its layout and shapes.
+- **Appearances and prompt guides** (`prompt_writer.py`). Wherever visor adds a
+  character's `## Appearance` to a prompt (an Image note's `Characters:`, an edit,
+  a character set), the model chosen as `Prompt writer` in `VISOR.md` rewrites it in
+  the style the drawing model's `Prompt guide:` asks for (image and edit model
+  notes both have one): tags for a tag model, sentences for a prose one. Once for
+  each appearance, guide and writer, kept in `state/appearances.json`; the reply
+  shows it the first time, with any words of the appearance missing from it. Tags
+  copied from the guide are taken out, and an answer that is not one plain line of
+  a sensible length is not used: the appearance goes in as written, and the reply
+  says why. With no writer chosen, or no guide, it goes in as written.
 - `Character set: Mara` edits her `looks/` pictures into new ones, into
   `looks/candidates/`. Each is one of the note's ticked `Variations:` (angle,
   pose, expression, light, clothes, or anything the owner writes), drawn at random
@@ -80,9 +93,10 @@ models, and the job's scratch folder (`~/.local/state/visor/media/<job>/`).
   (`kinds.VARIATIONS`) where the note leaves it out or lists nothing, and a note
   with every one unticked comes back undrawn. Each picture goes by `Source count:`
   pictures drawn at random from `looks/` (1 to 3, her `Reference:` first when she
-  has one); `Half-size sources` reads them at half the pixels (`source_megapixels`
-  in `edit_graph`) while the picture made keeps the first one's full size. The
-  job's seed fixes both draws. `media.edit` asks the job for each picture as it
+  has one); `Size` (full, half or quarter: `media.EDIT_SIZES`) sets the
+  megapixels of the pictures it makes and reads, each step down about twice as
+  quick. Each instruction ends with her `## Appearance`. The job's seed fixes
+  both draws. `media.edit` asks the job for each picture as it
   comes (`plan`), and the job reads the note in `working/` again each time, so a
   variation ticked, unticked or added, or `Count:` changed, counts from the next
   picture on; with every one unticked, it stops there. The reply and the live log

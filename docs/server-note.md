@@ -24,6 +24,10 @@ Each on/off setting is a single box: ticked is on, unticked is off.
   without one.
 - **Review**, and the **Default model** and **Reviewer** groups, as in
   `visor.conf`.
+- **Prompt writer:** the language model that rewrites a character's appearance
+  into the style an image or edit model's `Prompt guide:` asks for, wherever visor
+  adds it to a prompt (`prompt_writer.py`); `none` (the default) puts it in as
+  written. A 4B model or bigger rewrote faithfully when tested.
 - **Safe search:** DuckDuckGo's level (off, moderate or strict; moderate to
   begin with, its own default) for what searches the web here: a character's
   `SEARCH` on the board, and a run given the web, whose instructions give the

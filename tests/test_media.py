@@ -789,27 +789,42 @@ class MediaTest(unittest.TestCase):
             media.edit(self.settings, {"seed": "1"}, [], self.job, plan=lambda n: None)
         self.assertIn("nothing to make", str(caught.exception))
 
-    def test_a_character_set_goes_by_pictures_of_its_own_for_each_prompt_and_reads_them_at_half_size(self):
+    def test_a_character_set_goes_by_pictures_of_its_own_for_each_prompt_at_the_size_asked_for(self):
         self.settings.edit_models, self.settings.default_edit = models_for_testing.edit_specs()
         self.edit_files()
         bed, drinks, front = (os.path.join(self.tmp.name, n) for n in ("bed.png", "drinks.jpg", "front.png"))
         for picture in (bed, drinks, front):
             self.write(picture, "png")
         planned = [("lying down", [front, bed]), ("serving", [front, drinks])]
-        media.edit(self.settings, {"seed": "1"}, [], self.job, plan=lambda n: planned[n - 1] if n <= 2 else None,
-                   half=True)
+        media.edit(self.settings, {"seed": "1", "size": "half"}, [], self.job,
+                   plan=lambda n: planned[n - 1] if n <= 2 else None)
         graphs = [json.loads(l) for l in open(os.path.join(self.job, "graphs.jsonl"))]
         self.assertEqual([[g[f"picture{i}"]["inputs"]["image"] for i in (1, 2)] for g in graphs],
                          [["source1.png", "source2.png"], ["source1.png", "source3.jpg"]], "each picture copied in once")
         for graph in graphs:
             self.assertEqual(graph["scaled1"]["inputs"]["megapixels"], 0.5, "read at half size")
             self.assertEqual(graph["scaled2"]["inputs"]["megapixels"], 0.5)
-            self.assertEqual(graph["canvas"]["inputs"]["megapixels"], 1.0)
-            self.assertEqual(graph["latent"]["inputs"]["pixels"], ["canvas", 0], "made at picture 1's full size")
+            self.assertEqual(graph["latent"]["inputs"]["pixels"], ["scaled1", 0], "made at that size too")
         whole = media.edit_graph(dict(media.edit_spec({"prompt": "x"}, *models_for_testing.edit_specs()), seed=1),
                                  ["picture1.png"])
-        self.assertNotIn("canvas", whole, "at full size, the picture read is the canvas")
-        self.assertEqual(whole["latent"]["inputs"]["pixels"], ["scaled1", 0])
+        self.assertEqual(whole["scaled1"]["inputs"]["megapixels"], 1.0, "full, when the note says nothing")
+        quarter = media.edit_spec({"prompt": "x", "size": "Quarter"}, *models_for_testing.edit_specs())
+        self.assertEqual(quarter["megapixels"], 0.25)
+        with self.assertRaises(media.MediaError) as caught:
+            media.edit_spec({"prompt": "x", "size": "1024x1024"}, *models_for_testing.edit_specs())
+        self.assertIn("use full, half, quarter", str(caught.exception))
+
+    def test_redraw_is_how_much_of_picture_1_is_drawn_again_from_1_to_100_percent(self):
+        specs = models_for_testing.edit_specs()
+        for written, denoise in (("", 1.0), ("100%", 1.0), ("50", 0.5), (" 37 % ", 0.37), ("1%", 0.01)):
+            spec = media.edit_spec({"prompt": "x", "redraw": written}, *specs)
+            self.assertEqual(spec["denoise"], denoise, written)
+            graph = media.edit_graph(dict(spec, seed=1), ["picture1.png"])
+            self.assertEqual(graph["sampler"]["inputs"]["denoise"], denoise)
+        for wrong in ("0", "101", "150%", "0.5", "half", "-20"):
+            with self.assertRaises(media.MediaError, msg=wrong) as caught:
+                media.edit_spec({"prompt": "x", "redraw": wrong}, *specs)
+            self.assertIn("must be a whole number from 1 to 100, with or without its %", str(caught.exception))
 
     def test_a_character_s_lora_is_drawn_with_on_models_of_its_family_only(self):
         lora = {"file": "visor-mara.safetensors", "family": "sdxl", "trigger": "mara_char", "strength": 0.8}
@@ -885,7 +900,7 @@ class MediaTest(unittest.TestCase):
         first, second = os.path.join(self.tmp.name, "a.png"), os.path.join(self.tmp.name, "b.png")
         self.write(first, "png")
         self.write(second, "png")
-        media.edit(self.settings, {"prompt": "give him a hat", "seed": "3"}, [first, second], self.job, half=True)
+        media.edit(self.settings, {"prompt": "give him a hat", "seed": "3", "size": "half"}, [first, second], self.job)
         graph = json.load(open(os.path.join(self.job, "graph.json")))
         self.assertEqual(graph["checkpoint"], {"class_type": "CheckpointLoaderSimple",
                                                "inputs": {"ckpt_name": "qwen-edit-aio.safetensors"}})
@@ -894,7 +909,7 @@ class MediaTest(unittest.TestCase):
         self.assertEqual((graph["positive"]["inputs"]["clip"], graph["positive"]["inputs"]["vae"]),
                          (["checkpoint", 1], ["checkpoint", 2]))
         self.assertEqual(graph["positive"]["inputs"]["image2"], ["scaled2", 0], "it goes by the second picture")
-        self.assertEqual(graph["scaled2"]["inputs"]["megapixels"], 0.5, "half-size sources still apply")
+        self.assertEqual(graph["scaled2"]["inputs"]["megapixels"], 0.5, "the size asked for still applies")
         self.assertEqual(graph["decode"]["inputs"]["vae"], ["checkpoint", 2])
         self.assertEqual([graph["sampler"]["inputs"][k] for k in ("steps", "cfg", "sampler_name", "scheduler")],
                          [4, 1.0, "euler_ancestral", "beta"], "the merge's own settings, from its note")

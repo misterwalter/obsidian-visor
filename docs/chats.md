@@ -6,7 +6,7 @@ characters it names (`chat.py`, `characters.py`).
 **New characters.** A `New character: <name>` note (`sample-new-character.md`)
 makes one without a model: their folder, opened to visor's group, with
 their own note, `<name>.md`, from the note's settings and words (who they are under the top, how
-they look under `## How they look`), `memory.md`, `looks/` and `memory/`. A
+they look under `## Appearance`), `memory.md`, `looks/` and `memory/`. A
 folder made by hand is given whatever of those it lacks.
 
 **Characters.** Each is a folder under `tasks/characters/`. Its own note, named

@@ -62,7 +62,7 @@ class Chats:
                                                             ("web", "Web"), ("lan", "LAN"), ("loopback", "Loopback"),
                                                             ("chan", "Chan"), ("speak", "Speak"),
                                                             ("lora", "LoRA")) if (header.get(key) or "").strip()]
-        who, _, looks = ("\n" + note_body(owner_text)).partition("\n" + characters.LOOKS)
+        who, looks = characters.split_looks("\n" + note_body(owner_text))
         character, problems = characters.read("\n".join(lines) + f"\n\n{characters.WHO}\n\n{who.strip()}\n\n"
                                               f"{characters.LOOKS}\n\n{looks.strip()}\n",
                                               characters.blank(own_model), models_, images)

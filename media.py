@@ -1399,6 +1399,31 @@ def _files_under(folder):
 # Qwen-Image-Edit (2509 and later), from ComfyUI's built-in nodes: its text encoder sees
 # each picture, and the first is also where the drawing starts.
 
+# An edit's `Size:`: how many megapixels the picture it makes has, and every picture it goes by is read at. The
+# work grows with them all, so half is about twice as quick, and a quarter about four times.
+EDIT_SIZES = {"full": 1.0, "half": 0.5, "quarter": 0.25}
+
+
+def edit_scale(value):
+    """The megapixels of an edit's `Size:` (EDIT_SIZES): full when the note leaves it empty."""
+    size = (value or "full").strip().lower()
+    if size not in EDIT_SIZES:
+        raise MediaError(f"`Size: {value}` is not one visor knows for an edit: use {', '.join(EDIT_SIZES)}.")
+    return EDIT_SIZES[size]
+
+
+def redraw(value):
+    """An edit's `Redraw:` as ComfyUI's denoise, from 0.01 to 1: how much of picture 1 is drawn again. 100% (the
+    default) draws it all from the start; less starts from picture 1 itself, so its layout, poses and shapes
+    stay and only its detail is drawn again. A whole number from 1 to 100, with or without its %."""
+    text = (value or "100").strip()
+    number = text[:-1].strip() if text.endswith("%") else text
+    if not number.isdigit() or not 1 <= int(number) <= 100:
+        raise MediaError(f"`Redraw: {value}` must be a whole number from 1 to 100, with or without its %: 100% "
+                         "draws the picture again from the start, 50% keeps its layout and draws its details again.")
+    return int(number) / 100
+
+
 def edit_spec(options, edit_models, default=None):
     """What an edit is, from the note's lines and the model's own settings."""
     name = (options.get("model") or default or "").strip().lower()
@@ -1426,6 +1451,7 @@ def edit_spec(options, edit_models, default=None):
             "steps": model.get("fast_steps", 4) if fast else model.get("steps", 20),
             "cfg": 1.0 if fast else model.get("cfg", 2.5), "shift": model.get("shift", 3.0),
             "sampler": model.get("sampler", "euler"), "scheduler": model.get("scheduler", "simple"),
+            "denoise": redraw(options.get("redraw")), "megapixels": edit_scale(options.get("size")),
             "prompt": prompt, "negative": (options.get("negative") or "").strip(), "count": _number(options, "count", 1, 1, 100),
             "seed": _number(options, "seed", int(time.time() * 1000) % 2**32, 0, 2**32 - 1)}
 
@@ -1473,20 +1499,14 @@ def edit_graph(spec, pictures):
         model = ["lora", 0]
     graph["shift"] = {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": model, "shift": spec["shift"]}}
     images = {}
-    # Half-size sources: the pictures it goes by at half the pixels, quicker to read, while the picture it makes
-    # keeps picture 1's full size (the canvas, below).
-    source_megapixels = spec.get("source_megapixels", 1.0)
+    # Every picture at the edit's size (`Size:`, EDIT_SIZES), the first also the canvas the picture is made on.
     for i, picture in enumerate(pictures[:3], start=1):
         graph[f"picture{i}"] = {"class_type": "LoadImage", "inputs": {"image": picture}}
         graph[f"scaled{i}"] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
-            "image": [f"picture{i}", 0], "upscale_method": "lanczos", "megapixels": source_megapixels,
+            "image": [f"picture{i}", 0], "upscale_method": "lanczos", "megapixels": spec.get("megapixels", 1.0),
             "resolution_steps": 8}}
         images[f"image{i}"] = [f"scaled{i}", 0]
     canvas = "scaled1"
-    if source_megapixels != 1.0:
-        graph["canvas"] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
-            "image": ["picture1", 0], "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 8}}
-        canvas = "canvas"
     graph["positive"] = {"class_type": "TextEncodeQwenImageEditPlus", "inputs": dict(
         {"clip": clip, "prompt": spec["prompt"], "vae": vae}, **images)}
     graph["negative"] = {"class_type": "TextEncodeQwenImageEditPlus", "inputs": dict(
@@ -1495,7 +1515,7 @@ def edit_graph(spec, pictures):
     graph["sampler"] = {"class_type": "KSampler", "inputs": {
         "model": ["shift", 0], "positive": ["positive", 0], "negative": ["negative", 0], "latent_image": ["latent", 0],
         "seed": spec["seed"], "steps": spec["steps"], "cfg": spec["cfg"], "sampler_name": spec["sampler"],
-        "scheduler": spec["scheduler"], "denoise": 1.0}}
+        "scheduler": spec["scheduler"], "denoise": spec.get("denoise", 1.0)}}
     graph["decode"] = {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": vae}}
     graph["save"] = {"class_type": "SaveImage", "inputs": {"images": ["decode", 0], "filename_prefix": "edited"}}
     return graph
@@ -1513,15 +1533,15 @@ def _edit_weights(settings, spec):
     return weights
 
 
-def edit(settings, options, pictures, job, on_image=None, each=None, plan=None, half=False):
+def edit(settings, options, pictures, job, on_image=None, each=None, plan=None):
     """Edit pictures[0] by the note's instruction, going by up to two more pictures. Count:
     of them, from Seed: up. With each, a list of pictures, each of them edited in turn in place
     of pictures[0], by the same instruction and going by the same others (characters edited into
     what a note drew). With plan instead, a character set: plan(n) is asked before each picture
     what the nth is, (prompt, its pictures) in place of the note's and pictures, or None when
     there are no more; so what the owner changes in the note while it runs counts from the next
-    picture on. half: the pictures it goes by at half size, the picture made at full size. All on
-    one start of ComfyUI, which loads the edit model once. on_image(path, seed, n) as each is done.
+    picture on. options' `size` and `redraw` (edit_scale, redraw) set how big the pictures are and how
+    much of picture 1 is drawn again. All on one start of ComfyUI, which loads the edit model once. on_image(path, seed, n) as each is done.
     Returns {"files", "spec", "seeds"}."""
     first = plan(1) if plan else None
     if plan and first is None:
@@ -1534,8 +1554,6 @@ def edit(settings, options, pictures, job, on_image=None, each=None, plan=None, 
     if spec["kind"] not in models.ONE_PICTURE_EDITS:
         if not spec["one_file"]:
             spec["weight_dtype"] = stored_weights(os.path.join(settings.comfy_models, "diffusion_models", spec["file"]))
-        if half:
-            spec["source_megapixels"] = 0.5
     os.makedirs(os.path.join(job, "input"), exist_ok=True)
     names = []
     for i, picture in enumerate([] if plan else pictures[:3], start=1):

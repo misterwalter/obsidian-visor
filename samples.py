@@ -311,7 +311,7 @@ def new_character(ctx):
     lines += ["Speak: no", "LoRA: ", ""]
     body = "\n\n".join([
         "**A New character note makes a character, and runs no model.** Write their name on the first line, who "
-        "they are under the top of the note, and how they look under `## How they look`. Visor makes their folder, "
+        "they are under the top of the note, and their appearance under `## Appearance`. Visor makes their folder, "
         "`characters/<name>/`, with everything a character needs: `<name>.md` (who they are, and their settings "
         "as boxes), `memory.md` (what they remember, which they keep themselves), `looks/` (pictures of them) and "
         "`memory/` (their longer memories). Making the folder yourself works too, but one made by another account "
@@ -336,7 +336,8 @@ def new_character(ctx):
         BOXES, ctx["voices"]])
     return ("\n".join(lines) + "\n" + guide("How a New character note works", body) + "\n"
             "Who they are, in a sentence or a page: they have it in front of them in every chat.\n\n"
-            "## How they look\n\nHow they look, in the words a picture would be drawn from.\n")
+            "## Appearance\n\nTheir appearance, and anything every picture of them should have, in the words a picture "
+            "would be drawn from.\n")
 
 
 def chat_note(ctx):
@@ -383,8 +384,8 @@ def chat_note(ctx):
         "has it in front of them every turn, so keep it to what they always need. The other pages are listed "
         "for them by name, and they read one when the talk turns to it. A page in `canon/` named after a "
         "character, such as `Mara.md`, is who they are in that world, and wins over their own note "
-        "where the two disagree: the specific beats the general. A `## How they look` heading in it replaces "
-        "how they look there. The setting is for reading: nothing a character writes there is kept, and what "
+        "where the two disagree: the specific beats the general. An `## Appearance` heading in it replaces "
+        "their appearance there. The setting is for reading: nothing a character writes there is kept, and what "
         "happens to them goes into their own memory as usual. A project with no `canon/` folder yet is given "
         "one, with a `summary.md` to fill in, and the note comes back to you.",
         "**What happens next.** Move the note to `inbox/`. Visor adds each character's turn under `## <Name>` as "
@@ -528,7 +529,14 @@ def edit_note(ctx):
         "| `Seed:` | Where to start, to make one again. | A random one. |\n"
         "| `Full quality`, a box | Ticked: the model's full steps, without its fast LoRA: better, several times "
         "slower. | Unticked |\n"
-        "| `Characters:` | Characters whose reference pictures the edit goes by. | |",
+        "| `Characters:` | Characters whose reference pictures the edit goes by, and whose `## Appearance` goes "
+        "into the instruction. | |\n"
+        "| `Size` | How big the picture made is: full (1 megapixel), half or quarter, every picture it goes by read "
+        "at the same size. Each step down is about twice as quick. | full |\n"
+        "| `Redraw:` | How much of picture 1 is drawn again, 1 to 100%. At 100% it is drawn from the start, so "
+        "a pose can change, and so can what the model takes for a mistake. Lower starts from the picture itself: "
+        "its layout, poses and shapes stay, and only its detail is drawn again, for a change of colour or "
+        "expression. | 100% |",
         LOOKS, CPU, MEDIA, DAILY, ctx["edits"]])
     return "Edit: \nNegative: \n\n" + guide("How an Edit note works", body)
 
@@ -557,8 +565,8 @@ def character_set(ctx):
         "| `Source count:` | How many pictures from `looks/` each one goes by, 1 to 3, drawn at random for "
         "each: their `Reference:` picture first, when they have one. More is truer to them, and each one "
         "more makes every picture slower. | 1 |\n"
-        "| `Half-size sources`, a box | Ticked: the pictures it goes by are read at half size, which is quicker; "
-        "the pictures made stay full size. | Unticked |\n"
+        "| `Size` | How big the pictures are: full (1 megapixel), half or quarter, every picture it goes by read "
+        "at the same size. Each step down is about twice as quick, and gives smaller pictures. | full |\n"
         "| `Negative:` | What the pictures must not have, such as bunny ears. It counts only with `Quality: "
         "full`. | |\n"
         "| `Seed:` | Where to start: the same seed draws the same variations and pictures again, unless the list "

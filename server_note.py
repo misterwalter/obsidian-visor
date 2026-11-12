@@ -70,7 +70,10 @@ RETAIN = (retention.LINE, "retain_logs", 0, retention.MOST,
           "3 in the morning, and says in its own log what it cleared. A note, its answers and what it made are "
           "never deleted, nor what a chat or a game carries on from.")
 DIRECT = "Allow non-VPN web traffic"
-KEYS = ("auto-update", "update now", "pause", "restart", "default model", "review", "reviewer", "safe search",
+# The Prompt writer choice that has no model rewrite appearances.
+NO_WRITER = "none"
+KEYS = ("auto-update", "update now", "pause", "restart", "default model", "review", "reviewer", "prompt writer",
+        "safe search",
         DIRECT.lower(), retention.KEY) + tuple(line.lower() for line, *_ in TIMING)
 # DuckDuckGo's levels of safe search, and what each does.
 SAFE_SEARCH = board.SAFE_SEARCH_SAYS
@@ -246,6 +249,13 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
               ""]
     lines += settings.group("Default model", list(models), said["default_model"]) + [""]
     lines += settings.group("Reviewer", list(models), said["reviewer"]) + [""]
+    lines += ["The model that rewrites a character's appearance into the style an image or edit model's `Prompt "
+              "guide:` asks for, wherever visor adds it to a prompt: once for each character and model, kept until "
+              "either changes, and shown in the reply the first time. With `none`, or for a model with no guide, "
+              "the appearance goes in as written. A small one does: 4B or more, which wrote faithfully when tested.",
+              ""]
+    lines += settings.group("Prompt writer", [NO_WRITER] + list(models), said.get("prompt_writer") or NO_WRITER,
+                            {NO_WRITER: "appearances go in as written"}) + [""]
     lines += ["How what searches the web here searches: a character on the board, and a run given the web, "
               "which is told to search with it. A character's own note can say otherwise for them.", ""]
     lines += settings.group("Safe search", list(SAFE_SEARCH), said.get("safe_search", "moderate"), SAFE_SEARCH) + [""]
@@ -274,9 +284,11 @@ def read(text, said, models):
     text = sources.without_section(text)
     # Nor is a box under the models no note names, which read_loose reads.
     text = _LOOSE_SECTION.sub("", text)
-    choices = {"default model": tuple(models), "reviewer": tuple(models), "safe search": tuple(SAFE_SEARCH)}
+    choices = {"default model": tuple(models), "reviewer": tuple(models), "safe search": tuple(SAFE_SEARCH),
+               "prompt writer": (NO_WRITER,) + tuple(models)}
     choices.update({key: ("yes", "no") for key, _ in SWITCHES})
     standing = {"default model": said["default_model"], "reviewer": said["reviewer"],
+                "prompt writer": said.get("prompt_writer") or NO_WRITER,
                 "safe search": said.get("safe_search", "moderate")}
     standing.update({key: "yes" if said.get(setting) else "no" for key, setting in SWITCHES})
     # The on/off settings are single boxes; an older note's groups of yes and no are read below.
@@ -331,6 +343,8 @@ def read(text, said, models):
             found["default_model"] = value
         elif key == "reviewer":
             found["reviewer"] = value
+        elif key == "prompt writer":
+            found["prompt_writer"] = value
         elif key == "safe search":
             found["safe_search"] = value
     return found, actions, problems

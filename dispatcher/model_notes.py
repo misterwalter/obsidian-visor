@@ -66,6 +66,12 @@ class ModelNotes:
         knows it, else the default model."""
         return self.chosen_reviewer if self.chosen_reviewer in self.models else self.default_model
 
+    @property
+    def prompt_writer(self):
+        """The model that rewrites characters' appearances for image and edit models' prompt guides: the one
+        chosen in VISOR.md (or visor.conf) while visor knows it; None for none."""
+        return self.chosen_prompt_writer if self.chosen_prompt_writer in self.models else None
+
     def _model_of(self, project):
         """The model a project's notes run on when they name none: its own, while visor knows it,
         else the default."""

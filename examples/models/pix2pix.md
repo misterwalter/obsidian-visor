@@ -10,6 +10,7 @@ CFG: 7.5
 Shift: 3
 Sampler: euler
 Scheduler: normal
+Prompt guide:
 Download: https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors
 SHA-256: fbc31a67aab29ad38eef622a252d3fa4b0a81d4a4dc65da416cf45b13aa67688
 
