@@ -336,48 +336,11 @@ class ModelNotes:
             return
         if not idle:
             return
-        if self._delete_next() or self._tend_loose():
+        # What a note needs and this server already has the weights for comes first, since it takes moments and
+        # a job may be waiting on it; then what the owner asked to be deleted or noted; then downloads.
+        if self._register_next(local_only=True) or self._delete_next() or self._tend_loose():
             return
-        # Language and vision models: registered from their recipe, or pulled. Ollama downloads directly,
-        # not through the VPN: it is a service of its own, and cannot be led through the tunnel.
-        tags = None
-        for name, model in sorted({**self.language, **models.usable(self.model_notes, "vision")}.items()):
-            tags = self._in_ollama() if tags is None else tags
-            if tags is None:
-                break
-            if _ticked(model, "delete"):
-                continue  # deleted when visor is next idle, or, with Fetch ticked too, neither
-            recipe = model.get("modelfile") or ""
-            asked = (model["ollama"], hashlib.sha256(recipe.encode()).hexdigest(), model["fetch"])
-            if self.fetch_said.get(name, (None,))[0] == asked:
-                continue
-            job = self._ollama_job(name, model, tags)
-            if not job:
-                continue
-            part = os.path.join(self.state_dir, "downloads", f"ollama-{slug(name)}")
-            os.makedirs(os.path.dirname(part), exist_ok=True)
-            if job[0] == "create":
-                with open(part + ".Modelfile", "w", encoding="utf-8") as f:
-                    f.write(recipe + "\n")
-                command = [self.ollama_command, "create", model["ollama"], "-f", part + ".Modelfile"]
-            else:
-                command = [self.ollama_command, "pull", models.recipe_from(model)]
-            try:
-                process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=open(part + ".log", "w"),
-                                           stdin=subprocess.DEVNULL, start_new_session=True, env=self._ollama_env())
-            except OSError as error:
-                # Said in the model's note, and tried again only once the note changes.
-                self.fetch_said[name] = (asked, f"visor could not start `{command[0]}`: {error.strerror or error}. "
-                                                "Set `ollama_command` in visor.conf to where Ollama's program is.")
-                self.log(f"could not start {command[0]} for model {name}: {error}")
-                continue
-            self.fetching = {"name": name, "part": part, "ollama": job[0], "tag": model["ollama"], "digest": job[1],
-                             "asked": asked, "started": _stamp(),
-                             "what": "being registered from its Modelfile" if job[0] == "create" else "being pulled",
-                             "process": process}
-            self.log(f"{' '.join(command[:3])}: model {name}")
-            self.deleted_said.pop(name, None)
-            self.sync_models()
+        if self._register_next(local_only=False):
             return
         way, _ = self.internet()
         if way is None:
@@ -409,6 +372,57 @@ class ModelNotes:
                 self.sync_models()
                 return
 
+    def _register_next(self, local_only):
+        """Register one language or vision model from its recipe, or pull it, as its note asks; with local_only,
+        only one whose weights are already here, which takes moments. Ollama downloads directly, not through the
+        VPN: it is a service of its own, and cannot be led through the tunnel. Whether one was started."""
+        tags = None
+        for name, model in sorted({**self.language, **models.usable(self.model_notes, "vision")}.items()):
+            tags = self._in_ollama() if tags is None else tags
+            if tags is None:
+                return False
+            if _ticked(model, "delete"):
+                continue  # deleted when visor is next idle, or, with Fetch ticked too, neither
+            recipe = model.get("modelfile") or ""
+            asked = (model["ollama"], hashlib.sha256(recipe.encode()).hexdigest(), model["fetch"])
+            if self.fetch_said.get(name, (None,))[0] == asked:
+                continue
+            job = self._ollama_job(name, model, tags)
+            if not job or (local_only and not self._weights_here(model, tags)):
+                continue
+            part = os.path.join(self.state_dir, "downloads", f"ollama-{slug(name)}")
+            os.makedirs(os.path.dirname(part), exist_ok=True)
+            if job[0] == "create":
+                with open(part + ".Modelfile", "w", encoding="utf-8") as f:
+                    f.write(recipe + "\n")
+                command = [self.ollama_command, "create", model["ollama"], "-f", part + ".Modelfile"]
+            else:
+                command = [self.ollama_command, "pull", models.recipe_from(model)]
+            try:
+                process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=open(part + ".log", "w"),
+                                           stdin=subprocess.DEVNULL, start_new_session=True, env=self._ollama_env())
+            except OSError as error:
+                # Said in the model's note, and tried again only once the note changes.
+                self.fetch_said[name] = (asked, f"visor could not start `{command[0]}`: {error.strerror or error}. "
+                                                "Set `ollama_command` in visor.conf to where Ollama's program is.")
+                self.log(f"could not start {command[0]} for model {name}: {error}")
+                continue
+            self.fetching = {"name": name, "part": part, "ollama": job[0], "tag": model["ollama"], "digest": job[1],
+                             "asked": asked, "started": _stamp(),
+                             "what": "being registered from its Modelfile" if job[0] == "create" else "being pulled",
+                             "process": process}
+            self.log(f"{' '.join(command[:3])}: model {name}")
+            self.deleted_said.pop(name, None)
+            self.sync_models()
+            return True
+        return False
+
+    def _weights_here(self, model, tags):
+        """Whether the weights a language or vision model's recipe is made from are on this server already, so
+        registering it downloads nothing."""
+        base = models.recipe_from(model) or ""
+        return bool(base) and (self._ollama_has(tags, base) or os.path.isfile(base))
+
     # ── Deleting a model whose note asks it to ────────────────────────────────
 
     def _ollama_sizes(self):
@@ -437,6 +451,13 @@ class ModelNotes:
         for name, (model, problems, path) in sorted(self.model_notes.items()):
             if not model or not _ticked(model, "delete") or _both(model) or not self.settled(path, "settle_settings"):
                 continue
+            # What every other note names, read afresh from the folder, not as visor last had it.
+            self.load_models()
+            if self._unclear():
+                return False
+            model, problems, path = self.model_notes.get(name) or (None, [], path)
+            if not model or not _ticked(model, "delete") or _both(model):
+                continue
             said = (self._delete_files(name, model) if model["kind"] in models.FILE_KINDS
                     else self._delete_from_ollama(name, model))
             if said is None:
@@ -455,17 +476,21 @@ class ModelNotes:
         others = {path: other for other, (them, _, _) in self.model_notes.items()
                   if them and other != name and them["kind"] in models.FILE_KINDS
                   for path in models.named_files({other: (them, [], "")}, comfy)}
-        own = {os.path.normcase(os.path.realpath(path)) for path, _ in media.built_in(self.media)}
+        own = {models._same(path) for path, _ in media.built_in(self.media)}
+        mine = self.model_notes[name][2] if name in self.model_notes else None
+        raw = (models.raw_names(self.models_folder, but=mine) or (set(), set(), {}))[0]
         gone, kept, freed = [], [], 0
         for item in models.files(model, comfy):
             path = item["target"]
-            real = os.path.normcase(os.path.realpath(path))
+            real = models._same(path)
             if not item["file"] or not os.path.isfile(path):
                 continue
             if real in others:
                 kept.append(f"`{item['file']}`, which `{others[real]}` names too")
             elif real in own:
                 kept.append(f"`{item['file']}`, which visor's own features use")
+            elif os.path.basename(path).casefold() in raw:
+                kept.append(f"`{item['file']}`, which another note in `models/` mentions too")
             elif os.path.commonpath([os.path.realpath(comfy), os.path.realpath(path)]) != os.path.realpath(comfy):
                 kept.append(f"`{item['file']}`, which is outside the models folder")
             else:
@@ -486,29 +511,36 @@ class ModelNotes:
         sizes = self._ollama_sizes()
         if sizes is None:
             return None
+        # Ollama's names in any capitals, each to its own spelling, which is the one to remove it by.
+        present = {models.ollama_name(tag): tag for tag in sizes}
         others = {}
         for other, (them, _, _) in self.model_notes.items():
             if them and other != name and them["kind"] in models.OLLAMA_KINDS:
                 for tag in models.named_in_ollama({other: (them, [], "")}):
-                    others.setdefault(tag, other)
+                    others.setdefault(tag, f"`{other}`")
+        mine = self.model_notes[name][2] if name in self.model_notes else None
+        for tag in (models.raw_names(self.models_folder, but=mine) or (set(), set(), {}))[1]:
+            others.setdefault(tag, "another note in `models/`")
         own, base = models.ollama_name(model["ollama"]), models.recipe_from(model)
         base = models.ollama_name(base) if base and not os.path.isfile(base) else None
         if base and base in others:
-            return (f"Delete was ticked, but nothing was removed: the weights it is made from, `{base}`, are used by "
-                    f"`{others[base]}` too, and visor would only register `{model['ollama']}` again from them.")
+            return (f"Delete was ticked, but nothing was removed: the weights it is made from, "
+                    f"`{present.get(base, base)}`, are used by {others[base]} too, and visor would only register "
+                    f"`{model['ollama']}` again from them.")
         gone, kept, problems = [], [], []
         for tag in [own] + ([base] if base and base != own else []):
-            if tag not in sizes:
+            if tag not in present:
                 continue
             if tag in others:
-                kept.append(f"`{tag}`, which `{others[tag]}` uses too")
+                kept.append(f"`{present[tag]}`, which {others[tag]} uses too")
                 continue
-            problem = self._ollama_remove(tag)
+            problem = self._ollama_remove(present[tag])
             if problem:
                 problems.append(problem)
             else:
-                gone.append(f"`{tag}`" + (f" ({models.size_said(sizes[tag])})" if tag == base or not base else ""))
-        if own not in kept and not problems:
+                gone.append(f"`{present[tag]}`" + (f" ({models.size_said(sizes[present[tag]])})"
+                                                   if tag == base or not base else ""))
+        if own not in others and not problems:
             registered = self._registered()
             if registered.pop(model["ollama"], None) is not None:
                 write_file(os.path.join(self.state_dir, "ollama.json"), json.dumps(registered, indent=2))
@@ -523,33 +555,85 @@ class ModelNotes:
 
     # ── The models no note names, in VISOR.md ─────────────────────────────────
 
-    def _ollama_capabilities(self, name):
-        """What Ollama says a model can do: ["completion", "tools", "thinking", "vision", ...], [] if it does not."""
+    def _ollama_about(self, name, size=None):
+        """What Ollama says of a model: {"capabilities": [...], or None when it does not say, "weights": the
+        weights' own file, which models made from the same weights share, or None}. Kept for as long as the
+        model is the same size, since asking means reading its whole description."""
+        cache = self.__dict__.setdefault("_ollama_abouts", {})
+        if (name, size) in cache:
+            return cache[(name, size)]
         asked = urllib.request.Request(f"http://{self.ollama}/api/show", data=json.dumps({"model": name}).encode(),
                                        headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(asked, timeout=10) as reply:
-                return list(json.load(reply).get("capabilities") or [])
-        except (OSError, ValueError, AttributeError):
-            return []
+                shown = json.load(reply)
+        except (OSError, ValueError):
+            return {"capabilities": None, "weights": None}
+        weights = re.search(r"^FROM\s+\S*sha256[-:]([0-9a-f]{64})", shown.get("modelfile") or "", re.MULTILINE)
+        cache[(name, size)] = about = {"capabilities": list(shown.get("capabilities") or []),
+                                       "weights": weights.group(1) if weights else None}
+        return about
+
+    def _unclear(self):
+        """Why visor cannot be sure what the notes in `models/` use, so lists nothing as unused and deletes
+        nothing from that list; None when it can. A note still changing may be arriving through sync half
+        written, and a folder it cannot read may say nothing of what it holds."""
+        raw = models.raw_names(self.models_folder)
+        if raw is None or not raw[2]:
+            return "visor could not read the notes in `models/`, or found none there"
+        changing = sorted(path for path in raw[2] if not self.settled(path, "settle_settings"))
+        if changing:
+            shown = ", ".join(f"`{os.path.relpath(p, self.models_folder)}`" for p in changing[:3])
+            return f"{shown} changed in the last minute, and may still be arriving"
+        return None
 
     def _survey_loose(self, force=False):
         """Look for the models no note names, and visor's own files: when the notes change, when health is
-        checked, and, forced, around anything visor does to them."""
+        checked, and, forced, around anything visor does to them. While what the notes use is unclear
+        (_unclear), it lists none, and looks again at the next pass."""
         at = (self.health_at, json.dumps({n: m for n, (m, _, _) in self.model_notes.items()}, sort_keys=True,
                                          default=str))
         if not force and self._loose_at == at and self.loose is not None:
             return
-        self._loose_at = at
         comfy, built = self.media.comfy_models, media.built_in(self.media)
-        sizes = self._ollama_sizes()
         def shown(path):
             inside = os.path.commonpath([os.path.realpath(comfy), os.path.realpath(path)]) == os.path.realpath(comfy)
             return os.path.relpath(path, comfy).replace(os.sep, "/") if inside else os.path.basename(path)
-        self.loose = {"files": models.loose_files(self.model_notes, comfy, [path for path, _ in built]),
-                      "ollama": None if sizes is None else models.loose_in_ollama(self.model_notes, sizes),
-                      "built_in": [(shown(path), os.path.getsize(path) if os.path.isfile(path) else None, what)
-                                   for path, what in built]}
+        built_in = [(shown(path), os.path.getsize(path) if os.path.isfile(path) else None, what) for path, what in built]
+        held = self._unclear()
+        if held:
+            self._loose_at, self.loose = None, {"held": held, "files": [], "ollama": [], "built_in": built_in}
+            return
+        self._loose_at = at
+        raw_files, raw_ollama, notes = models.raw_names(self.models_folder)
+        files = models.loose_files(self.model_notes, comfy, [path for path, _ in built], raw_files)
+        sizes = self._ollama_sizes()
+        ollama = None if sizes is None else self._shared(models.loose_in_ollama(self.model_notes, sizes, raw_ollama),
+                                                         sizes)
+        total = sum(item["size"] for item in files) + sum(item["frees"] for item in ollama or [])
+        self.loose = {"files": files, "ollama": ollama, "built_in": built_in, "total": total,
+                      "basis": f"read from {len(notes)} model notes, {_stamp()}"}
+
+    def _shared(self, loose, sizes):
+        """The loose Ollama models, each with what Ollama says it can do ("can_note": whether it writes text,
+        so a language or vision note suits it), the models it shares its weights with ("shares", and "stays":
+        whether any of those is kept), and what deleting it frees ("frees"): models made from the same weights
+        are one copy, freed only when the last of them goes, and counted once."""
+        abouts = {tag: self._ollama_about(tag, size) for tag, size in sizes.items()}
+        loose_ids = {item["id"] for item in loose}
+        counted = set()
+        for item in loose:
+            about = abouts.get(item["id"]) or {}
+            caps, weights = about.get("capabilities"), about.get("weights")
+            item["can_note"] = caps is None or "completion" in caps or "vision" in caps
+            twins = sorted(tag for tag, other in abouts.items() if tag != item["id"] and weights
+                           and other.get("weights") == weights)
+            item["shares"] = twins
+            item["stays"] = [tag for tag in twins if tag not in loose_ids]
+            item["frees"] = 0 if item["stays"] or (weights and weights in counted) else item["size"]
+            if weights:
+                counted.add(weights)
+        return loose
 
     def loose_view(self):
         """The section of VISOR.md for the models no note names (server_note.loose_section)."""
@@ -563,16 +647,23 @@ class ModelNotes:
 
     def _tend_loose(self):
         """Do what one ticked box under the models no note names asks, when visor is idle: write the model's
-        note, or delete it. A model with both ticked waits. Whether anything was done."""
+        note, or delete it. Before each, the notes are read afresh and the model looked for again, and nothing
+        is done while what they use is unclear. A model with both ticked waits. Whether anything was done."""
         for key, ticked in sorted(self.loose_asked.items()):
             if len(ticked) != 1:
                 continue
+            self.load_models()
             self._survey_loose(force=True)
+            if self.loose.get("held"):
+                return False
             item = self._loose_item(key)
-            if item is None:  # gone, or given a note, since it was ticked
+            if item is None:  # gone, or named by a note, since it was ticked
                 self.loose_asked.pop(key, None)
                 continue
             where = key.split(":", 1)[0]
+            if server_note.MAKE in ticked and where == "ollama" and not item.get("can_note", True):
+                self.loose_asked.pop(key, None)
+                continue
             said = (self._loose_delete(where, item) if server_note.DELETE in ticked else
                     self._loose_note(where, item))
             self.loose_asked.pop(key, None)
@@ -586,7 +677,12 @@ class ModelNotes:
     def _loose_delete(self, where, item):
         if where == "ollama":
             problem = self._ollama_remove(item["id"])
-            return problem or f"removed `{item['id']}` from Ollama ({models.size_said(item['size'])})"
+            if problem:
+                return problem
+            if item.get("stays"):
+                return (f"removed `{item['id']}` from Ollama: its weights stay, for `{item['stays'][0]}`, so it "
+                        "freed almost nothing")
+            return f"removed `{item['id']}` from Ollama ({models.size_said(item['size'])})"
         comfy = os.path.realpath(self.media.comfy_models)
         path = item["path"]
         if os.path.commonpath([comfy, os.path.realpath(path)]) != comfy or not os.path.isfile(path):
@@ -597,7 +693,8 @@ class ModelNotes:
     def _loose_note(self, where, item):
         name = models.note_name(item["id"], set(self.model_notes))
         if where == "ollama":
-            model = models.note_for_ollama(item, self._ollama_capabilities(item["id"]), _stamp())
+            model = models.note_for_ollama(item, self._ollama_about(item["id"], item["size"])["capabilities"] or [],
+                                           _stamp())
         else:
             digest = hashlib.sha256()
             with open(item["path"], "rb") as f:
@@ -619,11 +716,21 @@ class ModelNotes:
         missing = [name for name in names if name in notes and not self._ollama_has(tags, notes[name]["ollama"])]
         if not missing:
             return ""
-        return (f"the model{'s' if len(missing) > 1 else ''} {', '.join(f'`{n}`' for n in missing)} "
-                f"{'are' if len(missing) > 1 else 'is'} not in Ollama yet. In "
-                + ", ".join(f"`models/{n}.md`" for n in missing) + ", tick `Fetch`: visor downloads it the next "
-                "time it is idle, and the note says `On this server: yes` when it is there. Then move this note back "
-                "to `inbox/`.")
+        # Made from weights already here, it only waits to be registered, which visor does at its next idle moment.
+        coming = [n for n in missing if self._weights_here(notes[n], tags)]
+        fetch_ = [n for n in missing if n not in coming]
+        said = []
+        if coming:
+            said.append(f"the model{'s' if len(coming) > 1 else ''} {', '.join(f'`{n}`' for n in coming)} "
+                        f"{'are' if len(coming) > 1 else 'is'} being registered in Ollama from "
+                        f"{'their recipes' if len(coming) > 1 else 'its recipe'}, from weights already on this "
+                        "server, when visor is next idle: a moment's work, with nothing to download")
+        if fetch_:
+            said.append(f"the model{'s' if len(fetch_) > 1 else ''} {', '.join(f'`{n}`' for n in fetch_)} "
+                        f"{'are' if len(fetch_) > 1 else 'is'} not in Ollama yet. In "
+                        + ", ".join(f"`models/{n}.md`" for n in fetch_) + ", tick `Fetch`: visor downloads it the "
+                        "next time it is idle, and the note says `On this server: yes` when it is there")
+        return "; and ".join(said) + ". Then move this note back to `inbox/`."
 
     def can_think(self, model):
         """Whether pi may ask this model to think: its note says it can (pi/models.json)."""

@@ -127,29 +127,47 @@ def loose_key(where, ident):
 
 
 def loose_section(loose):
-    """The section's lines. loose: {"files": [{"id", "size", "guess"}], "ollama": [{"id", "size"}], or None when
-    Ollama does not answer, "built_in": [(where, size or None, what for)], "asked": {key: {MAKE, DELETE}},
-    "said": [what visor did lately]}."""
+    """The section's lines. loose: {"files": [{"id", "size", "guess", "part"}], "ollama": [{"id", "size",
+    "can_note", "shares", "stays", "frees"}], or None when Ollama does not answer, "total": what deleting all of
+    them would free, "basis": what the list was made from, "held": why there is no list for now, "built_in":
+    [(where, size or None, what for)], "asked": {key: {MAKE, DELETE}}, "said": [what visor did lately]}."""
     files, ollama, asked = loose.get("files", []), loose.get("ollama"), loose.get("asked", {})
-    items = [("ollama", item, True) for item in ollama or []] + [("file", item, bool(item["guess"])) for item in files]
-    total = sum(item["size"] for _, item, _ in items)
+    items = ([("ollama", item, item.get("can_note", True)) for item in ollama or []]
+             + [("file", item, bool(item["guess"])) for item in files])
     lines = [LOOSE, ""]
-    if items:
-        lines += [f"On this server, but named by no note in `models/`: {models.size_said(total)} in all. Under one, tick "
-                  f"`{MAKE}` to have visor write its note in `models/`, guessing what it can, or `{DELETE}` to "
-                  "delete it from this server. Visor does either when it is next idle. A file deleted from here "
-                  f"cannot be fetched again without its address: to keep a way back, tick `{MAKE}` first, give the "
-                  f"note its `Download:`, and delete it there, with the note's own `{DELETE}`.", ""]
+    if loose.get("held"):
+        lines += [f"Not listed for now: {loose['held']}. Visor lists nothing as unused, and deletes nothing from "
+                  "here, until it can be sure what every model note uses. Anything you ticked here waits.", ""]
+    elif items:
+        lines += [f"On this server, but named by no note in `models/`: deleting them all would free about "
+                  f"{models.size_said(loose.get('total', 0))}. Under one, tick `{MAKE}` to have visor write its note "
+                  f"in `models/`, guessing what it can, or `{DELETE}` to delete it from this server. Visor does "
+                  f"either when it is next idle, after reading the notes again. A file deleted from here cannot be "
+                  f"fetched again without its address: to keep a way back, tick `{MAKE}` first, give the note its "
+                  f"`Download:`, and delete it there, with the note's own `{DELETE}`.", ""]
     else:
         lines += ["None: every model on this server is named by a note in `models/`.", ""]
-    if ollama is None:
+    if loose.get("basis") and not loose.get("held"):
+        lines += [f"This list was {loose['basis']}: anything a note mentions, even one visor cannot read, is "
+                  "left off it.", ""]
+    if ollama is None and not loose.get("held"):
         lines += ["Ollama is not answering, so what it has is not listed.", ""]
     lines += [f"- {line}" for line in loose.get("said", [])] + ([""] if loose.get("said") else [])
     for where, item, can_note in items:
         key, ticked = loose_key(where, item["id"]), asked.get(loose_key(where, item["id"]), set())
         head = f"`{item['id']}`" + (" in Ollama" if where == "ollama" else "") + f", {models.size_said(item['size'])}"
-        if not can_note:
-            head += ": a part of a model, named on a model's note beside its main file, so it has no note of its own"
+        if where == "ollama" and item.get("stays"):
+            head += (f": shares its weights with `{item['stays'][0]}`, which stays, so deleting it frees almost "
+                     "nothing")
+        elif where == "ollama" and item.get("shares"):
+            head += f": shares its weights with `{item['shares'][0]}`, also listed: freed when both go"
+        if where == "ollama" and not can_note:
+            head += ("; " if item.get("shares") else ": ") + ("Ollama says it does not write text (an embedding "
+                                                              "model, say), so it gets no note")
+        elif where == "file" and not can_note:
+            head += (": a part of a model, which a model's note names beside its main file (`Text encoder:`, "
+                     "`VAE:`), and none names this one" if item.get("part") else
+                     ": no note can name this kind of file, and none of visor's own features uses it")
         lines.append(head)
         if can_note:
             lines.append(settings.toggle(MAKE, MAKE in ticked))

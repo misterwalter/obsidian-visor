@@ -4197,8 +4197,9 @@ class DispatchTest(unittest.TestCase):
         section = note[note.index("## Models no note names"):note.index("## Health")]
         self.assertIn("`stray:7b` in Ollama, 3.0 GB\n- [ ] Make a note\n- [ ] Delete\n", section)
         self.assertIn("`checkpoints/oldmix.safetensors`, 1 MB\n- [ ] Make a note\n- [ ] Delete\n", section)
-        self.assertIn("`text_encoders/t5.safetensors`, 1 MB: a part of a model, named on a model's note beside its "
-                      "main file, so it has no note of its own\n- [ ] Delete\n", section)
+        self.assertIn("`text_encoders/t5.safetensors`, 1 MB: a part of a model, which a model's note names beside "
+                      "its main file (`Text encoder:`, `VAE:`), and none names this one\n- [ ] Delete\n", section)
+        self.assertRegex(section, r"This list was read from \d+ model notes, ")
         self.assertNotIn("official", section, "a note uses it")
         self.assertNotIn(models_for_testing.IMAGE["anime-xl"]["file"], section, "a note names it")
         listed, built = section.split("### Built into visor")
@@ -4231,6 +4232,130 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("`loras/stray.safetensors`, 1 MB\n- [x] Make a note\n- [x] Delete\nBoth are ticked, so visor "
                       "does neither until one is unticked.", note)
         self.assertTrue(os.path.exists(os.path.join(comfy, "loras", "stray.safetensors")))
+
+    def loose_section(self):
+        note = self.server_note()
+        return note[note.index("## Models no note names"):note.index("### Built into visor")]
+
+    def test_the_unused_list_leaves_off_whatever_any_note_mentions_in_any_capitals(self):
+        self.give_image_models()
+        comfy = self.d.media.comfy_models
+        for rel in ("checkpoints/kept.safetensors", "checkpoints/pony.safetensors", "controlnet/canny.safetensors",
+                    "checkpoints/stray.safetensors"):
+            os.makedirs(os.path.dirname(os.path.join(comfy, rel)), exist_ok=True)
+            open(os.path.join(comfy, rel), "w").close()
+        models_dir = os.path.join(self.tasks, "models")
+        # One note visor cannot read at all, a slip in its Kind:; one naming its file in other capitals.
+        with open(os.path.join(models_dir, "broken.md"), "w") as f:
+            f.write("Kind: imag\nFile: kept.safetensors\n")
+        with open(os.path.join(models_dir, "pony.md"), "w") as f:
+            f.write(dispatch.models.render("pony", dict(dispatch.models.blank("image"), file="Pony.safetensors")))
+        self.set_recipe("official", "FROM hf.co/Someone/Big-GGUF:Q4_K_M")
+        self.d._ollama_sizes = lambda: {"official:latest": 9_000_000_000, "hf.co/someone/big-gguf:Q4_K_M": 9_000_000_000}
+        self.clock += 1000  # every note settled
+        self.d.once()
+        section = self.loose_section()
+        self.assertIn("`checkpoints/stray.safetensors`", section)
+        self.assertIn("`controlnet/canny.safetensors`, 1 MB: no note can name this kind of file, and none of "
+                      "visor's own features uses it\n- [ ] Delete\n", section)
+        for kept in ("kept.safetensors", "pony.safetensors", "big-gguf", "official"):
+            self.assertNotIn(kept, section.lower(), "a note mentions it")
+
+    def test_the_unused_list_waits_while_a_model_note_is_changing_and_deletes_nothing_meanwhile(self):
+        self.give_image_models()
+        stray = os.path.join(self.d.media.comfy_models, "checkpoints", "stray.safetensors")
+        open(stray, "w").close()
+        self.clock += 1000
+        self.d.once()
+        text = self.server_note().replace("`checkpoints/stray.safetensors`, 1 MB\n- [ ] Make a note\n- [ ] Delete",
+                                          "`checkpoints/stray.safetensors`, 1 MB\n- [ ] Make a note\n- [x] Delete")
+        path = self.note("", "VISOR.md", text)
+        self.clock = dispatch._changed(path) + dispatch.server_note.DEFAULTS["settle_settings"]
+        # A model note arrives through sync just then: until it settles, nothing is listed or deleted.
+        changing = os.path.join(self.tasks, "models", "arriving.md")
+        with open(changing, "w") as f:
+            f.write("Kind: image\nFile: stray.saf")
+        os.utime(changing, (self.clock, self.clock))
+        for _ in range(3):
+            self.d.once()
+        self.assertTrue(os.path.exists(stray), "nothing deleted while a note was changing")
+        self.clock += dispatch.server_note.DEFAULTS["settle_settings"] + 1  # VISOR.md settles; the note keeps coming
+        os.utime(changing, (self.clock, self.clock))
+        self.d.once()
+        self.assertIn("Not listed for now: `arriving.md` changed in the last minute", self.server_note())
+        self.assertTrue(os.path.exists(stray))
+        with open(changing, "w") as f:
+            f.write("Kind: image\nFile: stray.safetensors\nFamily: sdxl\n")
+        os.utime(changing, (self.clock - 1000, self.clock - 1000))
+        for _ in range(3):
+            self.d.once()
+        self.assertTrue(os.path.exists(stray), "the note that arrived names it: kept")
+        self.assertNotIn("stray.safetensors", self.loose_section())
+
+    def test_with_no_model_notes_to_read_nothing_is_listed_as_unused(self):
+        self.give_image_models("anime-xl")
+        self.d._ollama_sizes = lambda: {"official:latest": 9_000_000_000}
+        self.clock += 1000
+        self.d.once()
+        # The folder unreadable for a moment, as when sync has it locked: visor reads no notes from it.
+        with mock.patch.object(dispatch.models, "raw_names", return_value=None), \
+                mock.patch.object(dispatch.models, "load", return_value={}):
+            self.d.once()
+            self.clock += dispatch.server_note.DEFAULTS["settle_settings"] + 1
+            self.d.once()
+        section = self.loose_section()
+        self.assertIn("Not listed for now: visor could not read the notes in `models/`, or found none there", section)
+        self.assertNotIn(models_for_testing.IMAGE["anime-xl"]["file"], section)
+        self.assertNotIn("official", section)
+
+    def test_old_names_of_the_same_weights_free_nothing_and_a_model_that_writes_no_text_gets_no_note(self):
+        self.d._ollama_sizes = lambda: {"official:latest": 49_600_000_000, "coder-official:latest": 49_600_000_000,
+                                        "embedder:latest": 300_000_000, "twin-a:latest": 5_000_000_000,
+                                        "twin-b:latest": 5_000_000_000}
+        weights = {"official:latest": "a" * 64, "coder-official:latest": "a" * 64, "embedder:latest": "b" * 64,
+                   "twin-a:latest": "c" * 64, "twin-b:latest": "c" * 64}
+        self.d._ollama_about = lambda name, size=None: {
+            "capabilities": ["embedding"] if name == "embedder:latest" else ["completion", "tools"],
+            "weights": weights[name]}
+        self.clock += 1000
+        self.d.once()
+        section = self.loose_section()
+        self.assertIn("`coder-official:latest` in Ollama, 49.6 GB: shares its weights with `official:latest`, "
+                      "which stays, so deleting it frees almost nothing\n- [ ] Make a note\n- [ ] Delete\n", section)
+        self.assertIn("`embedder:latest` in Ollama, 300 MB: Ollama says it does not write text (an embedding model, "
+                      "say), so it gets no note\n- [ ] Delete\n", section)
+        self.assertIn("`twin-a:latest` in Ollama, 5.0 GB: shares its weights with `twin-b:latest`, also listed: freed "
+                      "when both go", section)
+        self.assertIn("deleting them all would free about 5.3 GB", section, "each copy of the weights counted once")
+
+    def test_a_model_whose_weights_are_here_is_registered_before_anything_listed_is_deleted(self):
+        bin_dir = os.path.join(self.tmp.name, "bin")
+        os.makedirs(bin_dir)
+        record = os.path.join(self.tmp.name, "ollama-args.jsonl")
+        with open(os.path.join(bin_dir, "ollama"), "w") as f:
+            f.write(f"#!/usr/bin/env python3\nimport json, sys\nopen({record!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n")
+        os.chmod(os.path.join(bin_dir, "ollama"), 0o755)
+        os.environ["PATH"] = bin_dir + os.pathsep + os.environ["PATH"]
+        try:
+            removed = []
+            have = {"coder:14b", "old-name:latest", "official:latest", "writer:latest"}
+            self.d._in_ollama = lambda: set(have)
+            self.d._ollama_sizes = lambda: {tag: 1_000_000_000 for tag in have}
+            self.d._ollama_remove = lambda tag: removed.append(tag)
+            self.set_recipe("second", "FROM coder:14b\nPARAMETER temperature 0.5")  # to register, from weights here
+            self.clock += 1000
+            self.d.once()
+            self.assertIn("is being registered in Ollama from its recipe, from weights already on this server",
+                          self.d._not_in_ollama(["second"]))
+            text = self.server_note().replace("`old-name:latest` in Ollama, 1.0 GB\n- [ ] Make a note\n- [ ] Delete",
+                                              "`old-name:latest` in Ollama, 1.0 GB\n- [ ] Make a note\n- [x] Delete")
+            path = self.note("", "VISOR.md", text)
+            self.clock = dispatch._changed(path) + dispatch.server_note.DEFAULTS["settle_settings"]
+            self.d.once()
+            self.assertEqual([json.loads(line)[:2] for line in open(record)], [["create", "second"]])
+            self.assertEqual(removed, [], "registering first")
+        finally:
+            os.environ["PATH"] = os.environ["PATH"].split(os.pathsep, 1)[1]
 
     def test_update_now_and_restart_are_asked_for_once_and_cleared(self):
         self.d.once()

@@ -92,9 +92,18 @@ renamed or deleted) are listed in `VISOR.md`, under "Models no note names", each
 with its size and two boxes. `Make a note` has visor write its note in `models/`,
 guessing its kind and family from the folder it is in and the names inside the
 file (`models.guess`), with its SHA-256 for a later `Fetch`; the note's About
-says what was guessed. `Delete` deletes it. A file deleted from there cannot be
+says what was guessed; a model Ollama says writes no text (an embedding model)
+is offered no note. `Delete` deletes it. A file deleted from there cannot be
 fetched again without its address, so the way back is to make its note first,
-give it `Download:`, and delete it there. Visor's own files (the SDXL speed-up,
+give it `Download:`, and delete it there. What is in use is never listed: besides
+what the notes name as visor reads them, anything any note in `models/` mentions
+as plain text (`models.raw_names`), even one visor cannot read, keeps a file or
+model off the list, and names are compared in any capitals. While a model note is
+still changing, as when sync is bringing it over, or the folder cannot be read,
+nothing is listed and nothing deleted from the list; and before each deletion
+visor reads every note again. Models in Ollama made from the same weights (an old
+name and the note's own, after a rename) are said to share them, since deleting
+one frees nothing while the other stays, and the total counts each copy once. Visor's own files (the SDXL speed-up,
 the pose ControlNets, whisper's, Kokoro's and the pose tracer's models:
 `media.built_in`) are listed apart, under "Built into visor", and cannot be
 deleted from it.

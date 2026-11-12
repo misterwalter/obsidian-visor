@@ -638,7 +638,9 @@ def size_said(size):
 
 
 def _same(path):
-    return os.path.normcase(os.path.realpath(path))
+    """A file's path as visor compares two: its real path, in any capitals, so that a note naming
+    `Pony.safetensors` keeps `pony.safetensors` too."""
+    return os.path.normcase(os.path.realpath(path)).casefold()
 
 
 def named_files(found, models_dir, but=None):
@@ -651,9 +653,45 @@ def named_files(found, models_dir, but=None):
 
 
 def ollama_name(tag):
-    """A model's name in Ollama, in full: `qwen3` is `qwen3:latest`."""
-    tag = (tag or "").strip()
+    """A model's name in Ollama, in full and as Ollama compares names, in any capitals: `Qwen3` is
+    `qwen3:latest`."""
+    tag = (tag or "").strip().casefold()
     return tag if ":" in tag.rsplit("/", 1)[-1] else tag + ":latest"
+
+
+# Anything a model note says that names a file or a model in Ollama, read from its text as it is: the safety net
+# under the notes as visor reads them, for a note half-written by sync, or one visor cannot read at all.
+_RAW_FILE = re.compile(r"[\w.+\-]+\.(?:safetensors|gguf|ckpt|pth?|bin|sft|onnx)\b", re.IGNORECASE)
+_RAW_OLLAMA = re.compile(r"^\s*(?:FROM|Ollama\s*:)\s*(\S+)", re.IGNORECASE | re.MULTILINE)
+
+
+def raw_names(folder, but=None):
+    """What every note in the models folder names, read as plain text, its subfolders too: (file names, names in
+    Ollama), both as visor compares them; and the notes it read, with when each last changed: {path: time}. None
+    when the folder cannot be read. but: a note's path to leave out, to ask what the others name."""
+    files_, ollama, notes = set(), set(), {}
+    try:
+        walked = list(os.walk(folder))
+    except OSError:
+        return None
+    if not walked:
+        return None
+    for root, _, names in walked:
+        for filename in names:
+            if not filename.endswith(".md") or filename.startswith("."):
+                continue
+            path = os.path.join(root, filename)
+            if but and _same(path) == _same(but):
+                continue
+            try:
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    text = f.read()
+                notes[path] = os.path.getmtime(path)
+            except OSError:
+                return None
+            files_ |= {name.casefold() for name in _RAW_FILE.findall(text)}
+            ollama |= {ollama_name(name) for name in _RAW_OLLAMA.findall(text)}
+    return files_, ollama, notes
 
 
 def named_in_ollama(found, but=None):
@@ -682,8 +720,10 @@ GUESSES = (
     ("loras", "input_blocks", "lora", "sdxl"),
     ("loras", "down_blocks", "lora", "sd15"),
 )
-# What a folder's files are when the header says nothing visor knows; a folder not here holds parts of models
-# (text encoders, decoders, controls), which a model's note names, and which have no note of their own.
+# What a folder's files are when the header says nothing visor knows. A folder not here holds parts of models,
+# which a model's note names beside its main file (PART_FOLDERS), or what no note names at all (controls, adapters):
+# neither has a note of its own.
+PART_FOLDERS = ("text_encoders", "vae", "clip")
 FOLDER_GUESS = {"checkpoints": ("image", "sdxl"), "diffusion_models": ("image", "chroma"), "unet": ("image", "chroma"),
                 "loras": ("lora", "sdxl")}
 
@@ -726,30 +766,36 @@ def note_name(what, taken):
     return name
 
 
-def loose_files(found, models_dir, built_in=()):
+def loose_files(found, models_dir, built_in=(), raw=()):
     """The model files in the models folder that no note names, nor visor's own features use: [{"id" (its path
-    in the folder, as VISOR.md says it), "path", "size", "guess" (what a note for it would be, or None)}]."""
+    in the folder, as VISOR.md says it), "path", "size", "guess" (what a note for it would be, or None), "part"
+    (whether a model's note could name it beside its main file)}]. raw: file names the notes' text holds
+    (raw_names), whatever visor makes of the notes: a file of any of those names is kept off the list."""
     named = named_files(found, models_dir) | {_same(path) for path in built_in}
+    raw = {name.casefold() for name in raw}
     loose = []
     for root, folders, names in os.walk(models_dir):
         folders[:] = sorted(f for f in folders if not f.startswith("."))
         for filename in sorted(names):
             path = os.path.join(root, filename)
-            if filename.startswith(".") or not filename.lower().endswith(MODEL_FILES) or _same(path) in named:
+            if (filename.startswith(".") or not filename.lower().endswith(MODEL_FILES) or _same(path) in named
+                    or filename.casefold() in raw):
                 continue
             rel = os.path.relpath(path, models_dir).replace(os.sep, "/")
             try:
                 size = os.path.getsize(path)
             except OSError:
                 continue
-            loose.append({"id": rel, "path": path, "size": size,
-                          "guess": guess(rel.rsplit("/", 1)[0] if "/" in rel else "", path)})
+            folder = rel.rsplit("/", 1)[0] if "/" in rel else ""
+            loose.append({"id": rel, "path": path, "size": size, "guess": guess(folder, path),
+                          "part": folder.split("/")[0] in PART_FOLDERS})
     return loose
 
 
-def loose_in_ollama(found, sizes):
-    """The models Ollama has that no note uses: [{"id" (its name in Ollama), "size"}]."""
-    used = named_in_ollama(found)
+def loose_in_ollama(found, sizes, raw=()):
+    """The models Ollama has that no note uses: [{"id" (its name in Ollama), "size"}]. raw: names the notes' text
+    holds (raw_names), whatever visor makes of the notes, kept off the list too."""
+    used = named_in_ollama(found) | {ollama_name(name) for name in raw}
     return [{"id": tag, "size": size} for tag, size in sorted(sizes.items()) if ollama_name(tag) not in used]
 
 
