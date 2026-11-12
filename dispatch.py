@@ -110,8 +110,6 @@ class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Su
         self.repeat_run = False     # true while a repeating note runs: it starts from the owner's text alone
         self.idle_run = False       # true while an idle note runs: anything new in inbox/ stops it
         self._read_config(config_path)
-        self.migration_problems = []
-        self._upkeep(self.name_notes_after_their_folders)  # ONE-TIME MIGRATION (2026-11)
         # VISOR.md: what the owner set there, kept over visor.conf's values; what they asked for once.
         self.paused, self.timing = False, {}
         self.update_asked = self.restart_asked = False

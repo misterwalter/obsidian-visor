@@ -167,32 +167,6 @@ class Config:
                 except OSError as error:
                     raise ConfigError(f"the tasks folder has no {folder}/, and visor could not make it: {error}")
 
-    # ONE-TIME MIGRATION (2026-11): to be deleted once every server has run it.
-    def name_notes_after_their_folders(self):
-        """Characters' and projects' own notes were `config.md`; now each is named after its character or
-        project, so that a link to them, `[[Mara]]`, finds it. Renamed once, at start: where the new name is
-        already taken, nothing is renamed or overwritten, and VISOR.md says so."""
-        self.migration_problems = []
-        try:
-            homes = [os.path.join(self.characters_folder, n) for n in sorted(os.listdir(self.characters_folder))]
-        except OSError:
-            homes = []
-        homes += [os.path.dirname(self.panel_path(name)) for name in sorted(self.projects)]
-        for home in homes:
-            old = os.path.join(home, "config.md")
-            new = os.path.join(home, os.path.basename(os.path.normpath(home)) + ".md")
-            if not os.path.isfile(old):
-                continue
-            shown = os.path.relpath(home, os.path.dirname(self.tasks))
-            if os.path.exists(new):
-                self.migration_problems.append(
-                    f"`{shown}/` has both `config.md` and `{os.path.basename(new)}`. Visor now reads "
-                    f"`{os.path.basename(new)}` and left `config.md` alone: move what you want kept into "
-                    f"`{os.path.basename(new)}`, then delete `config.md`.")
-                continue
-            os.rename(old, new)
-            self.log(f"renamed {shown}/config.md to {os.path.basename(new)}, its new name")
-
     # Each project's own note: the owner's way to see and change its settings
 
     # Links visor writes, to a note or file in the notes: by its path from the tasks folder, which Obsidian

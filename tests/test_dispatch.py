@@ -2174,31 +2174,6 @@ class DispatchTest(unittest.TestCase):
         with open(self.panel(name), "w") as f:
             f.write("\n".join(lines) + "\n")
 
-    # ONE-TIME MIGRATION (2026-11): to be deleted with it.
-    def test_notes_called_config_md_are_named_after_their_character_or_project_once_and_nothing_is_overwritten(self):
-        self.d.once()
-        mara = os.path.dirname(self.character("Mara", "A ferry pilot."))
-        os.rename(os.path.join(mara, "Mara.md"), os.path.join(mara, "config.md"))
-        game = os.path.dirname(self.panel("game"))
-        os.rename(self.panel("game"), os.path.join(game, "config.md"))
-        tom = os.path.dirname(self.character("Tom", "A deckhand."))
-        with open(os.path.join(tom, "config.md"), "w") as f:
-            f.write("An older note of Tom's.\n")
-        d = self.fresh()
-        self.assertEqual(sorted(n for n in os.listdir(mara) if n.endswith(".md")), ["Mara.md", "memory.md"])
-        self.assertIn("A ferry pilot.", open(os.path.join(mara, "Mara.md")).read())
-        self.assertEqual(sorted(os.listdir(game)), ["game.md"])
-        self.assertIn("renamed tasks/characters/Mara/config.md to Mara.md, its new name", self.logged)
-        self.assertEqual(open(os.path.join(tom, "config.md")).read(), "An older note of Tom's.\n", "left alone")
-        self.assertIn("A deckhand.", open(os.path.join(tom, "Tom.md")).read())
-        d.sync_server_note()
-        with open(os.path.join(self.tasks, "VISOR.md")) as f:
-            said = f.read()
-        self.assertIn("> [!warning] Visor could not give these notes their new names\n> - `tasks/characters/Tom/` has "
-                      "both `config.md` and `Tom.md`. Visor now reads `Tom.md` and left `config.md` alone", said)
-        self.fresh()
-        self.assertEqual(open(os.path.join(tom, "config.md")).read(), "An older note of Tom's.\n", "and every time")
-
     def test_a_character_s_folder_renamed_in_the_notes_app_keeps_their_note_by_its_old_name(self):
         mara = os.path.dirname(self.character("Mara", "A ferry pilot."))
         marah = os.path.join(os.path.dirname(mara), "Marah")

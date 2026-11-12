@@ -181,7 +181,7 @@ def read_loose(text):
     return asked
 
 
-def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=(), renamed=(), loose=None):
+def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=(), loose=None):
     """The note, whole. said: the settings as they stand ({"auto", "paused", "default_model",
     "review", "reviewer", "direct"} and each
     TIMING setting). version: {"commits": [(when, message, hash)],
@@ -201,9 +201,6 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
     if problems:
         lines += ["> [!warning] Visor could not read all of this, and kept what was set before"]
         lines += [f"> - {problem}" for problem in problems] + [""]
-    if renamed:  # ONE-TIME MIGRATION (2026-11)
-        lines += ["> [!warning] Visor could not give these notes their new names"]
-        lines += [f"> - {problem}" for problem in renamed] + [""]
     lines += ["## Version", ""]
     lines += [f"- {when} · {message} (`{short}`)" for when, message, short in version.get("commits", [])] or ["- (not known)"]
     lines.append("")

@@ -441,7 +441,6 @@ class Server:
                                    (self.reading, self.reading_found, self._reading_problems),
                                    {"installed": installed, "up": installed and self.vpn_up(), "proxy": self.vpn_proxy},
                                    getattr(self, "logs_said", ()),
-                                   renamed=self.migration_problems,  # ONE-TIME MIGRATION (2026-11)
                                    loose=self.loose_view())
         if fresh != text:
             write_file(path, fresh)
