@@ -14,7 +14,7 @@ import unittest
 HERE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, HERE)
 import models  # noqa: E402
-import testmodels  # noqa: E402
+import models_for_testing  # noqa: E402
 
 
 class ModelsTest(unittest.TestCase):
@@ -62,9 +62,9 @@ class ModelsTest(unittest.TestCase):
         self.assertEqual(models.render("fox", model), text)
 
     def test_a_note_written_back_reads_as_it_was(self):
-        for kind, table in (("language", testmodels.LANGUAGE), ("image", testmodels.IMAGE)):
+        for kind, table in (("language", models_for_testing.LANGUAGE), ("image", models_for_testing.IMAGE)):
             for name, settings_ in table.items():
-                model = testmodels.note(kind, settings_)
+                model = models_for_testing.note(kind, settings_)
                 text = models.render(name, model, found="yes")
                 self.assertEqual(models.read(text), (model, []), name)
                 self.assertIn("\nOn this server: yes\n", text)
@@ -128,7 +128,7 @@ class ModelsTest(unittest.TestCase):
         self.assertIn("> [!warning] Visor cannot use this model until this is fixed", text)
 
     def test_the_default_is_the_one_marked_so(self):
-        testmodels.write_notes(self.folder)
+        models_for_testing.write_notes(self.folder)
         specs, default = models.images(models.load(self.folder))
         self.assertEqual(default, "realistic-vision")
         self.assertEqual(specs["anime-xl"]["prefix"], "best quality, ")
@@ -136,7 +136,7 @@ class ModelsTest(unittest.TestCase):
         self.assertTrue(specs["anime-vpred"]["vpred"])
 
     def test_the_files_an_image_model_needs_are_looked_for_where_comfyui_keeps_them(self):
-        spec = models.image_spec(testmodels.note("image", testmodels.IMAGE["chroma"]))
+        spec = models.image_spec(models_for_testing.note("image", models_for_testing.IMAGE["chroma"]))
         comfy = os.path.join(self.tmp.name, "comfy")
         self.assertEqual(len(models.on_disk(spec, comfy)), 3)
         for folder, name in (("diffusion_models", "Chroma1-HD.safetensors"), ("text_encoders", "t5xxl_fp8_e4m3fn.safetensors"),
@@ -146,7 +146,7 @@ class ModelsTest(unittest.TestCase):
         self.assertEqual(models.on_disk(spec, comfy), [])
 
     def test_the_harness_settings_list_the_language_models_in_the_notes(self):
-        testmodels.write_notes(self.folder)
+        models_for_testing.write_notes(self.folder)
         out = os.path.join(self.tmp.name, "harness")
         models.harness_settings(models.languages(models.load(self.folder)), HERE, out)
         pi = json.load(open(os.path.join(out, "pi", "models.json")))["providers"]["ollama"]["models"]

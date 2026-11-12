@@ -18,7 +18,7 @@ import dispatch  # noqa: E402
 import kinds  # noqa: E402
 import projects  # noqa: E402
 import retention  # noqa: E402
-import testmodels  # noqa: E402
+import models_for_testing  # noqa: E402
 from dispatcher.notes import parse_header  # noqa: E402
 
 DAY = 86400
@@ -45,7 +45,7 @@ class LogsTest(unittest.TestCase):
                 sandbox = no
                 work = {root}/media-work
                 """))
-        testmodels.write_notes(os.path.join(self.tasks, "models"))
+        models_for_testing.write_notes(os.path.join(self.tasks, "models"))
         self.state = os.path.join(root, "state")
         os.makedirs(self.state)
         with open(os.path.join(self.state, "starters.json"), "w") as f:

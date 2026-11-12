@@ -23,7 +23,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 HERE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 import media  # noqa: E402
-import testmodels  # noqa: E402
+import models_for_testing  # noqa: E402
 
 FAKE_WHISPER = textwrap.dedent('''\
     #!/usr/bin/python3
@@ -205,7 +205,7 @@ class MediaTest(unittest.TestCase):
             self.write(os.path.join(tools, "models", "comfy", "checkpoints", name), "weights")
         self.write(os.path.join(tools, "models", "comfy", "loras", media.DMD2), "weights")
         self.settings = media.Settings({"tools": tools, "comfy_python": "/usr/bin/python3", "minutes": "5"}, root)
-        self.settings.image_models, self.settings.default_image = testmodels.image_specs()
+        self.settings.image_models, self.settings.default_image = models_for_testing.image_specs()
         self.job = os.path.join(root, "job")
         os.makedirs(self.job)
 
@@ -503,7 +503,7 @@ class MediaTest(unittest.TestCase):
         for folder, name in (("checkpoints", "ltxv-2b.safetensors"), ("text_encoders", "t5xxl_fp8_e4m3fn.safetensors"),
                              ("checkpoints", "wan-aio.safetensors")):
             self.write(os.path.join(comfy, folder, name), "weights")
-        self.settings.video_models, self.settings.default_video = testmodels.video_specs()
+        self.settings.video_models, self.settings.default_video = models_for_testing.video_specs()
 
     def frames_of(self, clip):
         return subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries",
@@ -561,7 +561,7 @@ class MediaTest(unittest.TestCase):
             self.assertEqual(f.read(8), b"\x89PNG\r\n\x1a\n")
 
     def test_a_clip_s_length_is_rounded_to_the_frames_its_model_makes_and_bad_lines_are_said(self):
-        self.settings.video_models, self.settings.default_video = testmodels.video_specs()
+        self.settings.video_models, self.settings.default_video = models_for_testing.video_specs()
         spec = lambda **o: media.video_spec(dict({"prompt": "x"}, **o), self.settings.video_models,
                                             self.settings.default_video)
         self.assertEqual(spec(seconds="3")["frames"], 73)
@@ -696,7 +696,7 @@ class MediaTest(unittest.TestCase):
             self.write(os.path.join(comfy, folder, name), "weights")
 
     def test_an_edit_goes_by_its_pictures_with_built_in_nodes_and_every_required_input(self):
-        self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
+        self.settings.edit_models, self.settings.default_edit = models_for_testing.edit_specs()
         self.edit_files()
         first, second = os.path.join(self.tmp.name, "hat.png"), os.path.join(self.tmp.name, "mara.jpg")
         self.write(first, "png")
@@ -714,11 +714,11 @@ class MediaTest(unittest.TestCase):
                          "the fast LoRA's own steps")
         self.assertEqual(graph["lora"]["inputs"]["lora_name"], "edit-lightning-4steps.safetensors")
         self.assertEqual(graph["latent"]["inputs"]["pixels"], ["scaled1", 0], "the first picture is the one edited")
-        full = media.edit_spec({"prompt": "x", "quality": "full"}, *testmodels.edit_specs())
+        full = media.edit_spec({"prompt": "x", "quality": "full"}, *models_for_testing.edit_specs())
         self.assertEqual((full["steps"], full["cfg"], full["lora"]), (20, 2.5, None))
 
     def test_each_picture_is_edited_in_turn_by_one_start_of_the_edit_model(self):
-        self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
+        self.settings.edit_models, self.settings.default_edit = models_for_testing.edit_specs()
         self.edit_files()
         drawn = [os.path.join(self.tmp.name, f"drawn{i}.png") for i in range(3)]
         reference = os.path.join(self.tmp.name, "mara.jpg")
@@ -743,7 +743,7 @@ class MediaTest(unittest.TestCase):
             header = json.dumps({"w": {"dtype": dtype, "shape": [4], "data_offsets": [0, 4]}, "__metadata__": {}}).encode()
             with open(path, "wb") as f:
                 f.write(len(header).to_bytes(8, "little") + header + b"\0" * 4)
-        self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
+        self.settings.edit_models, self.settings.default_edit = models_for_testing.edit_specs()
         self.edit_files()
         spec = self.settings.edit_models[self.settings.default_edit]
         weights(os.path.join(self.settings.comfy_models, "diffusion_models", spec["file"]), "F8_E4M3")
@@ -760,7 +760,7 @@ class MediaTest(unittest.TestCase):
         with self.assertRaises(media.MediaError) as caught:
             media.edit(self.settings, {"prompt": "x"}, ["a.png"], self.job)
         self.assertIn("there are no edit models yet", str(caught.exception))
-        self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
+        self.settings.edit_models, self.settings.default_edit = models_for_testing.edit_specs()
         for options, pictures, said in (({"prompt": ""}, ["a.png"], "there is no instruction"),
                                         ({"prompt": "x"}, [], "there is no picture to edit"),
                                         ({"prompt": "x"}, [os.path.join(self.tmp.name, "a.png")], "not downloaded yet")):
@@ -771,7 +771,7 @@ class MediaTest(unittest.TestCase):
             self.assertIn(said, str(caught.exception))
 
     def test_a_character_set_is_asked_for_each_picture_as_it_comes(self):
-        self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
+        self.settings.edit_models, self.settings.default_edit = models_for_testing.edit_specs()
         self.edit_files()
         ref = os.path.join(self.tmp.name, "front.png")
         self.write(ref, "png")
@@ -790,7 +790,7 @@ class MediaTest(unittest.TestCase):
         self.assertIn("nothing to make", str(caught.exception))
 
     def test_a_character_set_goes_by_pictures_of_its_own_for_each_prompt_and_reads_them_at_half_size(self):
-        self.settings.edit_models, self.settings.default_edit = testmodels.edit_specs()
+        self.settings.edit_models, self.settings.default_edit = models_for_testing.edit_specs()
         self.edit_files()
         bed, drinks, front = (os.path.join(self.tmp.name, n) for n in ("bed.png", "drinks.jpg", "front.png"))
         for picture in (bed, drinks, front):
@@ -806,7 +806,7 @@ class MediaTest(unittest.TestCase):
             self.assertEqual(graph["scaled2"]["inputs"]["megapixels"], 0.5)
             self.assertEqual(graph["canvas"]["inputs"]["megapixels"], 1.0)
             self.assertEqual(graph["latent"]["inputs"]["pixels"], ["canvas", 0], "made at picture 1's full size")
-        whole = media.edit_graph(dict(media.edit_spec({"prompt": "x"}, *testmodels.edit_specs()), seed=1),
+        whole = media.edit_graph(dict(media.edit_spec({"prompt": "x"}, *models_for_testing.edit_specs()), seed=1),
                                  ["picture1.png"])
         self.assertNotIn("canvas", whole, "at full size, the picture read is the canvas")
         self.assertEqual(whole["latent"]["inputs"]["pixels"], ["scaled1", 0])

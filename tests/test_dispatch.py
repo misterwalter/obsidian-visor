@@ -28,7 +28,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 import dispatch  # noqa: E402
 import kinds  # noqa: E402
-import testmodels  # noqa: E402
+import models_for_testing  # noqa: E402
 # Self-update reads where visor is in its own module: the tests stand in a checkout there.
 import dispatcher.server as visor_server  # noqa: E402
 from dispatcher.notes import flagged  # noqa: E402
@@ -237,13 +237,13 @@ class DispatchTest(unittest.TestCase):
         self.other_run = False
         self.logged = []
         self.clock = time.time() + 1000  # every note has settled unless a test says otherwise
-        testmodels.write_notes(os.path.join(self.tasks, "models"))
+        models_for_testing.write_notes(os.path.join(self.tasks, "models"))
         # The starter model notes count as offered already, so that none joins the models a test sets up.
         os.makedirs(self.state, exist_ok=True)
         with open(os.path.join(self.state, "starters.json"), "w") as f:
             json.dump(["dreamshaper", "looker", "pix2pix", "small"], f)
         with open(os.path.join(self.state, "ollama.json"), "w") as f:
-            json.dump(testmodels.registered(), f)
+            json.dump(models_for_testing.registered(), f)
         self.vpn = True  # the tunnel is up unless a test says otherwise
         self.vpn_installed = True  # as on a server with one, which never goes without it
         self.kept_warm = []
@@ -454,7 +454,7 @@ class DispatchTest(unittest.TestCase):
         tools = os.path.join(self.tmp.name, "tools")
         os.makedirs(os.path.join(tools, "models", "comfy", "checkpoints"))
         for name in names:
-            open(os.path.join(tools, "models", "comfy", "checkpoints", testmodels.IMAGE[name]["file"]), "w").close()
+            open(os.path.join(tools, "models", "comfy", "checkpoints", models_for_testing.IMAGE[name]["file"]), "w").close()
         with open(self.config, "a") as f:
             f.write(f"\n[media]\ntools = {tools}\n")
         self.d = self.fresh()
@@ -1658,7 +1658,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("tick `Default` in the note", note)
 
     def test_an_edit_s_negative_reaches_its_workflow(self):
-        spec = dispatch.media.edit_spec({"prompt": "take the hat off", "negative": "a hat"}, *testmodels.edit_specs())
+        spec = dispatch.media.edit_spec({"prompt": "take the hat off", "negative": "a hat"}, *models_for_testing.edit_specs())
         graph = dispatch.media.edit_graph(spec, ["picture1.png"])
         self.assertEqual(graph["negative"]["inputs"]["prompt"], "a hat")
         self.assertEqual(graph["positive"]["inputs"]["prompt"], "take the hat off")
@@ -2717,7 +2717,7 @@ class DispatchTest(unittest.TestCase):
 
     def more_models(self, seers=(), loras=()):
         """A vision model and LoRAs beside the usual models, as an owner adds them."""
-        testmodels.write_notes(os.path.join(self.tasks, "models"), language={}, image={}, edit={},
+        models_for_testing.write_notes(os.path.join(self.tasks, "models"), language={}, image={}, edit={},
                                seers=seers, loras=loras)
         self.d.load_models()
 
@@ -4200,7 +4200,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("`text_encoders/t5.safetensors`, 1 MB: a part of a model, named on a model's note beside its "
                       "main file, so it has no note of its own\n- [ ] Delete\n", section)
         self.assertNotIn("official", section, "a note uses it")
-        self.assertNotIn(testmodels.IMAGE["anime-xl"]["file"], section, "a note names it")
+        self.assertNotIn(models_for_testing.IMAGE["anime-xl"]["file"], section, "a note names it")
         listed, built = section.split("### Built into visor")
         self.assertNotIn(dispatch.media.DMD2, listed)
         self.assertIn(f"- `loras/{dispatch.media.DMD2}`, 1 MB: the speed-up", built)
@@ -4885,7 +4885,7 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         self.d.once()
         self.assertTrue(os.path.exists(os.path.join(self.d.media.comfy_models, "checkpoints",
-                                                    testmodels.IMAGE["anime-xl"]["file"])))
+                                                    models_for_testing.IMAGE["anime-xl"]["file"])))
         note = open(path).read()
         self.assertIn("\nOn this server: `Delete` and `Fetch` are both ticked, so visor does neither until one is "
                       "unticked; yes", note)
@@ -5076,7 +5076,7 @@ class DispatchTest(unittest.TestCase):
         import zipfile
         tools = os.path.join(self.tmp.name, "tools")
         os.makedirs(os.path.join(tools, "models", "comfy", "checkpoints"))
-        open(os.path.join(tools, "models", "comfy", "checkpoints", testmodels.IMAGE["anime-xl"]["file"]), "w").close()
+        open(os.path.join(tools, "models", "comfy", "checkpoints", models_for_testing.IMAGE["anime-xl"]["file"]), "w").close()
         with zipfile.ZipFile(os.path.join(tools, "models", "voices-v1.0.bin"), "w") as z:
             for voice in ("af_heart", "bm_george", "jf_alpha"):
                 z.writestr(voice + ".npy", b"")
@@ -5097,7 +5097,7 @@ class DispatchTest(unittest.TestCase):
             self.assertIn("- Japanese: `jf_alpha`", self.read("samples", name), name)
         self.assertIn("Transcription is not installed on this server yet.", self.read("samples", "sample-transcribe.md"))
         # A model downloaded later shows up without anyone deleting the file.
-        open(os.path.join(tools, "models", "comfy", "checkpoints", testmodels.IMAGE["anime-15"]["file"]), "w").close()
+        open(os.path.join(tools, "models", "comfy", "checkpoints", models_for_testing.IMAGE["anime-15"]["file"]), "w").close()
         d.ensure_sample()
         self.assertRegex(self.read("samples", "sample-image.md"), r"\| `anime-15` \|[^\n]*\| yes \|")
         self.assertIn("updated sample-image.md", self.logged)
@@ -5106,7 +5106,7 @@ class DispatchTest(unittest.TestCase):
         tools = os.path.join(self.tmp.name, "tools")
         os.makedirs(os.path.join(tools, "models", "comfy", "checkpoints"))
         for model in ("anime-xl", "realistic-vision"):
-            open(os.path.join(tools, "models", "comfy", "checkpoints", testmodels.IMAGE[model]["file"]), "w").close()
+            open(os.path.join(tools, "models", "comfy", "checkpoints", models_for_testing.IMAGE[model]["file"]), "w").close()
         with open(self.config, "a") as f:
             f.write(f"\n[media]\ntools = {tools}\n")
         d = self.fresh()

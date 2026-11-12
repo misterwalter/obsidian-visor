@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 import dispatch  # noqa: E402
 import opera  # noqa: E402
-import testmodels  # noqa: E402
+import models_for_testing  # noqa: E402
 
 PYTHON = os.environ.get("VISOR_OPERA_PYTHON") or os.path.expanduser("~/opera-venv/bin/python")
 CAST = ["Mara", "Tom", "Ines", "Rook", "Vell", "Quill", "Sable"]
@@ -46,7 +46,7 @@ class OperaGamesTest(unittest.TestCase):
                 [media]
                 sandbox = no
                 """))
-        testmodels.write_notes(os.path.join(self.tasks, "models"))
+        models_for_testing.write_notes(os.path.join(self.tasks, "models"))
         self.state = os.path.join(root, "state")
         os.makedirs(self.state)
         with open(os.path.join(self.state, "starters.json"), "w") as f:
