@@ -123,6 +123,26 @@ class OrdersTest(unittest.TestCase):
             self.assertEqual(self.read(written)[0], "A VIE H", repr(written))
         self.assertEqual(self.read("support Budapest")[0], "A VIE S A BUD")
 
+    def test_the_unit_s_own_place_said_anywhere_the_rules_own_names_and_a_line_said_twice_are_read(self):
+        adriatic = ["F ADR - ION", "F ADR - ALB", "F ADR - VEN", "F ADR - TRI", "F ADR H"]
+        places = opera.Places(NAMES, {"ionian": "ION", "adriatic": "ADR", "lyons": "LYO", "mid": "MAO", "no": "NAF",
+                                      "s": "STP"})
+        for written in ("to ion from adr", "ion from adr", "ionian", "Adriatic -> Ionian", "to the ionian",
+                        "adr - ion adr - ion"):
+            self.assertEqual(opera.read_order(written, adriatic, places, home="ADR")[0], "F ADR - ION", written)
+        self.assertEqual(self.read("gal gal")[0], "A VIE - GAL", "said twice, read once")
+        self.assertEqual(opera.read_order("no", ["WAIVE", "A VIE B"], places)[0], "WAIVE",
+                         "an alias that is a word of orders is never a place")
+        self.assertEqual(opera.read_order("s bud gal", VIENNA, places, home="VIE")[0], "A VIE S A BUD - GAL")
+
+    def test_a_build_reads_f_and_a_as_the_kind_of_unit(self):
+        builds = ["A TRI B", "F TRI B", "A VIE B", "WAIVE"]
+        for written in ("f in in tri", "f trieste", "F Tri", "fleet in Trieste", "build a fleet in trieste"):
+            self.assertEqual(opera.read_order(written, builds, PLACES)[0], "F TRI B", written)
+        for written in ("a tri", "army trieste", "a trieste"):
+            self.assertEqual(opera.read_order(written, builds, PLACES)[0], "A TRI B", written)
+        self.assertIn("it could be any of", opera.read_order("trieste", builds, PLACES)[1], "neither said: asked")
+
     def test_what_cannot_be_done_says_what_can(self):
         order, said = self.read("to Rome")
         self.assertIsNone(order)
@@ -282,8 +302,10 @@ class PageTest(unittest.TestCase):
         self.assertEqual(form["orders"]["A Vienna"], "to galcia")
         state["form"] = form
         shown = opera.page(state, PLACES, "m.svg")
-        self.assertIn("A Vienna: to galcia  ✓ A Vienna to Galicia", shown)
-        self.assertIn("A Budapest: to Rome  ✗ visor could not read `rome` as a place. It can go to: Galicia,", shown)
+        self.assertIn("A Vienna: to galcia\n", shown, "the line as written")
+        self.assertIn("- A Vienna: ✓ A Vienna to Galicia", shown)
+        self.assertIn("A Budapest: to Rome\n", shown, "the line as written")
+        self.assertIn("- A Budapest: ✗ visor could not read `rome` as a place. It can go to: Galicia,", shown)
         self.assertEqual(opera.read_form(shown)[0]["orders"]["A Vienna"], "to galcia", "the mark is not read back")
         read, fine = opera.owner_orders(state, PLACES)
         self.assertFalse(fine)

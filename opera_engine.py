@@ -12,7 +12,8 @@ game.json in the same folder is the game, in the package's own saved form. Comma
     check     which of some orders the rules refuse, and why: {"power", "orders"}
     process   the phase resolved: {"orders": {power: [orders]}, "orders_map": file, "said": text}.
               Before resolving, the board with these orders on it is drawn to orders_map
-    draw      the map as it stands: {"out": file, "said": text}
+    draw      the map as it stands: {"out": file, "said": text, "orders": {power: [orders]}}, with the
+              orders given drawn on it, if any (the owner's, before the phase resolves); not saved
     end       the game declared over, as a draw among those left
 """
 
@@ -50,6 +51,18 @@ def names(game):
     return found
 
 
+def aliases(game):
+    """The everyday names the rules know each place by, beside its own: {"ionian": "ION", "lyons": "LYO",
+    "mid": "MAO"}. Only plain words, for places the map has."""
+    codes = {code.upper() for code in game.map.loc_name.values()}
+    found = {}
+    for alias, code in game.map.aliases.items():
+        alias, code = alias.strip(), code.strip().upper()
+        if code in codes and re.fullmatch(r"[A-Z][A-Z .'-]*", alias):
+            found.setdefault(alias.lower(), code)
+    return found
+
+
 def view(game):
     possible = game.get_all_possible_orders()
     powers = {}
@@ -64,7 +77,7 @@ def view(game):
         }
     winner = [name for name, power in game.powers.items() if len(power.centers) >= WIN]
     return {"phase": game.get_current_phase(), "type": game.phase_type, "powers": powers,
-            "done": bool(game.is_game_done), "winner": winner, "names": names(game),
+            "done": bool(game.is_game_done), "winner": winner, "names": names(game), "aliases": aliases(game),
             "centres": sorted(game.map.scs), "win": WIN}
 
 
@@ -113,7 +126,12 @@ def main(command):
                  "view": view(game)}
         save(game)
     elif command == "draw":
-        draw(load(), asked["out"], asked.get("said", ""))
+        # With orders, the board with them on it, as they stand before the phase resolves: the game is not saved.
+        game = load()
+        for power, orders in (asked.get("orders") or {}).items():
+            if orders:
+                game.set_orders(power, orders)
+        draw(game, asked["out"], asked.get("said", ""), orders=bool(asked.get("orders")))
     elif command == "end":
         game = load()
         game.draw()

@@ -36,14 +36,22 @@ the board, what was said to them, what happened last phase and how their orders
 were read, and their private notebook, which they write out whole each time. They
 answer in a fixed shape (Ollama's `format`): messages only to countries still in
 it, orders only from the engine's list for each unit. Anything else, a model's
-or the owner's, is read forgivingly (`opera.read_order`): codes or names, any
-case, near misspellings, the unit's own place said or not; what cannot be read
-is said, with what is possible.
+or the owner's, is read forgivingly (`opera.read_order`): codes, names or the
+everyday names the rules know each place by (`ionian`, `lyons`, `mid`: the
+engine's own aliases), any case, near misspellings, the unit's own place said or
+not and anywhere in the line (`to ion from adr`), `f`/`a` for the kind of unit
+built, and a line said twice over read once; what cannot be read is said, with
+what is possible. The owner's order lines are never written to: how visor reads
+each goes in a list below them, so that its writing the page back never changes a
+line they may be changing too (two edits to one line, merged by sync, double it).
 
 **The folder in the notes**, `opera/<game>/`: the note, now the game's page,
-with the map, who holds what, what is new, and **Your move** (the owner's
-messages, orders and Ready, Propose a draw, Accept the draw); `maps/`, one map a
-phase, redrawn with its orders once resolved, each province labelled with the
+with the map of the phase before, everyone's orders drawn on it, above the
+board now, which shows the owner's orders as visor reads them, redrawn whenever
+that changes (never anyone else's before the phase resolves); who holds what,
+what is new, and **Your move** (the owner's messages, orders and Ready, Propose a
+draw, Accept the draw); `maps/`, one map a phase, redrawn with its orders once
+resolved, each province labelled with the
 code its orders use (`PAR`, `BUR`); `talk/`, a note a conversation;
 `memory/`, the notebooks; `history.md`; and `.visor/`, the game itself, which
 the notes app does not show (its name starts with a dot) and Obsidian Sync never

@@ -192,11 +192,23 @@ class OperaGamesTest(unittest.TestCase):
         self.write_page(page, "- [ ] Ready: lock these orders in", "- [x] Ready: lock these orders in")
         self.d.once()
         text = self.page(page)
-        self.assertIn("A Vienna: to galcia  ✓ A Vienna to Galicia", text)
-        self.assertIn("A Budapest: supprt vienna -> galicia  ✓ A Budapest supports A Vienna to Galicia", text)
-        self.assertIn("F Trieste: to Rome  ✗ it cannot reach Rome. It can go to: Adriatic Sea, Albania, Venice", text)
+        self.assertIn("A Vienna: to galcia\n", text, "the line as written")
+        self.assertIn("- A Vienna: ✓ A Vienna to Galicia", text)
+        self.assertIn("A Budapest: supprt vienna -> galicia\n", text, "the line as written")
+        self.assertIn("- A Budapest: ✓ A Budapest supports A Vienna to Galicia", text)
+        self.assertIn("F Trieste: to Rome\n", text, "the line as written")
+        self.assertIn("- F Trieste: ✗ it cannot reach Rome. It can go to: Adriatic Sea, Albania, Venice", text)
         self.assertIn("- [ ] Ready: lock these orders in", text, "not taken while a line cannot be read")
         self.assertNotIn("AUSTRIA", self.state_of()["orders"])
+        # The board now shows the orders visor can read, and only the owner's.
+        self.assertIn("**Spring 1901: the board now**, with your orders as visor reads them.", text)
+        drawn_orders = self.state_of()["drawn"]["orders"]
+        self.assertEqual(list(drawn_orders), ["AUSTRIA"], "only the owner's")
+        self.assertEqual(sorted(drawn_orders["AUSTRIA"]), ["A BUD S A VIE - GAL", "A VIE - GAL"])
+        board = os.path.join(self.tasks, "opera", "Grand", "maps", "Grand 1901 Spring.svg")
+        with open(board) as f:
+            drawn = f.read()
+        self.assertIn("Spring 1901", drawn)
         self.write_page(page, "F Trieste: to Rome", "F Trieste: hold")
         self.write_page(page, "- [ ] Ready: lock these orders in", "- [x] Ready: lock these orders in")
         self.run_until(lambda: self.state_of()["view"]["phase"] != "S1901M")
@@ -206,6 +218,10 @@ class OperaGamesTest(unittest.TestCase):
         with open(spring) as f:
             self.assertIn("Spring 1901", f.read())
         self.assertIn("A Vienna to Galicia", self.page(os.path.join(self.tasks, "opera", "Grand", "history.md")))
+        # Last phase's map, everyone's orders on it, above the board now.
+        text = self.page(page)
+        self.assertIn("**Spring 1901: everyone's orders.**\n\n![[Grand 1901 Spring.svg]]", text)
+        self.assertLess(text.index("everyone's orders"), text.index("the board now"))
 
     def test_a_draw_proposed_and_accepted_by_everyone_left_ends_the_game_shared(self):
         self.propose = self.accept = True

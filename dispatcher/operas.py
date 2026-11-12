@@ -166,12 +166,34 @@ class Operas:
 
     # The game's folder in the notes
 
-    def _opera_draw(self, name, state):
-        """The map of the phase as it stands, into the game's maps/."""
+    def _opera_draw(self, name, state, orders=None):
+        """The map of the phase as it stands, into the game's maps/: with orders ({power: [orders]}), with them
+        drawn on it, the owner's as visor reads them before the phase resolves, and never anyone else's."""
         phase = state["view"]["phase"]
-        self._engine(name, "draw", {"out": "map.svg", "said": opera.phase_said(phase, state["start"])})
+        self._engine(name, "draw", {"out": "map.svg", "said": opera.phase_said(phase, state["start"]),
+                                    "orders": orders or {}})
         target = os.path.join(self._opera_subfolder(name, MAPS), self._map_file(name, phase, state["start"]))
         copy_in(os.path.join(self._opera_dir(name), "map.svg"), target)
+        state["drawn"] = {"phase": phase, "orders": orders or {}}
+
+    def _owner_orders_now(self, state, places):
+        """The owner's orders this phase as visor reads them: those locked in, else every line it can read now.
+        {} when they play no country, or the game is over."""
+        you = state["you"]
+        if not you or state["over"] or you in state["out"] or not opera.to_order(state, you):
+            return {}
+        if you in state["orders"]:
+            given = [o for o in state["orders"][you] if o != "WAIVE"]
+        else:
+            given = [order for _, _, order, _ in opera.owner_orders(state, places)[0] if order and order != "WAIVE"]
+        return {you: given} if given else {}
+
+    def _last_map(self, name, state):
+        """The map of the phase before, with everyone's orders on it, when it is there."""
+        if not state["history"]:
+            return None
+        last = self._map_file(name, state["history"][-1]["phase"], state["start"])
+        return last if os.path.exists(os.path.join(self._opera_subfolder(name, MAPS), last)) else None
 
     def _put(self, path, text):
         try:
@@ -195,7 +217,7 @@ class Operas:
         folder = os.path.join(self.opera_folder, name)
         page = self._opera_page(name)
         talk_folder = self._opera_subfolder(name, TALK)
-        places = opera.Places(state["view"]["names"])
+        places = opera.places_of(state["view"])
         you = state["you"]
         secret = you is not None and not state["over"]
         try:
@@ -212,7 +234,16 @@ class Operas:
         if you:
             news = [m for m in opera.heard(state, you)[state.get("news_seen", 0):] if m["from"] != you]
         map_file = self._map_file(name, state["view"]["phase"], state["start"])
-        body = opera.page(state, places, map_file, self._opera_waiting(state), news, link=self.character_link)
+        # The map now, redrawn with the owner's orders on it whenever visor reads them differently.
+        orders = self._owner_orders_now(state, places)
+        drawn = state.get("drawn") or {}
+        if drawn.get("phase") != state["view"]["phase"] or drawn.get("orders", {}) != orders:
+            try:
+                self._opera_draw(name, state, orders)
+            except (OSError, ValueError, media.MediaError) as error:
+                self.log(f"opera {name}: the map with your orders could not be drawn: {error}")
+        body = opera.page(state, places, map_file, self._opera_waiting(state), news, link=self.character_link,
+                          last_map=self._last_map(name, state), orders_drawn=bool(orders))
         if state.get("problem"):
             body = body.replace("\n\n", f"\n\n> [!warning] The last step could not be taken\n> {state['problem']}\n\n", 1)
         text = owner_text.rstrip() + "\n\n---\n\n" + body
@@ -365,12 +396,12 @@ class Operas:
             done.append(f"you sent {len(sent)} message{'s' if len(sent) != 1 else ''}")
         if ready and you not in state["orders"]:
             if opera.to_order(state, you):
-                read, fine = opera.owner_orders(state, opera.Places(state["view"]["names"]))
+                read, fine = opera.owner_orders(state, opera.places_of(state["view"]))
                 if not fine:
                     done.append("Ready not taken: an order could not be read")
                     return "; ".join(done)
                 state["orders"][you] = [order for _, _, order, _ in read if order and order != "WAIVE"]
-                state["read"][you] = [f"{label}: {written_} → {opera.Places(state['view']['names']).order_said(order)}"
+                state["read"][you] = [f"{label}: {written_} → {opera.places_of(state['view']).order_said(order)}"
                                       for label, written_, order, _ in read if order and written_.strip()]
                 if propose:
                     state["proposals"].append(you)
@@ -471,7 +502,7 @@ class Operas:
         state = self._opera_load(name)
         if not state:
             return None, False
-        places = opera.Places(state["view"]["names"])
+        places = opera.places_of(state["view"])
         step = opera.next_step(state)
         if step[0] in ("talk", "orders", "recap"):
             if power is None:

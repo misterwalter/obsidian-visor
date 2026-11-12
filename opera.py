@@ -353,9 +353,10 @@ def _plain(text):
 
 
 class Places:
-    """The places' names in every form a player might write them: code, name, and near misses."""
+    """The places' names in every form a player might write them: code, name, the everyday names the
+    rules know them by (aliases: "ionian", "lyons", "mid"), and near misses."""
 
-    def __init__(self, names):
+    def __init__(self, names, aliases=None):
         self.names = names
         self.forms = {}
         for code, name in names.items():
@@ -364,6 +365,12 @@ class Places:
             self.forms.setdefault((code.lower(),), code)
             plain = tuple(w for w in _plain(name) if w not in ("coast",))
             self.forms.setdefault(plain, code)
+        # An alias that is also a word of orders ("no", "s") or a coast is left out, so it is never read as a place.
+        words = set(FILLER) | set(COASTS) | {w for forms in VERBS.values() for w in forms}
+        for alias, code in (aliases or {}).items():
+            form = tuple(_plain(alias))
+            if form and code in names and not (len(form) == 1 and form[0] in words):
+                self.forms.setdefault(form, code)
         self.longest = max(len(f) for f in self.forms)
         self.single = {" ".join(f): code for f, code in self.forms.items()}
 
@@ -413,6 +420,11 @@ class Places:
         return " ".join(out)
 
 
+def places_of(view):
+    """The places of a game as the engine last showed it, with the names the rules know them by."""
+    return Places(view["names"], view.get("aliases"))
+
+
 def _verb(words):
     for word in words:
         for kind, forms in VERBS.items():
@@ -433,6 +445,10 @@ def read_order(text, legal, places, home=None):
     to Galicia" on Vienna's line) or leave out. Exact orders pass as they are; otherwise the kind of
     order and the places named are matched, forgiving case, codes or names, and near misspellings."""
     written = (text or "").strip()
+    # A line said twice over ("vie vie"), as a sync of two edits to it at once can leave it, is read once.
+    said = written.split()
+    if said and len(said) % 2 == 0 and said[:len(said) // 2] == said[len(said) // 2:]:
+        written = " ".join(said[:len(said) // 2])
     if written.upper() in legal:
         return written.upper(), ""
     squeezed = re.sub(r"\s+", " ", written.upper())
@@ -441,11 +457,13 @@ def read_order(text, legal, places, home=None):
     words = _plain(written)
     found, rest = places.find(words)
     verb = _verb(rest)
-    wants_fleet = "fleet" in words or ("f" in words and verb == "build")
-    wants_army = "army" in words or ("a" in words and verb == "build")
     via = "via" in words or "convoy" in words and verb != "convoy"
-    if home and found and base(found[0]) == base(home) and verb != "build":
-        found = found[1:]
+    # The unit's own place, wherever it is named ("to Ionian from Adriatic" on the Adriatic's line), is not where
+    # it goes: no order names it again.
+    if home and verb != "build":
+        at = next((i for i, place in enumerate(found) if base(place) == base(home)), None)
+        if at is not None:
+            found = found[:at] + found[at + 1:]
     kinds = {shape(o)[0] for o in legal}
     unknown = [w for w in rest if w not in FILLER and not any(w in forms for forms in VERBS.values())
                and not w.isdigit()]
@@ -464,6 +482,9 @@ def read_order(text, legal, places, home=None):
         verb = "retreat"
     if verb == "hold" and "hold" not in kinds and "disband" in kinds:
         verb = "disband"
+    # Which kind of unit is meant, once the order is known to be a build: `f trieste`, `fleet in Trieste`.
+    wants_fleet = "fleet" in words or (verb == "build" and "f" in words)
+    wants_army = "army" in words or (verb == "build" and words[:1] == ["a"] and "fleet" not in words)
     candidates = [o for o in legal if shape(o)[0] == verb]
     if verb in ("move", "retreat", "support", "convoy", "build"):
         candidates = [o for o in candidates if [base(p) for p in shape(o)[1]] == [base(p) for p in found]]
@@ -928,9 +949,11 @@ def _table(state, places, link=str):
     return lines
 
 
-def page(state, places, map_file, waiting_on=(), news=(), link=str):
+def page(state, places, map_file, waiting_on=(), news=(), link=str, last_map=None, orders_drawn=False):
     """The visor part of a game's page, below the owner's own lines: where it stands, the map,
-    what is new for the owner, and what they can do now."""
+    what is new for the owner, and what they can do now. last_map: the map of the phase before, with
+    everyone's orders on it, shown above; orders_drawn: whether the map now has the owner's orders on it,
+    as visor reads them."""
     view, start = state["view"], state["start"]
     phase = view["phase"]
     you = state["you"]
@@ -956,7 +979,11 @@ def page(state, places, map_file, waiting_on=(), news=(), link=str):
         lines += [who + f"The game ends after Winter {state['ends']} ({left} year{'s' if left != 1 else ''} after "
                   f"this one); whoever is left then shares the win. {WIN} supply centres is a win of one's own. "
                   f"Communication: {SAID[state['press']].capitalize()}.", ""]
-    lines += [f"![[{map_file}]]", ""] + _table(state, places, link) + [""]
+    if last_map and state["history"]:
+        lines += [f"**{state['history'][-1]['said']}: everyone's orders.**", "", f"![[{last_map}]]", ""]
+    lines += [f"**{phase_said(phase, start) if not state['over'] else 'The end'}: the board now**"
+              + (", with your orders as visor reads them." if orders_drawn else "."), "",
+              f"![[{map_file}]]", ""] + _table(state, places, link) + [""]
     if news:
         lines += ["### New for you", ""] + [f"> **{country(m['from'])}**"
                                             + (" (to Everyone)" if m["to"] == EVERYONE else "") + f": {m['text']}"
@@ -1004,11 +1031,18 @@ def page(state, places, map_file, waiting_on=(), news=(), link=str):
                   f"Disband {-mine['adjust']}: write which unit (`army in Vienna`)."),
             "R": "Each dislodged unit retreats (`to Albania`) or disbands (`disband`).",
             "M": "Change what follows each colon, in your own words: `to Galicia`, `support Vienna to Galicia`, "
-                 "`convoy Naples to Tunis`, `hold`. Visor writes how it read each one beside it."}[view["type"]]
+                 "`convoy Naples to Tunis`, `hold`. Visor says how it reads each one below them, and draws "
+                 "them on the map."}[view["type"]]
     lines += [f"### Orders, {phase_said(phase, start)}", "", head, ""]
-    for label, written, order, problem in owner_orders(state, places)[0]:
-        mark = (f"  ✓ {places.order_said(order)}" if order else f"  ✗ {problem}") if written.strip() else ""
-        lines.append(f"{label}: {written}{mark}".rstrip())
+    read = owner_orders(state, places)[0]
+    # Your lines are left exactly as you wrote them: what visor makes of each goes below, so that visor writing
+    # the page back never changes a line you may be changing too (two edits to one line, merged by sync, double it).
+    for label, written, order, problem in read:
+        lines.append(f"{label}: {written}".rstrip())
+    readings = [f"- {label}: " + (f"✓ {places.order_said(order)}" if order else f"✗ {problem}")
+                for label, written, order, problem in read if written.strip()]
+    if readings:
+        lines += ["", "How visor reads them:", ""] + readings
     lines += ["", "> [!note]- What each can do"]
     for loc, legal in mine["orderable"].items():
         lines.append(f"> - **{places.said(loc)}:** " + "; ".join(places.order_said(o) for o in legal))
