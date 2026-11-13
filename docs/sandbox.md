@@ -94,6 +94,13 @@ run was given on the local network or this machine is not knocked on, which
 would reach it before the agent has started. For a run given no network it
 confirms there is no net door. If any check fails, the agent is not started.
 
+**A tool's own walls** (`tool_wall.sh`). A tool's setup and self-test are code
+from a repository, so each runs in a wall like the media tools': the tool's
+folder, a scratch folder, and nothing of the account's, with no network unless
+the tool's note gives its setup some, through the net door. The flatpak apps a
+tool runs start outside, through the app door, in flatpak's own sandbox, as
+Godot does for a Godot project. See [Tools](tools.md#the-walls).
+
 **What the sandbox does not do:**
 
 - It does not make the agent's code safe. That code runs on your machine when

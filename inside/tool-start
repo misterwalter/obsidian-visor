@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# First program inside a tool's own wall (tool_wall.sh). Opens the inner end of the net door when the
+# tool's setup was given the internet, as start-agent does for a run, then becomes the given command.
+# Usage: tool-start <command> [args...]
+set -u
+if [ -S /run/visor/net.sock ]; then
+  socat TCP-LISTEN:3128,bind=127.0.0.1,reuseaddr,fork UNIX-CONNECT:/run/visor/net.sock &
+  export http_proxy=http://127.0.0.1:3128 https_proxy=http://127.0.0.1:3128
+  export HTTP_PROXY="$http_proxy" HTTPS_PROXY="$https_proxy"
+  export no_proxy=127.0.0.1,localhost NO_PROXY=127.0.0.1,localhost
+  # Port 3128 is 0C38 in the kernel's table, and 0A is listening.
+  for _ in $(seq 1 50); do
+    awk '$2 ~ /:0C38$/ && $4 == "0A" {found = 1} END {exit !found}' /proc/net/tcp && break
+    sleep 0.1
+  done
+fi
+exec "$@"

@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Run a flatpak app from inside a wall, through the app door (doors/app-door.py): the command a tool's
+manifest gives each app it runs is a small script that calls this. The door runs the app in flatpak's own
+sandbox, with the folders this wall has, and sends back what it prints; the exit status is the app's.
+
+Usage: app-request APP [args...]
+"""
+
+import json
+import os
+import re
+import socket
+import sys
+
+SOCKET = "/run/visor/apps.sock"
+
+
+def main(argv):
+    if len(argv) < 2:
+        print("usage: app-request APP [args...]", file=sys.stderr)
+        return 2
+    asked = {"app": argv[1], "args": argv[2:], "cwd": os.getcwd()}
+    try:
+        door = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        door.connect(SOCKET)
+    except OSError as error:
+        print(f"{argv[1]}: the app door is not open here ({error})", file=sys.stderr)
+        return 3
+    door.sendall((json.dumps(asked) + "\n").encode())
+    status = None
+    with door.makefile("rb") as answer:
+        for line in answer:
+            ended = re.fullmatch(rb"VISOR_EXIT (\d+)\n?", line)
+            if ended:
+                status = int(ended.group(1))
+                continue
+            sys.stdout.buffer.write(line)
+            sys.stdout.buffer.flush()
+    if status is None:
+        print(f"{argv[1]}: the app door gave no result", file=sys.stderr)
+        return 3
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

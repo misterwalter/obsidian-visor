@@ -43,6 +43,8 @@ Each on/off setting is a single box: ticked is on, unticked is off.
   `Make a note` and `Delete`, done while idle; a model with both ticked waits.
   Then visor's own built-in files, apart, with no boxes
   ([Setting up](setting-up.md#models)).
+- **Tools:** each tool in `tools/`, and what this server has of it
+  ([Tools](tools.md)).
 - **Health:** Ollama answering, and which version, the graphics card and what uses it, free disk
   for results and image models, free memory, and anything `dispatch.py check`
   finds missing.

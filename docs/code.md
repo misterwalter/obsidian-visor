@@ -4,7 +4,7 @@
 |---|---|
 | `install.sh` | Enables the dispatcher, the VPN tunnel and the Godot timer. Run it after every `git pull`. |
 | `dispatch.py` | The dispatcher: takes task notes, runs them, replies in them. Runs as a service. It puts together the parts in `dispatcher/` and runs the loop. |
-| `dispatcher/` | The dispatcher's parts, a module each, each a class the Dispatcher inherits: `config` (visor.conf, the notes folder's layout and timing, projects), `model_notes`, `rounds` (agent rounds: Plan, Analysis, Build, Write, and Agent errands), `chats`, `games`, `board_time`, `subjobs`, `media_jobs`, `looks` (characters in pictures), `repeats`, `status` (the queue and STATUS.md), `server` (VISOR.md, health, self-update); and `notes`, what they share. |
+| `dispatcher/` | The dispatcher's parts, a module each, each a class the Dispatcher inherits: `config` (visor.conf, the notes folder's layout and timing, projects), `model_notes`, `tool_notes`, `rounds` (agent rounds: Plan, Analysis, Build, Write, and Agent errands), `chats`, `games`, `board_time`, `subjobs`, `media_jobs`, `looks` (characters in pictures), `repeats`, `status` (the queue and STATUS.md), `server` (VISOR.md, health, self-update); and `notes`, what they share. |
 | `tests/` | The tests, a file for each part, `test_<part>.py`; `test_dispatch.py` is the dispatcher's, `python3 tests/test_dispatch.py`. No model or Godot needed. `test_wall.py` and `test_model_door.py` test the wall and the model door from inside and out. |
 | `checks.py` | Reads a build's diff for what a reviewer should look at; its findings go in the report. |
 | `tripcodes.py` | The secrets behind stable handles on the forum for agents, one per model and one per character, kept in `chan_tripcodes`, outside every wall; a character's is shown in their own note, as `Tripcode:`. Tests: `test_tripcodes.py`. |
@@ -24,6 +24,7 @@
 | `vision.py` | Visor's own questions to a vision model through Ollama: a checklist from a description, which items a picture shows, whether two pictures show one person, a training caption. No agent, no tools. Tests: `test_vision.py`. |
 | `models.py` | The models: one note each in the notes' `models/` folder, read, checked and written back with what this server has; the harness settings and the image list are made from them. Starter notes are in `examples/models/`. Tests: `test_models.py`. |
 | `fetch.py` | Fetching a model a model note asks for (`Download:`, `SHA-256:`, `Fetch` ticked, and a `## Downloads` row for each of its other files): https only, from the hosts in `download_hosts`, `.safetensors` only, through the VPN, kept only if the hash matches. Tests: `test_fetch.py`. |
+| `tools.py`, `tool_wall.sh` | Tools: programs from the owner's GitHub repositories for agents, one note each in the notes' `tools/` folder. `tools.py` reads and writes the note, checks a tool's manifest (`visor-tool.json`), and is the install itself: fetch, export, flatpak apps, setup, self-test, each step in a wall of its own (`tool_wall.sh`). See [Tools](tools.md). Tests: `test_tools.py`. |
 | `kinds.py` | What each kind of note reads, with each line's default, and the tidying of a note's top as visor takes it: lines its kind does not read marked `UNUSED` (or dropped when empty), lines it reads and leaves out added. Tests: `test_kinds.py`. |
 | `projects.py` | The list of projects, and the note named after each project in its folder (`game/game.md`) that shows and changes its settings. |
 | `characters.py` | A chat character's own note, named after them (`Mara/Mara.md`): its settings as tick boxes, who it is and how it looks. Tests: `test_chat.py`. |
@@ -42,12 +43,13 @@
 | `wall.sh` | Runs a command inside the sandbox. `visor-run.sh` starts the agent through it. |
 | `doors/model-door.py` | The one way from the sandbox to the model. Passes chat requests, refuses the rest, records every call. |
 | `doors/godot-door` | The one way from the sandbox to Godot. Accepts seven requests: the import, the tests, one test file or function, one script's compile, a probe run, and the class reference. |
+| `doors/app-door.py` | The one way from a tool's wall to the flatpak apps it runs: each run by flatpak in its own sandbox, with only the wall's folders, read-only where the wall's are. Tests: `test_tools.py`. |
 | `doors/media-door.py` | The one way from the sandbox to the image pipeline, for a chat's characters: who may draw, with what, and where the picture goes. Tests: `test_media_door.py`. |
 | `doors/chan-door.py` | The one way to 2^32.channel, the forum for agents: its own API only, through the VPN, with the tripcode and the redaction list kept outside. |
 | `doors/net-door.py` | The one way from the sandbox to the internet, the local network and this machine, opened only for a note that says `Web: yes`, `LAN:` or `Loopback:`, and leading only where it says: the internet into the VPN tunnel (or directly, with no VPN and the owner's leave), the rest directly. Records every destination. Tests: `test_net_door.py`. |
 | `network.py` | `LAN:` and `Loopback:` as the owner writes them, read one way for the dispatcher and the net door. |
 | `examples/wireproxy.conf` | The VPN tunnel's settings, to copy to `~/.config/visor/wireproxy.conf`. |
-| `inside/` | The programs the agent finds inside the sandbox: `gut-test`, `godot-check`, `godot-run`, `godot-doc`, `godot-import`, the self-check, a `godot` that explains what to use in its place, `chan` for the forum, `image` for a chat character's drawing, and `show` for putting a file in front of the owner. |
+| `inside/` | The programs the agent finds inside the sandbox: `gut-test`, `godot-check`, `godot-run`, `godot-doc`, `godot-import`, the self-check, a `godot` that explains what to use in its place, `chan` for the forum, `image` for a chat character's drawing, and `show` for putting a file in front of the owner; and in a tool's own wall, `tool-start`, and `app-request`, which asks the app door for a flatpak app. |
 | `prompts/` | What the agent is told, put together for each run from the files here. |
 | `prompts/repository.md` | The agent's standing instructions for a repository, kept short on purpose. |
 | `prompts/folder.md` | The same for a folder project: a writer's, with the drafts rule. |

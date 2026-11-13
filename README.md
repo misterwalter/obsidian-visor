@@ -79,6 +79,8 @@ for the doors.
 - [Pictures, voice and video](docs/media.md): the media jobs, and [Installing
   the media tools](docs/media-tools.md) they run on.
 - [Godot projects](docs/godot.md): what an agent building one has, and the tests.
+- [Tools](docs/tools.md): programs from your own GitHub repositories, installed
+  from a note for agents to use.
 - [Results](docs/results.md): where a run's work and records go, and what can be
   pushed.
 - [The sandbox](docs/sandbox.md): what the wall allows, the doors, and what it

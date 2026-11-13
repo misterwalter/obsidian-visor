@@ -443,7 +443,7 @@ class Server:
                                    (self.reading, self.reading_found, self._reading_problems),
                                    {"installed": installed, "up": installed and self.vpn_up(), "proxy": self.vpn_proxy},
                                    getattr(self, "logs_said", ()),
-                                   loose=self.loose_view())
+                                   loose=self.loose_view(), tools=self.tools_section())
         if fresh != text:
             write_file(path, fresh)
         self._server_written = fresh
@@ -544,7 +544,7 @@ class Server:
         open it: STATUS.md says which of those visor needs (unwritable). Links are never followed.
         Returns how many it opened."""
         roots = [self.tasks, self.games_folder, self.characters_folder, self.media_folder, self.logs,
-                 self.models_folder, self.samples_folder, self.projects_folder]
+                 self.models_folder, self.tools_folder, self.samples_folder, self.projects_folder]
         roots += [project["source"] for project in self.projects.values() if project["folder"]]
         mine, seen, opened = os.getuid(), set(), 0
         for root in roots:

@@ -78,6 +78,7 @@ from dispatcher.rounds import MAX_PARTS, Rounds  # noqa: E402
 from dispatcher.server import RUNNABLE, Server  # noqa: E402
 from dispatcher.status import Status  # noqa: E402
 from dispatcher.subjobs import READING_PAUSE, Subjobs  # noqa: E402
+from dispatcher.tool_notes import ToolNotes  # noqa: E402
 
 
 # How often visor looks for runs no note claims any more, to delete them (runs.py), in seconds.
@@ -93,8 +94,8 @@ SHARED_UMASK = 0o002
 PAUSED = "waiting: paused in VISOR.md, taking no new notes"
 
 
-class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Subjobs, MediaJobs, Looks, Repeats,
-                 Status, Server, Logs):
+class Dispatcher(Config, ModelNotes, ToolNotes, Rounds, Chats, Games, Operas, BoardTime, Subjobs, MediaJobs, Looks,
+                 Repeats, Status, Server, Logs):
     """Visor: one of these takes the notes and runs what they ask, one at a time (once, serve). Each
     part is a class of its own in dispatcher/; their methods share this object's settings and state."""
 
@@ -161,6 +162,7 @@ class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Su
         if not dry_run:
             self._upkeep(self.sync_server_note)
             self._upkeep(self.sync_models)
+            self._upkeep(self.sync_tools)
             self._upkeep(self.sync_panels)
             self._upkeep(self.sync_characters)
             self._upkeep(self.sync_games)
@@ -177,8 +179,9 @@ class Dispatcher(Config, ModelNotes, Rounds, Chats, Games, Operas, BoardTime, Su
         # then scheduled work, then idle work.
         first = next((work for work in self.work_queue() if work["ready"]), None)
         if not dry_run:
-            self._upkeep(lambda: self.fetch_models(idle=(first is None or first["class"] == IDLE)
-                                                   and not self.other_run_active()))
+            idle = (first is None or first["class"] == IDLE) and not self.other_run_active()
+            self._upkeep(lambda: self.fetch_models(idle=idle))
+            self._upkeep(lambda: self.tend_tools(idle=idle))
         if first is not None and first["what"] != "note":
             if dry_run:
                 return f"would run {first['said']}"

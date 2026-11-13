@@ -47,7 +47,7 @@ class WallTest(unittest.TestCase):
     def test_nothing_inside_names_the_owner_or_the_machine(self):
         done = self.inside('id -un; echo "$HOME" "$USER" "$PATH"; hostname; cat /etc/passwd /etc/group; '
                            'cat /etc/hostname 2>/dev/null; cat /etc/machine-id 2>/dev/null; pwd; '
-                           'ls /opt/visor/inside | head -3; ls ~')
+                           'ls /opt/visor/inside; ls ~')
         self.assertEqual(done.returncode, 0, done.stderr)
         out = done.stdout
         self.assertTrue(out.startswith("agent\n/home/agent agent /opt/visor/inside:/opt/visor/npm-global/bin:"), out)

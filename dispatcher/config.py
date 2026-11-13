@@ -104,6 +104,13 @@ class Config:
             (path for path in (shutil.which("ollama"), "/usr/local/bin/ollama", "/usr/bin/ollama")
              if path and os.access(path, os.X_OK)), "ollama")
         self.fetching, self.fetch_said = None, {}
+        # Tools: programs from the owner's GitHub repositories for agents to use, a note each in the tools
+        # folder (tools.py), installed under agent_tools, with flatpak apps run by this flatpak program.
+        self.tools_folder = visor.get("tools_folder", os.path.join(self.tasks, "tools"))
+        self.agent_tools = visor.get("agent_tools", "/srv/code/agent-tools")
+        self.flatpak = visor.get("flatpak", "flatpak")
+        # The install going now, the tools whose branch is due a look, and when visor last looked at them all.
+        self.tool_job, self.tools_due, self._tools_followed_at, self.tool_notes = None, set(), None, {}
         # What visor deleted of a model whose note asked it to (its `Delete` box), for that note to say.
         self.deleted_said = {}
         # The models no note names, for VISOR.md (ModelNotes._survey_loose): what is there, what the owner
@@ -417,7 +424,7 @@ class Config:
         """Folders in the notes that visor must write in and cannot: made or renamed by
         another account, they are closed to visor's group until their owner opens them."""
         needed = [self.tasks] + [self.folder(name) for name in FOLDERS] + [self.characters_folder, self.models_folder,
-                                                                           self.samples_folder]
+                                                                           self.tools_folder, self.samples_folder]
         needed += [os.path.join(self.characters_folder, name) for name in self.known_characters()]
         needed += [self.games_folder] + [folder for name, _ in self.games()
                                          for folder in (os.path.join(self.games_folder, name),

@@ -202,7 +202,8 @@ def read_loose(text):
     return asked
 
 
-def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=(), loose=None):
+def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=(), loose=None,
+           tools=None):
     """The note, whole. said: the settings as they stand ({"auto", "paused", "default_model",
     "review", "reviewer", "direct"} and each
     TIMING setting). version: {"commits": [(when, message, hash)],
@@ -210,7 +211,7 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
     what visor found in each, problems with the section) for `## Browse` (sources.render).
     net: the VPN's state for `## Network` ({"installed", "up", "proxy"}). logs: a line for each log on this
     server, for `## Logs`. loose: the models no note names, and visor's own (loose_section); None leaves the
-    section out."""
+    section out. tools: the lines of `## Tools`, each tool and what this server has of it; None leaves it out."""
     net = net or {"installed": True, "up": False, "proxy": ""}
     lines = ["# Visor", "",
              "This server's version, settings and health. Tick or untick a box to change a setting: one on its "
@@ -271,6 +272,8 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
     lines += [sources.render(*reading)]
     if loose is not None:
         lines += loose_section(loose)
+    if tools is not None:
+        lines += list(tools)
     lines += ["## Health", ""] + (list(health) or ["- (checked every ten minutes)"]) + [""]
     return "\n".join(lines)
 
