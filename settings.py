@@ -187,6 +187,16 @@ def scan(text, keys, top_only=False, unused=False):
             i += 1
             continue
         group = None
+        if box and top_only and _settings_follow(lines, i + 1, key_line, names):
+            # A box of its own visor does not know, among the settings: one it no longer reads, as an older note's
+            # `- [x] Half-size sources`. No setting, and no end to them either: stopping at it would leave every
+            # setting below unread, and they would be written in again above it with their defaults.
+            ticked = box.group(1) != " "
+            found.append({"key": re.sub(r"\s+", " ", option(box.group(2)).lower()), "value": "yes" if ticked else "no",
+                          "boxes": None, "first": i, "last": i, "unused": False, "unknown": True, "toggle": True,
+                          "on": ticked, "boxed": False})
+            i += 1
+            continue
         shaped = ANY_KEY.match(line) if top_only else None
         if shaped and (shaped.group(3) or starts_group) and (
                 shaped.group(1) or _settings_follow(lines, i + 1, key_line, names)):

@@ -173,6 +173,20 @@ class KindsTest(unittest.TestCase):
         self.assertIn("Variations:\n- [x] on a boat\n- [x] in a car\n", plain)
         self.assertNotIn("seen from the front", plain)
 
+    def test_a_box_visor_no_longer_reads_is_marked_and_the_settings_below_it_are_still_read(self):
+        # `Half-size sources` was a box of a Character set note's, before `Size: half`. Stopping at it, visor would
+        # read nothing below it, and write those lines in again above it with their defaults.
+        older = ("Character set: Mara\nCount: 1\nSource count: 2\n- [x] Half-size sources\n- [ ] Gone too\n\n"
+                 "Size: half\nVariations:\n- [x] on a boat\n\n> [!guide]- How it works\n> words\n")
+        tidied = kinds.tidy(older, "character set")
+        self.assertIn("Source count: 2\nUNUSED Half-size sources: yes\n\nSize: half\n", tidied)
+        self.assertNotIn("Gone too", tidied, "an unticked one says nothing, and goes as an empty line would")
+        self.assertEqual((tidied.count("Size:"), tidied.count("Variations:")), (1, 1), "nothing written in twice")
+        self.assertNotIn("seen from the front", tidied)
+        self.assertEqual(kinds.tidy(tidied, "character set"), tidied)
+        header = notes.parse_header(tidied)
+        self.assertEqual((header["size"], header["variations"]), ("half", ["on a boat"]))
+
     def test_every_kind_s_lines_are_header_words(self):
         self.assertEqual(kinds.kind_of({"new project": "", "round": None}), "new project")
         self.assertEqual(kinds.kind_of({"new project": None, "round": None}), "plan")

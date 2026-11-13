@@ -66,8 +66,12 @@ class SettingsTest(unittest.TestCase):
 
     def test_boxes_belong_to_the_group_above_them_and_to_nothing_else(self):
         found, end = self.read("Project: game\n- [x] not a setting's box\nWeb: yes\n")
-        self.assertEqual(found, [("project", "game", None)])
-        self.assertEqual(end, 1)
+        # Not Project's: a box of no group, which is not one visor knows (one it no longer reads, as an older note
+        # has). It is passed over, not taken as the end of the settings, which would leave those below unread.
+        self.assertEqual(found, [("project", "game", None), ("web", "yes", None)])
+        self.assertEqual(end, 3)
+        # With no setting after it, it is where the settings end, as any line of the note's own text is.
+        self.assertEqual(self.read("Project: game\n- [x] something to do\n\nWords.\n"), ([("project", "game", None)], 1))
 
     def test_everywhere_in_a_note_visor_keeps(self):
         text = "# game\n\nSome words about it.\n\nWeb\n- [x] no\n\nMore words.\n\nChan\n- [x] none\n"
