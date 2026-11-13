@@ -594,24 +594,53 @@ def comfy_graph(spec):
     return graph
 
 
-def stored_weights(path):
-    """How a .safetensors file keeps most of its weights, as ComfyUI's UNETLoader names a way to
-    load them: "fp8_e4m3fn" or "fp8_e5m2" for 8-bit ones, else "default". On a CPU, ComfyUI widens
-    weights loaded "default" to 32 bits whenever they would fit, so an 8-bit file would take four
-    times its size in memory."""
+# Every model is loaded at the size it is stored at. Left to choose, ComfyUI on a processor widens a drawing model to
+# 32 bits whenever twice its size would fit in memory, so an 8-bit one can take four times its size and a 16-bit one
+# twice; and it widens an 8-bit text encoder to 16 bits. So visor reads how each part is stored, from the table at the
+# head of each .safetensors file (no weights are read), and starts ComfyUI told to keep it so (comfy_sizes).
+#
+# Which part a weight is, by its name in an all-in-one checkpoint; a file in diffusion_models/ or text_encoders/ is
+# that part whole. A decoder, LoRA or pose control is left to ComfyUI: each is small.
+PARTS = {"unet": ("model.diffusion_model.",), "text-enc": ("text_encoders.", "cond_stage_model.", "conditioner.")}
+# How safetensors names a way of storing numbers, and how ComfyUI's options name it.
+STORED = {"F8_E4M3": "fp8_e4m3fn", "F8_E5M2": "fp8_e5m2", "BF16": "bf16", "F16": "fp16", "F32": "fp32"}
+
+
+def safetensors_table(path):
+    """The table at the head of a .safetensors file: {weight name: {"dtype", "shape", "data_offsets"}}, or None when
+    it cannot be read."""
     try:
         with open(path, "rb") as f:
             size = int.from_bytes(f.read(8), "little")
-            header = json.loads(f.read(size)) if 0 < size < 1 << 27 else {}
+            table = json.loads(f.read(size)) if 0 < size < 1 << 27 else None
     except (OSError, ValueError):
-        return "default"
-    stored = collections.Counter()
-    for name, tensor in header.items():
-        if name != "__metadata__" and isinstance(tensor, dict):
-            start, end = tensor.get("data_offsets") or (0, 0)
-            stored[tensor.get("dtype")] += end - start
-    most = stored.most_common(1)[0][0] if stored else None
-    return {"F8_E4M3": "fp8_e4m3fn", "F8_E5M2": "fp8_e5m2"}.get(most, "default")
+        return None
+    return {k: v for k, v in table.items() if k != "__metadata__" and isinstance(v, dict)} if isinstance(table, dict) else None
+
+
+def stored_sizes(paths):
+    """How the drawing model ("unet") and text encoder ("text-enc") among these weight files are stored, each by the
+    numbers most of its bytes are: {part: "fp8_e4m3fn" | "fp8_e5m2" | "bf16" | "fp16" | "fp32"}. A part none of them
+    has, or stored some other way, is left out."""
+    counted = {part: collections.Counter() for part in PARTS}
+    for path in paths:
+        folder = os.path.basename(os.path.dirname(path))
+        whole = {"diffusion_models": "unet", "text_encoders": "text-enc"}.get(folder)
+        if folder not in ("diffusion_models", "text_encoders", "checkpoints"):
+            continue
+        for name, tensor in (safetensors_table(path) or {}).items():
+            part = whole or next((p for p, prefixes in PARTS.items() if name.startswith(prefixes)), None)
+            if part:
+                start, end = tensor.get("data_offsets") or (0, 0)
+                counted[part][tensor.get("dtype")] += end - start
+    return {part: STORED[c.most_common(1)[0][0]] for part, c in counted.items()
+            if c and c.most_common(1)[0][0] in STORED}
+
+
+def comfy_sizes(paths):
+    """ComfyUI's options that keep the drawing model and text encoder among these files at the size they are stored
+    at (stored_sizes): such as ["--fp8_e4m3fn-unet", "--fp8_e4m3fn-text-enc"]."""
+    return [f"--{size}-{part}" for part, size in sorted(stored_sizes(paths).items(), reverse=True)]
 
 
 def _chroma_graph(spec):
@@ -619,7 +648,7 @@ def _chroma_graph(spec):
     encoder and the Flux decoder are separate files, and sampling is the custom kind."""
     return {
         "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": spec["file"],
-                                                        "weight_dtype": spec.get("weight_dtype", "default")}},
+                                                        "weight_dtype": "default"}},
         "shift": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["unet", 0], "shift": 1.0}},
         "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": spec["text_encoder"], "type": "chroma"}},
         "t5": {"class_type": "T5TokenizerOptions", "inputs": {"clip": ["clip", 0], "min_padding": 1, "min_length": 0}},
@@ -784,8 +813,6 @@ def generate(settings, options, job, on_progress=None, on_image=None, on_unfinis
         shutil.copyfile(pose, os.path.join(job, "input", "pose" + os.path.splitext(pose)[1].lower()))
         options = dict(options, pose="pose" + os.path.splitext(pose)[1].lower())
     spec = image_spec(options, settings.image_models, settings.default_image)
-    if models.FAMILIES.get(spec["kind"]) == "diffusion_models":
-        spec["weight_dtype"] = stored_weights(os.path.join(settings.comfy_models, "diffusion_models", spec["file"]))
     if spec["pose"] and spec["kind"] not in POSE_CONTROL:
         raise MediaError(f"`{spec['name']}` cannot take a pose: the pose controls are for the SDXL and SD 1.5 models.")
     # One image at a time, each from the next seed, so that a large count neither fills
@@ -1013,6 +1040,8 @@ class _comfy_server:
         # On the graphics card when its PyTorch can reach one; told to keep to the processor otherwise,
         # since without a card it would fail looking for one.
         processor = [] if (card(settings) or ("processor",))[0] == "card" else ["--cpu"]
+        # Each model at the size it is stored at (comfy_sizes); training sets the sizes it trains at itself.
+        processor += comfy_sizes(weights) if spec.get("keep_sizes", True) else []
         # ComfyUI listens on a port inside the wall, where the network is its own and empty;
         # socat joins that port to a socket in the job folder, which visor can reach.
         serve = ["sh", "-c", 'sock=$0; port=$1; shift; socat UNIX-LISTEN:"$sock",fork TCP:127.0.0.1:"$port" & exec "$@"',
@@ -1488,7 +1517,7 @@ def edit_graph(spec, pictures):
     else:
         graph = {
             "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": spec["file"],
-                                                            "weight_dtype": spec.get("weight_dtype", "default")}},
+                                                            "weight_dtype": "default"}},
             "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": spec["text_encoder"], "type": "qwen_image"}},
             "vae": {"class_type": "VAELoader", "inputs": {"vae_name": spec["vae"]}},
         }
@@ -1551,9 +1580,6 @@ def edit(settings, options, pictures, job, on_image=None, each=None, plan=None):
     if not pictures:
         raise MediaError("there is no picture to edit: embed it in the note, `![[picture.png]]`, with the file "
                          "somewhere in `tasks/`.")
-    if spec["kind"] not in models.ONE_PICTURE_EDITS:
-        if not spec["one_file"]:
-            spec["weight_dtype"] = stored_weights(os.path.join(settings.comfy_models, "diffusion_models", spec["file"]))
     os.makedirs(os.path.join(job, "input"), exist_ok=True)
     names = []
     for i, picture in enumerate([] if plan else pictures[:3], start=1):
@@ -1645,7 +1671,7 @@ def train(settings, spec, pictures, captions, job):
         with open(os.path.join(folder, os.path.splitext(name)[0] + ".txt"), "w", encoding="utf-8") as f:
             f.write(caption)
     weights = [os.path.join(settings.comfy_models, "checkpoints", spec["file"])]
-    with _comfy_server(settings, job, dict(spec, name=spec["name"], weights=weights)) as comfy:
+    with _comfy_server(settings, job, dict(spec, name=spec["name"], weights=weights, keep_sizes=False)) as comfy:
         made = comfy.run(train_graph(spec), saved="LoRA")
     loras = [path for path in made if path.endswith(".safetensors")]
     if not loras:

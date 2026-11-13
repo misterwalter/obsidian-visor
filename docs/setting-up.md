@@ -112,9 +112,15 @@ deleted from it.
   Chroma's text encoder and VAE) has a `## Downloads` table in its note, a row
   for each of the other files the note names, with its address and SHA-256:
   visor fetches each the same way as the main file (`Download:`, `SHA-256:`),
-  one at a time, into the folder its line calls for (`models.files`). A file
-  that keeps its weights at 8 bits is loaded at 8 bits (`media.stored_weights`):
-  on a CPU, ComfyUI would otherwise widen it to 32, four times its size.
+  one at a time, into the folder its line calls for (`models.files`).
+- Every model is loaded at the size it is stored at (`media.comfy_sizes`).
+  Visor reads how the drawing model and the text encoder are stored, from the
+  table at the head of each `.safetensors` file, a separate file or one part of
+  an all-in-one checkpoint, and starts ComfyUI with the options that keep them
+  so (`--fp8_e4m3fn-unet`, `--bf16-text-enc`...). On a CPU, ComfyUI would
+  otherwise widen a drawing model to 32 bits whenever it fits, four times the
+  size of an 8-bit one, and an 8-bit text encoder to 16. Training is the one
+  exception: it sets the sizes it trains at itself.
 - An image model's `Prompt guide:` says how to write a prompt for it, in the
   owner's words: tags or sentences, in what order, with an example. A game's
   narrator is given the guide of the model that draws the game when it writes a

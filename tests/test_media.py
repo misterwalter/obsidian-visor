@@ -737,24 +737,49 @@ class MediaTest(unittest.TestCase):
         self.assertEqual(sorted(os.path.basename(f).split("_")[1] for f in result["files"]), ["001", "002", "003"],
                          "one start of ComfyUI for them all, the edit model loaded once")
 
-    def test_an_eight_bit_model_is_loaded_at_eight_bits(self):
-        # On a CPU, ComfyUI would otherwise widen it to 32 bits: four times its size in memory.
-        def weights(path, dtype):
-            header = json.dumps({"w": {"dtype": dtype, "shape": [4], "data_offsets": [0, 4]}, "__metadata__": {}}).encode()
+    def test_every_model_is_loaded_at_the_size_it_is_stored_at(self):
+        # On a processor ComfyUI would otherwise widen a drawing model to 32 bits whenever it fits: an 8-bit one to
+        # four times its size, a 16-bit one twice; and an 8-bit text encoder to 16 bits.
+        def weights(path, parts):
+            table, at = {"__metadata__": {"workflow": "{}"}}, 0
+            for name, (dtype, size) in parts.items():
+                table[name] = {"dtype": dtype, "shape": [size], "data_offsets": [at, at + size]}
+                at += size
+            header = json.dumps(table).encode()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
-                f.write(len(header).to_bytes(8, "little") + header + b"\0" * 4)
-        self.settings.edit_models, self.settings.default_edit = models_for_testing.edit_specs()
-        self.edit_files()
-        spec = self.settings.edit_models[self.settings.default_edit]
-        weights(os.path.join(self.settings.comfy_models, "diffusion_models", spec["file"]), "F8_E4M3")
+                f.write(len(header).to_bytes(8, "little") + header + bytes(at))
+            return path
+        comfy = self.settings.comfy_models
+        # An all-in-one checkpoint, as the Rapid AIO edit models are: each part stored as it is, the decoder aside.
+        whole = weights(os.path.join(comfy, "checkpoints", "aio.safetensors"), {
+            "model.diffusion_model.a.weight": ("F8_E4M3", 900), "model.diffusion_model.norm": ("F32", 4),
+            "text_encoders.qwen25_7b.b.weight": ("F8_E4M3", 300), "vae.c.weight": ("BF16", 50)})
+        self.assertEqual(media.comfy_sizes([whole]), ["--fp8_e4m3fn-unet", "--fp8_e4m3fn-text-enc"])
+        # SD 1.5's and SDXL's own names for their text encoders; 16-bit kept at 16 bits.
+        sdxl = weights(os.path.join(comfy, "checkpoints", "xl.safetensors"), {
+            "model.diffusion_model.a": ("F16", 500), "conditioner.embedders.0.b": ("F16", 100)})
+        self.assertEqual(media.comfy_sizes([sdxl]), ["--fp16-unet", "--fp16-text-enc"])
+        # Separate files are each their part whole; a LoRA, decoder or unreadable file changes nothing.
+        unet = weights(os.path.join(comfy, "diffusion_models", "edit.safetensors"), {"x": ("BF16", 10)})
+        reader = weights(os.path.join(comfy, "text_encoders", "reader.safetensors"), {"y": ("F8_E5M2", 10)})
+        lora = weights(os.path.join(comfy, "loras", "l.safetensors"), {"z": ("F32", 10)})
+        broken = os.path.join(comfy, "text_encoders", "broken.safetensors")
+        self.write(broken, "not a table")
+        self.assertEqual(media.comfy_sizes([unet, reader, lora, broken, os.path.join(comfy, "absent.gguf")]),
+                         ["--bf16-unet", "--fp8_e5m2-text-enc"])
+        self.assertEqual(media.comfy_sizes([lora]), [], "nothing known: ComfyUI chooses, as before")
+        # And ComfyUI is started so, for an edit with the all-in-one model.
+        self.settings.edit_models = {"aio-edit": media.models.edit_spec(models_for_testing.note(
+            "edit", {"file": "aio.safetensors", "about": "Rapid AIO, all in one"}))}
+        self.settings.default_edit = "aio-edit"
+        self.assertTrue(self.settings.edit_models["aio-edit"]["one_file"])
         picture = os.path.join(self.tmp.name, "hat.png")
         self.write(picture, "png")
         media.edit(self.settings, {"prompt": "take the cape off"}, [picture], self.job)
-        graph = json.load(open(os.path.join(self.job, "graph.json")))
-        self.assertEqual(graph["unet"]["inputs"]["weight_dtype"], "fp8_e4m3fn")
-        weights(os.path.join(self.tmp.name, "bf16.safetensors"), "BF16")
-        self.assertEqual(media.stored_weights(os.path.join(self.tmp.name, "bf16.safetensors")), "default")
-        self.assertEqual(media.stored_weights(os.path.join(self.tmp.name, "absent.safetensors")), "default")
+        started = json.load(open(os.path.join(self.job, "comfy-args.json")))
+        self.assertIn("--fp8_e4m3fn-unet", started)
+        self.assertIn("--fp8_e4m3fn-text-enc", started)
 
     def test_an_edit_says_what_is_missing(self):
         with self.assertRaises(media.MediaError) as caught:
