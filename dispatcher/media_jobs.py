@@ -37,6 +37,9 @@ class MediaJobs:
         with open(path, encoding="utf-8") as f:
             header = parse_header(split_note(f.read())[0])
         kind = kinds.kind_of(header)
+        # The models the note itself names, before tidying writes the default's into an empty `Model:` line: a picture
+        # made with the default is said to be (_drawn_by).
+        self.named_in_note = {line: (header.get(line) or "").strip() for line in ("model", "edit model")}
         self._tidy(path, kind, self._tidy_ctx(header, kind))
         with open(path, encoding="utf-8") as f:
             whole = f.read()
@@ -228,25 +231,28 @@ class MediaJobs:
             options["pose"] = self._named_file(header["pose"], "pose")
         took = time.time()
         saved, log = [], self.live_log(name, "image")
+        model, model_said = self._drawn_by(options.get("model"), self.media.default_image)
+        livelog.append(log, f"*{time.strftime('%H:%M')}* drawing with {model_said}\n")
         if said_of_cast:
             livelog.append(log, f"*{time.strftime('%H:%M')}* {said_of_cast}\n")
-        result = media.generate(self.media, options, job, on_image=self._arrived(name, "image", saved, log),
-                                on_unfinished=self._cut_off(name, "image", log), on_progress=self._progress(log, "image"),
+        result = media.generate(self.media, options, job, on_image=self._arrived(name, "image", saved, log, model),
+                                on_unfinished=self._cut_off(name, "image", log, model), on_progress=self._progress(log, "image"),
                                 on_ready=self._ready(log))
         spec = result["spec"]
         count = len(saved)
         livelog.append(log, f"*{time.strftime('%H:%M')}* {count} image{'s' if count != 1 else ''} drawn; ComfyUI "
                             "stopped" + ("; then what the note asks after drawing" if fix_hands or finish or edit_in
                                          else "") + "\n")
-        settings = (f"{self.model_link(spec['name'])} · {spec['width']}×{spec['height']} · {spec['steps']} steps"
+        settings = (f"{model_said} · {spec['width']}×{spec['height']} · {spec['steps']} steps"
                     + (" with DMD2" if spec["fast"] else "")
                     + (f" · pose from {self.link(options['pose'])} at {spec['pose_strength']}" if spec.get("pose") else "")
                     + (f" · {count} images, seeds {saved[0][1]} to {saved[-1][1]}" if count > 1 else f" · seed {spec['seed']}")
                     + f" · took {round((time.time() - took) / 60)} minutes")
+        # Each picture with the model that drew it, so that none is in doubt, whatever is added to the note after.
         if count > 1:
-            shown = "\n".join(f"![[{kept}]] seed {seed}" for kept, seed in saved)
+            shown = "\n".join(f"![[{kept}]] seed {seed} · {model}" for kept, seed in saved)
         else:
-            shown = "\n".join(f"![[{kept}]]" for kept, _ in saved)
+            shown = "\n".join(f"![[{kept}]] {model}" for kept, _ in saved)
         body = f"## Images, {_stamp()}\n\n{settings}\n\n" + (f"{said_of_cast}\n\n" if said_of_cast else "") + f"{shown}\n"
         saved = [kept for kept, _ in saved]
         if traced:
@@ -287,16 +293,17 @@ class MediaJobs:
             livelog.append(log, f"*{time.strftime('%H:%M')}* {line}\n")
         return progress
 
-    def _cut_off(self, name, what, log):
+    def _cut_off(self, name, what, log, model=""):
         """What a drawing job does with the picture or clip it was making when it was cut off: ComfyUI's
-        last preview of it, kept, and plainly marked with how far it had got."""
+        last preview of it, kept, and plainly marked with how far it had got, and by which model."""
+        by = f", by {model}" if model else ""
         def unfinished(path, seed, n, step, steps):
             (kept,) = self._keep(name, "unfinished", [path])
             how = f"at step {step} of {steps}" if step and steps else "part way"
-            self.made_so_far.append(f"![[{kept}|512]]\n**Unfinished:** {what} {n}, seed {seed}, cut off {how}. This "
-                                    f"is ComfyUI's rough preview of where it had got to, not a finished {what}; "
+            self.made_so_far.append(f"![[{kept}|512]]\n**Unfinished:** {what} {n}, seed {seed}{by}, cut off {how}. "
+                                    f"This is ComfyUI's rough preview of where it had got to, not a finished {what}; "
                                     f"`Seed: {seed}` makes it again, whole.")
-            livelog.append(log, f"*{time.strftime('%H:%M')}* {what} {n}, seed {seed}, cut off {how}: ![[{kept}|512]]\n")
+            livelog.append(log, f"*{time.strftime('%H:%M')}* {what} {n}, seed {seed}{by}, cut off {how}: ![[{kept}|512]]\n")
         return unfinished
 
     def _media_video(self, name, header, owner_text, job, earlier=""):
@@ -307,19 +314,23 @@ class MediaJobs:
         options = dict({k: header[k] for k in ("model", "size", "seconds", "count", "seed", "steps", "negative")},
                        prompt=prompt)
         saved, log, took = [], self.live_log(name, "video"), time.time()
-        result = media.video(self.media, options, job, start=start, on_video=self._arrived(name, "video", saved, log),
-                             on_unfinished=self._cut_off(name, "clip", log), on_progress=self._progress(log, "clip"),
+        model, model_said = self._drawn_by(options.get("model"), self.media.default_video, "video")
+        livelog.append(log, f"*{time.strftime('%H:%M')}* making it with {model_said}\n")
+        result = media.video(self.media, options, job, start=start,
+                             on_video=self._arrived(name, "video", saved, log, model),
+                             on_unfinished=self._cut_off(name, "clip", log, model), on_progress=self._progress(log, "clip"),
                              on_ready=self._ready(log))
         spec = result["spec"]
         source = self.link(start) if start else None
-        said = (f"{self.model_link(spec['name'])} · {spec['width']}×{spec['height']} · {spec['frames']} frames at {spec['fps']} a "
+        said = (f"{model_said} · {spec['width']}×{spec['height']} · {spec['frames']} frames at {spec['fps']} a "
                 f"second ({spec['seconds']} s) · {spec['steps']} steps"
                 + ((f" · following on from the last frame of {source}" if start.lower().endswith(media.VIDEO)
                     else f" · from {source}") if start else "")
                 + (f" · {len(saved)} clips, seeds {saved[0][1]} to {saved[-1][1]}" if len(saved) > 1
                    else f" · seed {spec['seed']}")
                 + f" · took {round((time.time() - took) / 60)} minutes")
-        shown = "\n".join(f"![[{kept}]]" + (f" seed {seed}" if len(saved) > 1 else "") for kept, seed in saved)
+        shown = "\n".join(f"![[{kept}]]" + (f" seed {seed} ·" if len(saved) > 1 else "") + f" {model}"
+                          for kept, seed in saved)
         return (f"## Video, {_stamp()}\n\n{said}\n\n{shown}\n\nTo follow on from a clip, start a new Video note "
                 f"with `From: ![[{saved[-1][0]}]]`: it starts where this one ends.\n")
 
@@ -332,17 +343,19 @@ class MediaJobs:
         self._doing(name, log, f"{asked[0].upper()}{asked[1:]}: {len(images)} image{'s' if len(images) != 1 else ''}, "
                                "one after another")
         kept = []
+        model, model_said = self._drawn_by(options.get("model"), self.media.default_image)
         def arrived(source, improved, note, n):
             (saved,) = self._keep(name, "improved", [improved])
             kept.append((source, note, saved))
-            self.made_so_far.append(f"![[{saved}]] improved: {note}")
-            self._doing(name, log, f"{asked[0].upper()}{asked[1:]}: {n} of {len(images)} done", f"![[{saved}]]")
+            self.made_so_far.append(f"![[{saved}]] improved by {model}: {note}")
+            self._doing(name, log, f"{asked[0].upper()}{asked[1:]}: {n} of {len(images)} done, by {model}",
+                        f"![[{saved}]]")
         result = media.improve(self.media, options, images, job, hands=fix_hands, finish=finish, on_image=arrived)
         lines = [f"## Improved, {_stamp()}", "",
-                 f"{self.model_link(result['spec']['name'])} · {asked} · {len(images)} image{'s' if len(images) != 1 else ''} · "
+                 f"{model_said} · {asked} · {len(images)} image{'s' if len(images) != 1 else ''} · "
                  f"took {round((time.time() - took) / 60)} minutes. The originals are unchanged.", ""]
         for source, note, saved in kept:
-            lines += [f"From {self.link(source)}: {note}", "", f"![[{saved}]]", ""]
+            lines += [f"From {self.link(source)}: {note}", "", f"![[{saved}]] {model}", ""]
         return "\n".join(lines)
 
     def _doing(self, name, log, said, shown=""):
@@ -387,15 +400,26 @@ class MediaJobs:
                       "", f"![[{saved}]]", "", f"Use it on an Image note with `Pose: ![[{saved}]]`.", ""]
         return "\n".join(lines)
 
-    def _arrived(self, name, kind, saved, log):
+    def _arrived(self, name, kind, saved, log, model=""):
         """What a drawing job does as each picture or clip comes: keep it in media/, count it as made
-        (shown in the note if the job is cut off before the end), and say so in the live log."""
+        (shown in the note if the job is cut off before the end), and say so in the live log, with the model
+        that made it (model, as _drawn_by says it)."""
         def arrived(path, seed, n):
             (kept,) = self._keep(name, kind, [path])
             saved.append((kept, seed))
-            self.made_so_far.append(f"![[{kept}]] seed {seed}")
-            livelog.append(log, f"*{time.strftime('%H:%M')}* {kind} {n}, seed {seed}: ![[{kept}]]\n")
+            self.made_so_far.append(f"![[{kept}]] seed {seed}" + (f" · {model}" if model else ""))
+            livelog.append(log, f"*{time.strftime('%H:%M')}* {kind} {n}, seed {seed}"
+                                + (f", by {model}" if model else "") + f": ![[{kept}]]\n")
         return arrived
+
+    def _drawn_by(self, asked, default, kind="image", line="model"):
+        """The model a picture or clip is made with, said so there is no doubt which: (a link to its note, for each
+        picture's line; for the section's own line, the same, and when the note named none on its line, that it is
+        the default for its kind). asked: the line as the job reads it, which tidying may have filled in with the
+        default; whether the owner named one is what the note said before that (named_in_note)."""
+        link = self.model_link((asked or default or "").strip().lower())
+        named = getattr(self, "named_in_note", {}).get(line, asked)
+        return link, link if (named or "").strip() else f"{link} (the default {kind} model: the note named none)"
 
     def _media_motion(self, name, header, owner_text, job, earlier=""):
         """A video traced into a skeleton per frame: a video of the skeletons, and their points."""

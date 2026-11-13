@@ -174,6 +174,9 @@ FAKE_RUNNER = textwrap.dedent('''\
     ''')
 
 
+ANIME = "[[models/anime-xl|anime-xl]]"
+
+
 class DispatchTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1471,9 +1474,13 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual((seen["model"], seen["count"]), ("anime-xl", "2"))
         note = self.read("output", "pic.md")
         self.assertIn("[[models/anime-xl|anime-xl]] · 1024×1024 · 8 steps with DMD2 · 2 images, seeds 7 to 8", note)
-        self.assertIn("![[pic image 2.png]] seed 8", note, "each image's seed is beside it, for drawing it again")
-        self.assertIn("![[pic image 1.png]]", note)
-        self.assertIn("![[pic image 2.png]]", note)
+        # Each image with its seed, for drawing it again, and the model that drew it, whatever comes after.
+        self.assertIn("![[pic image 1.png]] seed 7 · [[models/anime-xl|anime-xl]]\n"
+                      "![[pic image 2.png]] seed 8 · [[models/anime-xl|anime-xl]]", note)
+        self.assertNotIn("default", note.split("## Images")[1], "the note named its model")
+        log = open(os.path.join(self.tasks, "logs", "pic - image.md")).read()
+        self.assertIn("drawing with [[models/anime-xl|anime-xl]]\n", log)
+        self.assertIn("image 2, seed 8, by [[models/anime-xl|anime-xl]]: ![[pic image 2.png]]", log)
 
     def test_a_prompt_reads_a_link_to_a_note_as_its_words_and_leaves_out_what_the_note_attaches(self):
         self.character("Mara", "A ferry pilot.")
@@ -1513,8 +1520,9 @@ class DispatchTest(unittest.TestCase):
                          ("Billy hands over the coins slowly, smiling", "ltx", "2"))
         self.assertTrue(seen["start"].endswith(os.path.join("inbox", "stall.png")))
         note = self.read("output", "billy.md")
-        self.assertIn("[[models/ltx|ltx]] · 768×512 · 49 frames at 24 a second (2.0 s) · 8 steps · from [[inbox/stall.png|stall.png]] · seed 7", note)
-        self.assertIn("![[billy video 1.mp4]]", note)
+        self.assertIn("[[models/ltx|ltx]] (the default video model: the note named none) · 768×512 · 49 frames at 24 a "
+                      "second (2.0 s) · 8 steps · from [[inbox/stall.png|stall.png]] · seed 7", note)
+        self.assertIn("![[billy video 1.mp4]] [[models/ltx|ltx]]", note)
         self.assertIn("start a new Video note with `From: ![[billy video 1.mp4]]`", note)
         self.assertIn("\nOn repeat:", note, "a Video note is told On repeat, as an Image is")
         sample = open(os.path.join(self.tasks, "samples", "sample-video.md")).read()
@@ -1539,8 +1547,9 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("Visor could not draw this: the images were not finished within 360 minutes.", note)
         self.assertIn("What it made before then is at the bottom of the note.", note)
         self.assertIn("## Made before it was cut off, ", note)
-        self.assertIn("![[pic image 1.png]] seed 7\n![[pic image 2.png]] seed 8\n![[pic unfinished 1.jpg|512]]\n"
-                      "**Unfinished:** image 3, seed 9, cut off at step 17 of 30. This is ComfyUI's rough preview", note)
+        self.assertIn(f"![[pic image 1.png]] seed 7 · {ANIME}\n![[pic image 2.png]] seed 8 · {ANIME}\n"
+                      f"![[pic unfinished 1.jpg|512]]\n**Unfinished:** image 3, seed 9, by {ANIME}, cut off at step 17 "
+                      "of 30. This is ComfyUI's rough preview", note)
         self.assertLess(note.index("could not draw this"), note.index("## Made before it was cut off"))
         self.assertTrue(os.path.exists(os.path.join(self.tasks, "media", "pic", "pic unfinished 1.jpg")))
 
@@ -1551,8 +1560,8 @@ class DispatchTest(unittest.TestCase):
             self.d.once()
         note = self.read("output", "pic.md")
         self.assertIn("## Stopped, ", note)
-        self.assertIn("What it made before then:\n\n![[pic image 1.png]] seed 7\n![[pic image 2.png]] seed 8\n"
-                      "![[pic unfinished 1.jpg|512]]\n**Unfinished:** image 3", note)
+        self.assertIn(f"What it made before then:\n\n![[pic image 1.png]] seed 7 · {ANIME}\n![[pic image 2.png]] seed 8 · "
+                      f"{ANIME}\n![[pic unfinished 1.jpg|512]]\n**Unfinished:** image 3", note)
 
     def test_fix_hands_with_a_model_it_does_not_work_with_comes_back_before_anything_is_drawn(self):
         self.give_image_models("anime-xl", "chroma")
@@ -1707,6 +1716,8 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual((seen[0]["model"], seen[0]["negative"]), ("realistic-vision", "blurry, text"))
         self.assertIn("\nModel: [[models/realistic-vision|realistic-vision]]\n", self.read("output", "a.md"),
                       "the note shows which model drew it, a link to its note")
+        self.assertIn("[[models/realistic-vision|realistic-vision]] (the default image model: the note named none) ·",
+                      self.read("output", "a.md"), "and the reply, that it was the default, though the line now names it")
         # With no model marked default, a note that names none comes back at once, asking which.
         path = os.path.join(self.tasks, "models", "realistic-vision.md")
         with open(path) as f:
@@ -2857,18 +2868,21 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual([os.path.basename(p) for p in edit["each"]], ["quay image 1.png"],
                          "every picture drawn, on one start of the edit model")
         note = self.read("output", "quay.md")
-        self.assertIn("Tom, edited in from their reference picture:", note)
+        self.assertIn("Tom, edited in from their reference picture by [[models/quick-edit|quick-edit]] (the default edit "
+                      "model):", note)
         cast = ("**Characters:** [[characters/Mara/Mara|Mara]], drawn with their LoRA [[models/mara-lora|mara-lora]] "
                 "(trigger `mara_char`, strength 0.8); [[characters/Tom/Tom|Tom]], no LoRA for a sdxl model: drawn from "
                 "their description, then edited in afterwards from their reference picture "
-                "[[characters/Tom/looks/tom.png|tom.png]] with the edit model.")
+                "[[characters/Tom/looks/tom.png|tom.png]] with [[models/quick-edit|quick-edit]], the default edit model.")
         self.assertIn(cast, note, "who is meant to be in the picture, and how each was drawn")
         self.assertLess(note.index(cast), note.index("![[quay image 1.png]]"), "said above the picture")
         log = open(self.d.live_log("quay.md", "image")).read()
         self.assertIn(cast, log, "and in the live log as the job starts")
         self.assertIn("1 image drawn; ComfyUI stopped; then what the note asks after drawing", log)
-        self.assertIn("Editing Tom into the 1 picture from their reference picture, with the edit model", log)
-        self.assertIn("Editing Tom in: 1 of 1 done: ![[quay as cast 1.png]]", log)
+        self.assertIn("Editing Tom into the 1 picture from their reference picture, with "
+                      "[[models/quick-edit|quick-edit]] (the default edit model)", log)
+        self.assertIn("Editing Tom in: 1 of 1 done, by [[models/quick-edit|quick-edit]]: ![[quay as cast 1.png]]", log)
+        self.assertIn("![[quay as cast 1.png]] [[models/quick-edit|quick-edit]]", note)
 
     def test_a_character_s_appearance_is_rewritten_for_the_image_model_s_guide_once_and_shown(self):
         self.give_image_models("photo-xl")
@@ -2942,7 +2956,8 @@ class DispatchTest(unittest.TestCase):
         note = self.read("output", "set.md")
         self.assertIn("looker does not see Mara: moved to `candidates/rejected/`", note)
         self.assertIn("3 pictures, from [[characters/Mara/looks/side.png|side.png]], their Reference: picture", note)
-        self.assertIn("with [[models/quick-edit|quick-edit]] ·", note, "the model, a link to its note")
+        self.assertIn("with [[models/quick-edit|quick-edit]] (the default edit model: the note named none) ·", note,
+                      "the model, a link to its note, and that it is the default")
         self.assertIn("Move the ones that are [[characters/Mara/Mara|Mara]] into", note)
         self.assertIn("from 12 variations, each drawn at random from the least used so far", note)
 
@@ -3138,7 +3153,9 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("Change the picture so that it shows a long beard", edit["prompt"])
         note = self.read("output", "b.md")
         self.assertIn("1. three waiters\n2. a long beard", note)
-        self.assertIn("round 2: shows 2 of 2", note)
+        self.assertIn("round 2, by [[models/quick-edit|quick-edit]]: shows 2 of 2", note)
+        self.assertIn("Drawn with [[models/photo-xl|photo-xl]]; edited after the first round with "
+                      "[[models/quick-edit|quick-edit]] (the default edit model: the note named none).", note)
         self.assertIn("**The best:**", note)
         self.assertIn("showing 2 of 2: everything on the list.", note)
 

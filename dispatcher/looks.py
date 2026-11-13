@@ -144,7 +144,8 @@ class Looks:
                 if reference and self.media.edit_models and len(edit_in) < 2:
                     edit_in.append((who, reference))
                     said.append(f"{self.character_link(who)}, {lacking}: drawn from their description, then edited in "
-                                f"afterwards from their reference picture {self.link(reference)} with the edit model")
+                                f"afterwards from their reference picture {self.link(reference)} with "
+                                f"{self.model_link(self.media.default_edit or '')}, the default edit model")
                 elif reference and self.media.edit_models:
                     said.append(f"{self.character_link(who)}, {lacking}: drawn from their description alone, as an edit goes by two "
                                 "reference pictures at most and two others are edited in")
@@ -183,17 +184,21 @@ class Looks:
                 rewritten.append(line)
         names, log, lines = " and ".join(who), self.live_log(name, "image"), [f"{line}\n" for line in rewritten]
         many = f"{len(images)} picture{'s' if len(images) != 1 else ''}"
-        self._doing(name, log, f"Editing {names} into the {many} from their reference picture, with the edit model")
+        # Always the default edit model: the note's `Model:` is the image model that drew the pictures.
+        model = self.model_link(self.media.default_edit or "")
+        self._doing(name, log, f"Editing {names} into the {many} from their reference picture, with {model} "
+                               "(the default edit model)")
         def arrived(path, seed, n):
             (kept,) = self._keep(name, "as cast", [path])
-            lines.append(f"![[{kept}]]")
-            self.made_so_far.append(f"![[{kept}]] {names} edited in")
-            self._doing(name, log, f"Editing {names} in: {n} of {len(images)} done", f"![[{kept}]]")
+            lines.append(f"![[{kept}]] {model}")
+            self.made_so_far.append(f"![[{kept}]] {names} edited in by {model}")
+            self._doing(name, log, f"Editing {names} in: {n} of {len(images)} done, by {model}", f"![[{kept}]]")
         os.makedirs(job, exist_ok=True)
         media.edit(self.media, {"prompt": instruction, "quality": header.get("quality"), "seed": header.get("seed"),
                                 "negative": header.get("negative")},
                    images[:1] + [r for _, r in edit_in], job, on_image=arrived, each=images)
-        return f"{names}, edited in from their reference picture:\n\n" + "\n".join(lines) + "\n"
+        return (f"{names}, edited in from their reference picture by {model} (the default edit model):\n\n"
+                + "\n".join(lines) + "\n")
 
     def _instruction(self, header, owner_text):
         """An edit's instruction: after the round's word, and the note's own words below the top,
@@ -222,12 +227,13 @@ class Looks:
         options = {"prompt": " ".join([self._instruction(header, owner_text)] + appearances), "model": header["model"],
                    "count": header["count"], "seed": header["seed"], "quality": header["quality"],
                    "negative": header["negative"], "size": header["size"], "redraw": header["redraw"]}
-        saved, took = [], time.time()
-        result = media.edit(self.media, options, pictures, job,
-                            on_image=self._arrived(name, "edit", saved, self.live_log(name, "edit")))
+        saved, took, log = [], time.time(), self.live_log(name, "edit")
+        model, model_said = self._drawn_by(header["model"], self.media.default_edit, "edit")
+        livelog.append(log, f"*{time.strftime('%H:%M')}* editing with {model_said}\n")
+        result = media.edit(self.media, options, pictures, job, on_image=self._arrived(name, "edit", saved, log, model))
         spec = result["spec"]
         lines = [f"## Edited, {_stamp()}", "",
-                 f"{self.model_link(spec['name'])} · {spec['steps']} steps" + (" with its fast LoRA" if spec["fast"] else "")
+                 f"{model_said} · {spec['steps']} steps" + (" with its fast LoRA" if spec["fast"] else "")
                  + f" · from {self.link(pictures[0])}"
                  + (f", going by {', '.join(self.link(p) for p in pictures[1:3])}" if len(pictures) > 1 else "")
                  + (f" · seeds {saved[0][1]} to {saved[-1][1]}" if len(saved) > 1 else f" · seed {spec['seed']}")
@@ -245,7 +251,7 @@ class Looks:
                       "up to two more.", ""]
         elif len(pictures) > 3:
             lines += [f"Only the first three pictures were used: an edit takes at most three.", ""]
-        lines += [f"![[{kept}]]" for kept, _ in saved]
+        lines += [f"![[{kept}]]" + (f" seed {seed} ·" if len(saved) > 1 else "") + f" {model}" for kept, seed in saved]
         return "\n".join(lines) + "\n"
 
     def _media_character_set(self, name, header, owner_text, job, earlier=""):
@@ -320,6 +326,8 @@ class Looks:
         candidates = os.path.join(folder, "candidates")
         os.makedirs(candidates, exist_ok=True)
         made, took = [], time.time()
+        model, model_said = self._drawn_by(header["model"], self.media.default_edit, "edit")
+        livelog.append(self.live_log(name, "character set"), f"*{time.strftime('%H:%M')}* drawing with {model_said}\n")
         def arrived(path, seed, n):
             target, k = None, 1
             while target is None or os.path.exists(os.path.join(candidates, target)):
@@ -327,7 +335,7 @@ class Looks:
                 k += 1
             copy_in(path, os.path.join(candidates, target))
             made.append(target)
-            asked_for = f"*{chosen[n - 1]}* · from {', '.join(self.link(p) for p in sources[n - 1])}"
+            asked_for = f"*{chosen[n - 1]}* · from {', '.join(self.link(p) for p in sources[n - 1])} · by {model}"
             self.made_so_far.append(f"![[{target}]] seed {seed} · {asked_for}")
             livelog.append(self.live_log(name, "character set"),
                            f"*{time.strftime('%H:%M')}* {n}: ![[{target}]] · {asked_for}\n")
@@ -349,7 +357,7 @@ class Looks:
         lines = [f"## Candidates for {who}, {_stamp()}", "",
                  f"{len(made)} pictures, {went_by}" + (f", at {size} size" if size != "full" and not single else "")
                  + f" · from {len(asked['variations'])} variations, each drawn at random from the least used so far"
-                 f" · with {self.model_link(result['spec']['name'])} · seed {seed} · took {round((time.time() - took) / 60)} minutes",
+                 f" · with {model_said} · seed {seed} · took {round((time.time() - took) / 60)} minutes",
                  ""]
         if asked["stopped"]:
             lines += [f"It stopped after {len(made)} of {asked['count']}: {asked['stopped']}.", ""]
@@ -384,7 +392,8 @@ class Looks:
                     os.replace(os.path.join(candidates, target), os.path.join(rejected, target))
                     verdict = f" · {seer} does not see {who}: moved to `candidates/rejected/`"
             # What each was asked for and went by: the owner's to judge it by, and to caption a LoRA with.
-            lines += [f"![[{target}]]", f"*{variation}* · from {', '.join(self.link(p) for p in these)}" + verdict, ""]
+            lines += [f"![[{target}]]", f"*{variation}* · from {', '.join(self.link(p) for p in these)} · by {model}"
+                      + verdict, ""]
         if not tag:
             lines.append("No vision model to check them with (a note in `models/`, `Kind: vision`): every candidate "
                          "is kept for you to judge.")
@@ -502,33 +511,40 @@ class Looks:
         if said_of_cast:
             lines += [said_of_cast, ""]
         best = None
+        # What draws it, and what edits it after the first round: each picture's line says which made it.
+        drawer, drawer_said = self._drawn_by(header["model"], self.media.default_image)
+        editor, editor_said = self._drawn_by(header["edit model"], self.media.default_edit, "edit", line="edit model")
+        lines += [f"Drawn with {drawer_said}" + (f"; edited after the first round with {editor_said}"
+                                                if rounds > 1 and self.media.edit_models else "") + ".", ""]
         for r in range(1, rounds + 1):
             step = os.path.join(job, f"round{r}")
             os.makedirs(step)
             saved = []
             if r == 1 or not (best and self.media.edit_models):
+                model = drawer
                 media.generate(self.media, dict(options, seed=str((int(options["seed"] or time.time()) + r * 1000) % 2**32)),
-                               step, on_image=self._arrived(name, f"round {r}", saved, log))
+                               step, on_image=self._arrived(name, f"round {r}", saved, log, model))
             else:
                 failing = [item for item, ok in zip(items, best[2]) if not ok][:2]
                 instruction = ("Change the picture so that it shows " + "; and ".join(failing)
                                + ". Keep everything else exactly as it is.")
+                model = editor
                 media.edit(self.media, {"prompt": instruction, "model": header["edit model"], "quality": header["quality"],
                                         "seed": header["seed"], "count": str(count), "negative": header["negative"]},
                            [os.path.join(self.media_home(name), best[0])], step,
-                           on_image=self._arrived(name, f"round {r}", saved, log))
+                           on_image=self._arrived(name, f"round {r}", saved, log, model))
                 lines += [f"Round {r} edits the best so far, to show: {'; '.join(failing)}.", ""]
             for kept, _ in saved:
                 marks = vision.check(self.ollama, tag, os.path.join(self.media_home(name), kept), items)
-                lines.append(f"![[{kept}]] round {r}: shows {sum(marks)} of {len(items)}")
+                lines.append(f"![[{kept}]] round {r}, by {model}: shows {sum(marks)} of {len(items)}")
                 if best is None or sum(marks) > sum(best[2]):
-                    best = (kept, r, marks)
+                    best = (kept, r, marks, model)
             lines.append("")
             livelog.append(log, f"*{time.strftime('%H:%M')}* round {r} done; the best shows {sum(best[2])} of {len(items)}\n")
             if all(best[2]):
                 break
         missing = [item for item, ok in zip(items, best[2]) if not ok]
-        lines += [f"**The best:** ![[{best[0]}]] from round {best[1]}, showing {sum(best[2])} of {len(items)}"
+        lines += [f"**The best:** ![[{best[0]}]] from round {best[1]}, by {best[3]}, showing {sum(best[2])} of {len(items)}"
                   + (f". Still missing: {'; '.join(missing)}." if missing else ": everything on the list."),
                   "", f"Took {round((time.time() - took) / 60)} minutes."]
         return "\n".join(lines) + "\n"
