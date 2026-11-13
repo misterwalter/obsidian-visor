@@ -158,6 +158,21 @@ class KindsTest(unittest.TestCase):
         self.assertEqual(notes.parse_header("Character set: Mara\nVariations: eating\n")["variations"], ["eating"])
         self.assertEqual(notes.parse_header("Character set: Mara\nVariations:\n- [ ] eating\n")["variations"], [])
 
+    def test_a_list_s_items_written_without_a_box_are_its_items_ticked_and_bring_no_second_list(self):
+        mine = ("Character set: Mara\nVariations:\n- [x] lying on a bed\n- on a boat\n* in a car\n1. at a desk\n"
+                "- [ ] eating\n\n- not the list's, after a blank line\n")
+        tidied = kinds.tidy(mine, "character set")
+        self.assertIn("Variations:\n- [x] lying on a bed\n- [x] on a boat\n- [x] in a car\n- [x] at a desk\n"
+                      "- [ ] eating\n\n- not the list's, after a blank line\n", tidied)
+        self.assertNotIn("seen from the front", tidied, "the owner's list, not visor's again beside it")
+        self.assertEqual(kinds.tidy(tidied, "character set"), tidied)
+        self.assertEqual(notes.parse_header(tidied)["variations"],
+                         ["lying on a bed", "on a boat", "in a car", "at a desk"])
+        # Every box taken off: still the owner's list, never visor's twelve written in above it.
+        plain = kinds.tidy("Character set: Mara\nVariations:\n- on a boat\n- in a car\n", "character set")
+        self.assertIn("Variations:\n- [x] on a boat\n- [x] in a car\n", plain)
+        self.assertNotIn("seen from the front", plain)
+
     def test_every_kind_s_lines_are_header_words(self):
         self.assertEqual(kinds.kind_of({"new project": "", "round": None}), "new project")
         self.assertEqual(kinds.kind_of({"new project": None, "round": None}), "plan")

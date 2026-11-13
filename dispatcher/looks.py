@@ -393,7 +393,8 @@ class Looks:
         saved, or taken out of working/, which stops the job anyway)."""
         try:
             with open(path, encoding="utf-8") as f:
-                return parse_header(drop_guide(split_note(f.read())[0]))
+                # An item added without a box, `- on a boat`, counts as a ticked one, as tidying will write it.
+                return parse_header(drop_guide(split_note(kinds.boxed_lists(f.read()))[0]))
         except (OSError, UnicodeDecodeError):
             return None
 

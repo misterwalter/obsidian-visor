@@ -271,6 +271,32 @@ def spaced(text):
     return "\n".join(out)
 
 
+LIST_HEAD = re.compile(r"^\s*([A-Za-z][A-Za-z ]*?)\s*:\s*$")
+PLAIN_ITEM = re.compile(r"^(\s*)(?:[-*+]|\d+[.)])\s+(?!\[[ xX]\]\s)(\S.*?)\s*$")
+
+
+def boxed_lists(text):
+    """The note with a list line's items (`Variations:`) that have no box, `- on a boat` or `1. on a boat`, as the
+    notes app makes them when an item is typed or pasted, written as ticked boxes: otherwise the list would end at
+    the first of them, and the items below it would not be read. Only the lines straight under the list's own."""
+    rows, inside = text.split("\n"), False
+    for i, row in enumerate(rows):
+        head = LIST_HEAD.match(row)
+        if head and re.sub(r"\s+", " ", head.group(1).lower()) in LISTS:
+            inside = True
+            continue
+        if not inside:
+            continue
+        if settings.BOX.match(row):
+            continue
+        plain = PLAIN_ITEM.match(row)
+        if plain:
+            rows[i] = f"{plain.group(1)}- [x] {plain.group(2)}"
+            continue
+        inside = False
+    return "\n".join(rows)
+
+
 def tidy(text, kind, ctx=None):
     """The note with its top tidied for its kind: see the module's description. Only the
     lines at the top of the note are touched, and nothing below them, but for a `Repeat:` or
@@ -282,6 +308,8 @@ def tidy(text, kind, ctx=None):
     if (ctx or {}).get("folder") == UNKNOWN:
         also |= {l.key for l in LINES[kind] if l.when is not None}
     text = lift(text, tuple(k for k in STRAYS if k in wanted))
+    if any(is_list(l) for l in wanted.values()):
+        text = boxed_lists(text)
     entries, _ = settings.scan(text, WORDS, top_only=True, unused=True)
     rows = text.split("\n")
     drop, mark, seen = set(), set(), set()
