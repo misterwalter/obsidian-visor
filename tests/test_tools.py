@@ -24,7 +24,7 @@ FAKE_FLATPAK = textwrap.dedent('''\
     APPS, ASKED = {apps!r}, {asked!r}
     args = sys.argv[1:]
     with open(ASKED, "a") as f:
-        f.write(json.dumps({{"args": args, "cwd": os.getcwd()}}) + "\\n")
+        f.write(json.dumps({{"args": args, "cwd": os.getcwd(), "display": os.environ.get("DISPLAY")}}) + "\\n")
     if args[0] == "info":
         app = os.path.join(APPS, args[-1])
         if not os.path.exists(app):
@@ -36,6 +36,34 @@ FAKE_FLATPAK = textwrap.dedent('''\
         given = [a for a in args[1:] if not a.startswith("--")]
         print("the app ran with:", " ".join(args[1:]))
 ''')
+
+FAKE_XVFB = textwrap.dedent('''\
+    #!/usr/bin/env python3
+    # Stands in for Xvfb: says display 7 on -displayfd, as Xvfb does once it is ready, and waits to be stopped.
+    import os, sys, time
+    args = sys.argv[1:]
+    os.write(int(args[args.index("-displayfd") + 1]), b"7\\n")
+    time.sleep(60)
+''')
+
+
+def load_app_door():
+    """doors/app-door.py, as a module (its name has a dash)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("app_door", os.path.join(tools.HERE, "doors", "app-door.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def fake_xvfb(folder):
+    """FAKE_XVFB as `Xvfb` in a folder: its path."""
+    path = os.path.join(folder, "Xvfb")
+    with open(path, "w") as f:
+        f.write(FAKE_XVFB)
+    os.chmod(path, 0o755)
+    return path
+
 
 GUIDE = "Run `hello` to be greeted. " * 40
 
@@ -64,6 +92,41 @@ class ToolNoteTest(unittest.TestCase):
         self.assertTrue(any("`guide`" in p and "inside the repository" in p for p in problems), problems)
         self.assertTrue(any("`not-an-id`" in p for p in problems), problems)
         self.assertEqual(tools.apps_of({"flatpak": ["org.example.Painter"]}), {"painter": "org.example.Painter"})
+
+    def test_the_app_door_starts_a_screen_of_the_server_s_xvfb_and_says_plainly_when_there_is_none(self):
+        door = load_app_door()
+        with tempfile.TemporaryDirectory() as folder:
+            screen, number = door.start_screen(fake_xvfb(folder))
+            self.assertIsNotNone(screen, number)
+            self.assertEqual(number, 7, "the display Xvfb chose, the first free one")
+            door.stop_screen(screen)
+            self.assertIsNotNone(screen.poll(), "stopped when the app is done")
+            screen, said = door.start_screen(os.path.join(folder, "no-xvfb"))
+        self.assertIsNone(screen)
+        self.assertIn("this server has no Xvfb", said)
+        self.assertIn("`sudo apt install xvfb`", said)
+
+    def test_final_is_a_step_or_a_list_of_them_each_after_the_first_taking_the_files_before_it(self):
+        self.assertEqual(tools.steps_of({"files": "*.json", "run": "a {file}"}),
+                         [{"files": "*.json", "run": "a {file}", "show": "quote"}])
+        self.assertEqual(tools.steps_of([{"files": "*.json", "run": "a"}, {"run": "b", "show": "text"},
+                                         {"files": "*.txt", "run": "c"}]),
+                         [{"files": "*.json", "run": "a", "show": "quote"}, {"files": "*.json", "run": "b", "show": "text"},
+                          {"files": "*.txt", "run": "c", "show": "quote"}])
+        for wrong in ([], [{"run": "a"}], [{"files": "*", "run": "a", "show": "loud"}], "a", [{"files": "*"}]):
+            self.assertIsNone(tools.steps_of(wrong), wrong)
+        with tempfile.TemporaryDirectory() as folder:
+            os.makedirs(os.path.join(folder, "bin"))
+            open(os.path.join(folder, "guide.md"), "w").close()
+            base = {"name": "x", "commands": "bin", "guide": "guide.md"}
+            self.assertEqual(tools.manifest_problems(dict(base, final=[{"files": "*", "run": "a"}, {"run": "b"}],
+                                                          needs={"apt": ["xvfb", "libfoo1"]}), folder), [])
+            problems = tools.manifest_problems(dict(base, final=[{"run": "a"}], needs={"apt": ["No Such!"],
+                                                                                      "display": True}), folder)
+        self.assertEqual(len(problems), 3, problems)
+        self.assertIn("`final`", problems[0])
+        self.assertIn("`needs.apt`", problems[1])
+        self.assertIn("`needs.display`", problems[2])
 
 
 @unittest.skipUnless(shutil.which("bwrap") and shutil.which("git") and shutil.which("socat"),
@@ -276,6 +339,100 @@ class ToolInstallTest(unittest.TestCase):
         self.assertIsNone(self.d.tool_job)
         self.assertIn("## Tools", "\n".join(self.d.tools_section()))
 
+    def fake_apt(self, packages):
+        """apt-get and apt-cache stand-ins, first on the PATH: Ubuntu's archive is a folder of packages built here,
+        {name: {path: text}}, and each needs libc6, which this machine has. What apt-get was asked is kept."""
+        root = self.tmp.name
+        archive, fakes = os.path.join(root, "archive"), os.path.join(root, "fake-apt")
+        os.makedirs(archive)
+        os.makedirs(fakes)
+        for name, files in packages.items():
+            build = os.path.join(root, "build", name)
+            os.makedirs(os.path.join(build, "DEBIAN"))
+            with open(os.path.join(build, "DEBIAN", "control"), "w") as f:
+                f.write(f"Package: {name}\nVersion: 1.0-1\nArchitecture: all\nMaintainer: Anon <anon@example.invalid>\n"
+                        "Description: a stand-in\n")
+            for path, text in files.items():
+                os.makedirs(os.path.dirname(os.path.join(build, path)), exist_ok=True)
+                with open(os.path.join(build, path), "w") as f:
+                    f.write(text)
+                os.chmod(os.path.join(build, path), 0o755)
+            subprocess.run(["dpkg-deb", "--build", "--root-owner-group", build,
+                            os.path.join(archive, f"{name}_1.0-1_all.deb")], check=True, capture_output=True)
+        self.apt_asked = os.path.join(root, "apt-asked.jsonl")
+        with open(os.path.join(fakes, "apt-get"), "w") as f:
+            f.write(textwrap.dedent(f'''\
+                #!/usr/bin/env python3
+                import glob, json, shutil, sys
+                args = sys.argv[1:]
+                open({self.apt_asked!r}, "a").write(json.dumps(args) + "\\n")
+                while args[0] == "-o":
+                    args = args[2:]
+                for name in args[1:]:
+                    found = glob.glob({archive!r} + "/" + name + "_*.deb")
+                    if not found:
+                        sys.exit("E: Unable to locate package " + name)
+                    shutil.copy(found[0], ".")
+                '''))
+        with open(os.path.join(fakes, "apt-cache"), "w") as f:
+            f.write("#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in -*|depends) ;; *) echo \"$a\"; echo '  Depends: libc6'; "
+                    "echo '  Depends: <virtual-thing>';; esac; done\necho libc6\necho '<virtual-thing>'\n")
+        for name in ("apt-get", "apt-cache"):
+            os.chmod(os.path.join(fakes, name), 0o755)
+        path = os.environ["PATH"]
+        os.environ["PATH"] = fakes + os.pathsep + path
+        self.addCleanup(os.environ.__setitem__, "PATH", path)
+
+    @unittest.skipUnless(shutil.which("dpkg-deb") and shutil.which("dpkg-query"), "needs.apt needs dpkg")
+    def test_ubuntu_packages_it_needs_are_fetched_as_network_allows_and_unpacked_for_its_walls(self):
+        self.fake_apt({"visor-greeter": {"usr/bin/greeter": "#!/bin/sh\necho greeted, with $LD_LIBRARY_PATH\n",
+                                         "usr/lib/x86_64-linux-gnu/libgreet.so.1": ""}})
+        self.commit({"visor-tool.json": json.dumps({"name": "hello", "commands": "bin", "guide": "guide.md",
+                                                     "needs": {"apt": ["visor-greeter"]}, "test": "greeter"})},
+                    "Needs a package")
+        self.note("Repo: me/hello\n- [x] Fetch\n")
+        self.tend()
+        self.assertIsNone(self.installed())
+        self.assertIn("it needs `visor-greeter` from Ubuntu's archive, and with `Network: no` visor may not fetch them",
+                      self.read())
+        self.note(self.read().replace("Network: no", "Network: direct"))
+        self.tend()
+        folder = self.installed()
+        self.assertIsNotNone(folder, self.read())
+        asked = [json.loads(line) for line in open(self.apt_asked)]
+        self.assertEqual(asked, [["download", "visor-greeter"]], "only what this machine lacks: not libc6")
+        self.assertTrue(os.path.isfile(os.path.join(folder, tools.APT_DIR, "root", "usr", "bin", "greeter")))
+        self.assertFalse(os.path.exists(os.path.join(folder, tools.APT_DIR, "root.debs")), "the packages themselves go")
+        note = self.read()
+        self.assertIn("> - Ubuntu packages, unpacked for it and never installed: `visor-greeter` 1.0-1", note)
+        # Its self-test ran the program in the tool's wall, with the package's libraries found.
+        status, said = tools.walled("hello", folder, "greeter", "bin", self.tmp.name)
+        self.assertEqual(status, 0, said)
+        self.assertIn("greeted, with /opt/tools/hello/.visor-apt/root/usr/lib/x86_64-linux-gnu:", said)
+
+    def test_an_app_that_needs_a_screen_is_given_one_of_the_server_s_xvfb_each_time_it_runs(self):
+        fakes = os.path.join(self.tmp.name, "fake-xvfb")
+        os.makedirs(fakes)
+        fake_xvfb(fakes)
+        path = os.environ["PATH"]
+        os.environ["PATH"] = fakes + os.pathsep + path
+        self.addCleanup(os.environ.__setitem__, "PATH", path)
+        open(os.path.join(self.apps, "org.example.FakeApp"), "w").write("c0ffee\n")
+        self.commit({"visor-tool.json": json.dumps({
+            "name": "hello", "commands": "bin", "guide": "guide.md",
+            "needs": {"flatpak": {"fakeapp": "org.example.FakeApp"}, "display": True},
+            "test": "fakeapp --draw {job}"})}, "Draws")
+        self.note("Repo: me/hello\n- [x] Fetch\n")
+        self.tend()
+        folder = self.installed()
+        self.assertIsNotNone(folder, self.read())
+        drew = next(json.loads(line) for line in open(self.asked) if "--draw" in json.loads(line)["args"])
+        self.assertIn("--socket=x11", drew["args"], "the app is handed its screen")
+        self.assertIn("--nosocket=wayland", drew["args"])
+        self.assertEqual(drew["display"], ":7", "and that screen alone")
+        self.assertIn("> - Runs `org.example.FakeApp`, from flatpak (`c0ffee`), on a screen of its own each time "
+                      "(the server's Xvfb)", self.read())
+
 
 def load_model_door():
     """doors/model-door.py, as a module (its name has a dash)."""
@@ -339,12 +496,12 @@ class ToolRunTest(unittest.TestCase):
         self.assertEqual(open(os.path.join(self.out, "binds")).read(), f"{self.tool}\t/opt/tools/hello\n")
         self.assertEqual(open(os.path.join(self.out, "path")).read(), "/opt/tools/hello/bin\n")
         door = json.load(open(os.path.join(self.out, "door.json")))
-        self.assertEqual(door, {"apps": {"fakeapp": "org.example.FakeApp"},
+        self.assertEqual(door, {"apps": {"fakeapp": "org.example.FakeApp"}, "screens": [],
                                 "maps": [f"/opt/tools/hello={self.tool}:ro", f"{self.work}={self.work}"]})
         self.assertEqual([c["run"] for c in json.load(open(os.path.join(self.out, "checks.json")))],
                          ["greet-check {file}"])
-        self.assertEqual([c["run"] for c in json.load(open(os.path.join(self.out, "finals.json")))],
-                         ["greet-draw {file}"])
+        self.assertEqual([[s["run"] for s in c["steps"]] for c in json.load(open(os.path.join(self.out, "finals.json")))],
+                         [["greet-draw {file}"]])
         self.assertTrue(os.access(os.path.join(self.out, "apps", "fakeapp"), os.X_OK))
 
     def test_in_the_agent_s_wall_the_tool_is_read_only_its_commands_run_and_its_app_goes_through_the_door(self):
@@ -418,11 +575,58 @@ class ToolRunTest(unittest.TestCase):
         os.makedirs(show)
         self.assertEqual(tools.final(self.out, self.work, os.stat(started).st_mtime, show), 1)
         said = open(os.path.join(self.out, "final.md")).read()
-        self.assertIn("- `new.greeting`, by hello's `greet-draw new.greeting`: passed.", said)
+        # A step that passes and still says something is shown open: a warning leaves the exit status alone.
+        self.assertIn("- `new.greeting`, by hello's `greet-draw new.greeting`: passed, and it said something.\n"
+                      "  > [!quote] What it said\n", said)
         self.assertIn("  > drew new.greeting", said)
         self.assertNotIn("old.greeting", said, "only what the round made")
         self.assertEqual(open(os.path.join(self.work, "new.png")).read(), "PNG")
         self.assertEqual(os.listdir(show), ["new.greeting"])
+
+    def test_a_check_that_passes_and_still_warns_is_told_as_something_to_deal_with(self):
+        door = load_model_door().Door
+        entry = json.load(open(os.path.join(self.out, "checks.json")))[0]
+        door.tool_checks = [dict(entry, run='echo "{file}:3: warning: beat 2 is said by the wrong person"')]
+        door.work, door.told, door.tool_seen, door.tool_told = self.work, [], {}, {}
+        open(os.path.join(self.work, "a.greeting"), "w").write("hello\n")
+        door.with_tool_checks({"messages": [{"role": "user", "content": "go"}]})
+        (_, said), = door.told
+        self.assertIn("Visor checked a.greeting with `echo \"a.greeting:3: warning: beat 2 is said by the wrong "
+                      "person\"` after your last change. It passed, and it said this:", said)
+        self.assertIn("Deal with every warning in it before you go on.", said)
+        self.assertNotIn("no problems", said)
+
+    def test_after_the_round_the_steps_run_in_order_and_a_text_step_s_words_are_in_the_reply(self):
+        finals = json.load(open(os.path.join(self.out, "finals.json")))
+        finals[0]["steps"] = tools.steps_of([{"files": "*.greeting", "run": "greet-check {file}"},
+                                             {"run": "cat {file}", "show": "text"}, {"run": "greet-draw {file}"}])
+        json.dump(finals, open(os.path.join(self.out, "finals.json"), "w"))
+        open(os.path.join(self.work, "good.greeting"), "w").write("hello\n## Page 1\nMara: hi\n")
+        open(os.path.join(self.work, "bad.greeting"), "w").write("goodbye\n")
+        self.assertEqual(tools.final(self.out, self.work, time.time() - 60), 2)
+        said = open(os.path.join(self.out, "final.md")).read()
+        self.assertIn("- `good.greeting`, by hello's `greet-check good.greeting`: passed.\n"
+                      "- `good.greeting`, by hello's `cat good.greeting`:\n\n  > [!note] What it wrote\n  > hello\n"
+                      "  > ## Page 1\n  > Mara: hi\n\n- `good.greeting`, by hello's `greet-draw good.greeting`: passed, "
+                      "and it said something.", said)
+        self.assertNotIn("\n## ", said, "the reply's own sections are not broken by a script's headings")
+        self.assertIn("- `bad.greeting`, by hello's `greet-check bad.greeting`: **failed** (exit 1).", said)
+        self.assertIn("- `bad.greeting`, by hello's `cat bad.greeting`: not run, as `greet-check bad.greeting` failed.",
+                      said)
+        self.assertTrue(os.path.exists(os.path.join(self.work, "good.png")))
+        self.assertFalse(os.path.exists(os.path.join(self.work, "bad.png")))
+
+    def test_a_check_can_read_the_round_s_task_as_the_agent_was_given_it(self):
+        task = os.path.join(self.tmp.name, "card.md")
+        open(task, "w").write('A card.\n\nMara: "Happy birthday, Tom!"\n')
+        out = os.path.join(self.tmp.name, "results", "tools-2")
+        self.assertEqual(tools.prepare(out, self.work, True, [("hello", self.tool)], task=task), [])
+        self.assertIn(f"{tools.TASK_INSIDE}={out}/task:ro", json.load(open(os.path.join(out, "door.json")))["maps"])
+        entry = dict(json.load(open(os.path.join(out, "checks.json")))[0], run="grep '^Mara:' {task}; touch {task}")
+        open(os.path.join(self.work, "a.greeting"), "w").write("hello\n")
+        status, said = tools.check_file(entry, os.path.join(self.work, "a.greeting"), self.work)
+        self.assertIn('Mara: "Happy birthday, Tom!"', said)
+        self.assertIn("Read-only file system", said, "the task is the owner's: no check changes it")
 
 
 if __name__ == "__main__":

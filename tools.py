@@ -24,11 +24,13 @@ What a tool needs and gives a run is the tool's own to say, in a manifest at the
      "guide": "agent/guide.md",                 the standing guide, for the system prompt (required)
      "topics": "agent/topics",                  the longer guide, read on demand
      "starter": "agent/starter.json",           a small valid file for the agent to start from
-     "needs": {"flatpak": {"app": "org.example.App"}, "display": false},
+     "needs": {"flatpak": {"app": "org.example.App"}, "display": false, "apt": ["some-package"]},
      "setup": "app --path {tool} --prepare",
      "test": "my-tool-check {tool}/examples/sample.json",
-     "check": {"files": "*.json", "run": "my-tool-check {file}"},             as the agent saves
-     "final": {"files": "*.json", "run": "my-tool-render {file} --out {dir}/{name}-out"},  after
+     "check": {"files": "*.json", "run": "my-tool-check {file} --task {task}"},   as the agent saves
+     "final": [{"files": "*.json", "run": "my-tool-check {file}"},                after, in order
+               {"run": "my-tool-script {file}", "show": "text"},
+               {"run": "my-tool-render {file} --out {dir}/{name}-out"}],
      "carry": [".cache"]}                       kept from the version before, for setup to start from
 
 A note's `Tools:` line gives an agent's round the tools it names (see "A run with tools" below).
@@ -37,6 +39,17 @@ A flatpak app a tool runs is reached through the app door (doors/app-door.py), r
 sandbox, as Godot projects reach Godot: inside a wall, the app is a command of the name the manifest
 gives it. A list of app ids names each command after the id's last part (`org.example.App`:
 `app`). One missing from this server is installed, from Flathub, when the note's `Network:` allows.
+
+`needs.display`: each of those apps is given a screen of its own to draw on each time it runs, this
+server's Xvfb, started by the app door. The one thing visor cannot install: a server without Xvfb fails
+the install, saying so.
+
+`needs.apt`: Ubuntu packages the tool's own programs need, fetched with `apt-get download`, which
+needs no root, with whatever they need that this server lacks, and unpacked into the tool's folder
+(APT_DIR), never installed: on the PATH, and the libraries found, in every wall the tool is in. A
+program that looks for its files at a fixed place in /usr does not find them there.
+
+They are fetched when the tool is installed, when the note's `Network:` allows.
 
 `python3 tools.py install SPEC` is the install itself, run by the dispatcher in the background
 (dispatcher/tool_notes.py): it writes how far it got to `stage`, and what came of it to `result.json`,
@@ -80,6 +93,9 @@ SETUP_LIMIT, TEST_LIMIT = 2 * 3600, 30 * 60
 READING = (30, 50)
 # The longest a tool's own output is kept for its note, in lines.
 TAIL = 25
+# In a tool's installed folder, visor's own: the Ubuntu packages its manifest's needs.apt names, unpacked.
+APT_DIR = ".visor-apt"
+PACKAGE = re.compile(r"[a-z0-9][a-z0-9+.-]+")
 
 GUIDE = """**A tool, `{name}`.** A program of yours from GitHub, for agents to use. Its name is this note's \
 file name. Change a value after its colon: a minute after you stop editing, visor writes the note back in \
@@ -206,6 +222,27 @@ def apps_of(needs):
     return {str(command): str(app) for command, app in listed.items()} if isinstance(listed, dict) else {}
 
 
+SHOWS = ("quote", "text")
+
+
+def steps_of(final):
+    """A manifest's `final`, one step or a list of them, as a list of steps, each with its own files (a step that
+    says none takes the files of the step before) and how its output is shown: "quote", as a check's, or "text",
+    as part of the reply. None when it cannot be read."""
+    given = [final] if isinstance(final, dict) else final
+    if not isinstance(given, list) or not given:
+        return None
+    steps, files = [], None
+    for step in given:
+        if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+            return None
+        files = step.get("files", files)
+        if not isinstance(files, str) or step.get("show", "quote") not in SHOWS:
+            return None
+        steps.append({"files": files, "run": step["run"], "show": step.get("show", "quote")})
+    return steps
+
+
 def _inside(path):
     """Whether a path a manifest gives stays inside the tool's folder."""
     return (isinstance(path, str) and path.strip() != "" and not os.path.isabs(path)
@@ -231,16 +268,27 @@ def manifest_problems(manifest, folder):
     for key in ("setup", "test"):
         if manifest.get(key) is not None and not isinstance(manifest[key], str):
             problems.append(f"`{key}` in `{MANIFEST}` must be a command, as text.")
-    for key in ("check", "final"):
-        check = manifest.get(key)
-        if check is not None and not (isinstance(check, dict) and isinstance(check.get("files"), str)
-                                      and isinstance(check.get("run"), str)):
-            problems.append(f"`{key}` in `{MANIFEST}` must say which files it checks and how: "
-                            '`{"files": "*.json", "run": "my-tool-check {file}"}`.')
+    check = manifest.get("check")
+    if check is not None and not (isinstance(check, dict) and isinstance(check.get("files"), str)
+                                  and isinstance(check.get("run"), str)):
+        problems.append(f"`check` in `{MANIFEST}` must say which files it checks and how: "
+                        '`{"files": "*.json", "run": "my-tool-check {file}"}`.')
+    if manifest.get("final") is not None:
+        steps = steps_of(manifest.get("final"))
+        if steps is None:
+            problems.append(f"`final` in `{MANIFEST}` must be a step, or a list of them, each saying how it runs, "
+                            'and the first which files: `[{"files": "*.json", "run": "my-tool-check {file}"}, '
+                            '{"run": "my-tool-script {file}", "show": "text"}]`.')
     needs = manifest.get("needs") or {}
     if not isinstance(needs, dict):
         problems.append(f"`needs` in `{MANIFEST}` must be an object: `{{\"flatpak\": [...], \"display\": true}}`.")
     else:
+        apt = needs.get("apt") or []
+        if not isinstance(apt, list) or not all(isinstance(p, str) and PACKAGE.fullmatch(p) for p in apt):
+            problems.append(f"`needs.apt` in `{MANIFEST}` must list Ubuntu packages by name, such as `[\"imagemagick\"]`.")
+        if needs.get("display") and not apps_of(needs):
+            problems.append(f"`needs.display` in `{MANIFEST}` is a screen for the flatpak apps the tool runs, and "
+                            "`needs.flatpak` names none.")
         listed = needs.get("flatpak") or {}
         if not isinstance(listed, (list, dict)):
             problems.append(f"`needs.flatpak` in `{MANIFEST}` must list app ids, or map commands to them.")
@@ -429,9 +477,18 @@ class Install:
         problems = manifest_problems(manifest, self.part)
         if problems:
             raise Failed(" ".join(problems))
-        apps = apps_of(manifest.get("needs"))
+        needs = manifest.get("needs") or {}
+        apps = apps_of(needs)
         self.stage("checking the flatpak apps it runs")
         versions = self._apps(apps)
+        packages = {}
+        if needs.get("apt"):
+            self.stage("fetching the Ubuntu packages it needs")
+            packages = self._apt(needs["apt"], os.path.join(self.part, APT_DIR))
+        if needs.get("display") and not shutil.which("Xvfb"):
+            raise Failed("its apps need a screen to draw on, and this server has no Xvfb, the one thing visor "
+                         "cannot install itself: install it on the server once (`sudo apt install xvfb` on "
+                         "Ubuntu, Pop!_OS or Debian), then save this note again.")
         # What the commands need to run, whatever the repository kept of it.
         for command, _ in commands_of(self.part, manifest):
             path = os.path.join(self.part, manifest["commands"], command)
@@ -481,9 +538,64 @@ class Install:
         return {"ok": True, "commit": commit, "installed": {
             "commit": commit, "subject": subject, "when": when, "url": spec["url"], "branch": spec["branch"],
             "dir": final, "size": size_of(final), "apps": versions, "commands": commands_of(final, manifest),
-            "guide_tokens": guide_tokens(final, manifest), "display": bool((manifest.get("needs") or {}).get("display")),
-            "check": manifest.get("check"), "final": manifest.get("final"), "tested": bool(manifest.get("test")), "seconds": timed, "new": new,
-            "at": time.strftime("%Y-%m-%d %H:%M")}}
+            "guide_tokens": guide_tokens(final, manifest), "display": bool(needs.get("display")),
+            "packages": packages, "check": manifest.get("check"),
+            "final": steps_of(manifest.get("final")) if manifest.get("final") else None,
+            "tested": bool(manifest.get("test")), "seconds": timed, "new": new, "at": time.strftime("%Y-%m-%d %H:%M")}}
+
+    # Ubuntu packages, fetched with apt-get download, which needs no root, and unpacked: never installed.
+
+    def _apt_network(self, what):
+        """apt's options for the note's `Network:`: raises Failed, said for the note, when it allows none."""
+        network = self.spec.get("network", "no")
+        if network not in ("vpn", "direct"):
+            raise Failed(f"it needs {what} from Ubuntu's archive, and with `Network: no` visor may not fetch them: "
+                         "say `Network: vpn` or `direct`, and visor fetches them itself, with no root, and unpacks "
+                         "them into the tool's folder.")
+        if network == "direct":
+            return []
+        proxy = f"socks5h://{self.spec['vpn_proxy']}"
+        return ["-o", f"Acquire::http::Proxy={proxy}", "-o", f"Acquire::https::Proxy={proxy}"]
+
+    def _unpacked(self, packages, into, what):
+        """Fetch Ubuntu packages and unpack each into a folder: {package: version}."""
+        options = self._apt_network(what)
+        debs = into + ".debs"
+        os.makedirs(debs, exist_ok=True)
+        try:
+            done = subprocess.run(["apt-get", *options, "download", *packages], cwd=debs,
+                                  capture_output=True, text=True, timeout=1800)
+        except subprocess.TimeoutExpired:
+            raise Failed("fetching Ubuntu packages took more than half an hour, and was stopped.")
+        if done.returncode != 0:
+            raise Failed(f"`apt-get download {' '.join(packages)}` failed", done.stdout + done.stderr)
+        found = {}
+        for deb in sorted(os.listdir(debs)):
+            unpacked = subprocess.run(["dpkg-deb", "-x", os.path.join(debs, deb), into], capture_output=True, text=True)
+            said = subprocess.run(["dpkg-deb", "-f", os.path.join(debs, deb), "Package", "Version"],
+                                  capture_output=True, text=True)
+            if unpacked.returncode != 0 or said.returncode != 0:
+                raise Failed(f"visor could not unpack `{deb}`", unpacked.stderr + said.stderr)
+            fields = dict(line.split(": ", 1) for line in said.stdout.splitlines() if ": " in line)
+            found[fields.get("Package", deb)] = fields.get("Version", "")
+        _remove(debs)
+        return found
+
+    def _apt(self, wanted, into):
+        """The packages a manifest's needs.apt names, and what they need that this server lacks, unpacked into
+        the tool's folder: {package: version}."""
+        listed = subprocess.run(["apt-cache", "depends", "--recurse", "--no-recommends",
+                                 "--no-suggests", "--no-conflicts", "--no-breaks", "--no-replaces", "--no-enhances",
+                                 *wanted], capture_output=True, text=True)
+        if listed.returncode != 0:
+            raise Failed(f"Ubuntu's package lists on this server have no `{'`, `'.join(wanted)}`",
+                         listed.stdout + listed.stderr)
+        named = [line.strip() for line in listed.stdout.splitlines() if line and not line[0].isspace()]
+        named = [name for name in dict.fromkeys(named) if PACKAGE.fullmatch(name)]
+        missing = [name for name in named if name in wanted or not _installed(name)]
+        found = self._unpacked(missing, os.path.join(into, "root"), "`" + "`, `".join(wanted) + "`") if missing else {}
+        apt_commands(into, mount(self.name))
+        return found
 
     def _fetch(self, url, branch):
         if not os.path.isdir(self.mirror):
@@ -556,6 +668,40 @@ class Install:
                           self.spec)
 
 
+def _installed(package):
+    """Whether this server has an Ubuntu package installed."""
+    shown = subprocess.run(["dpkg-query", "-W", "-f=${db:Status-Status}", package], capture_output=True, text=True)
+    return shown.returncode == 0 and shown.stdout.strip() == "installed"
+
+
+def _libraries(root_parent):
+    """The library folders of packages unpacked under a folder's root/, joined for LD_LIBRARY_PATH."""
+    import glob
+    root = os.path.join(root_parent, "root")
+    found = glob.glob(os.path.join(root, "usr", "lib", "*-linux-gnu")) + glob.glob(os.path.join(root, "lib", "*-linux-gnu"))
+    return ":".join(sorted(found) + [os.path.join(root, "usr", "lib")])
+
+
+def apt_commands(into, inside):
+    """A command for each program of the packages unpacked under into/root, in into/commands: it runs the program
+    with the packages' libraries found, and nothing else's changed. inside: where the tool's folder is seen in a
+    wall (mount), so each reads the same in every wall."""
+    commands = os.path.join(into, "commands")
+    os.makedirs(commands, exist_ok=True)
+    seen_from = os.path.join(inside, APT_DIR)
+    libraries = _libraries(into).replace(into, seen_from)
+    for folder in ("usr/bin", "usr/sbin", "bin", "sbin"):
+        where = os.path.join(into, "root", folder)
+        for name in sorted(os.listdir(where)) if os.path.isdir(where) else []:
+            path = os.path.join(where, name)
+            if os.path.isfile(path) and os.access(path, os.X_OK) and not os.path.exists(os.path.join(commands, name)):
+                with open(os.path.join(commands, name), "w") as f:
+                    f.write(f'#!/bin/sh\n# {name}, from an Ubuntu package visor unpacked for this tool\n'
+                            f'LD_LIBRARY_PATH="{libraries}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}" '
+                            f'exec "{seen_from}/root/{folder}/{name}" "$@"\n')
+                os.chmod(os.path.join(commands, name), 0o755)
+
+
 def mount(name):
     """Where a tool's folder is inside every wall: the agent's, and the tool's own."""
     return f"/opt/tools/{name}"
@@ -579,14 +725,14 @@ def make_shims(folder, apps):
 
 
 def walled(name, tool, command, commands, job, job_at=JOB_INSIDE, writable=False, apps=None, shims=None,
-           net=None, limit=TEST_LIMIT):
+           net=None, limit=TEST_LIMIT, task=None):
     """Run a command in a tool's own wall (tool_wall.sh): the tool's folder at mount(name), read-only unless
     writable; a folder job, writable, at job_at; the app door at apps, with its commands in shims; the net door
-    at net. (exit status, what it printed)."""
+    at net; the folder of the round's task at TASK_INSIDE. (exit status, what it printed)."""
     wall = [os.path.join(HERE, "tool_wall.sh"), "--name", name, "--tool", tool, "--job", job, "--job-at", job_at,
             "--commands", os.path.join(mount(name), commands or "")]
     wall += (["--writable"] if writable else []) + (["--apps", apps, "--shims", shims] if apps else [])
-    wall += (["--net", net] if net else []) + ["--", "bash", "-c", command]
+    wall += (["--net", net] if net else []) + (["--task", task] if task else []) + ["--", "bash", "-c", command]
     try:
         done = subprocess.run(["timeout", "--kill-after=10", str(limit)] + wall, capture_output=True, text=True,
                               errors="replace", stdin=subprocess.DEVNULL)
@@ -615,6 +761,8 @@ def run_walled(name, tool, job, command, manifest, apps, writable, network, limi
                     "--map", f"{JOB_INSIDE}={scratch}"]
             for command_name, app in apps.items():
                 door += ["--app", f"{command_name}={app}"]
+                if (manifest.get("needs") or {}).get("display"):
+                    door += ["--screen", command_name]
             with open(os.path.join(job, "app-door.log"), "a") as log:
                 started.append(subprocess.Popen(door, stdout=subprocess.DEVNULL, stderr=log))
             sockets.append("apps.sock")
@@ -654,23 +802,30 @@ def run_walled(name, tool, job, command, manifest, apps, writable, network, limi
 
 # How long one check of a file may take, as the agent works, and after the round, in seconds.
 CHECK_LIMIT, FINAL_LIMIT = 300, 30 * 60
-# The longest a check's output is shown, in lines: to the agent as it works, and to the owner after.
-CHECK_LINES, FINAL_LINES = 40, 30
+# The longest a check's output is shown, in lines: to the agent as it works, and to the owner after; and the
+# longest a final step's text (show: text) is, in lines.
+CHECK_LINES, FINAL_LINES, TEXT_LINES = 40, 30, 400
+# Where the round's task is, in a check's wall: `{task}` is TASK_INSIDE/TASK_FILE, the task as the agent was given
+# it, so that a tool can check what was made against what was asked, whatever the agent wrote down of it.
+TASK_INSIDE, TASK_FILE = "/opt/visor/task", "task.md"
 
 
 def checks(manifest, filename, key="check"):
-    """Whether a tool's check (or its final, with key) covers this file, by its name."""
+    """Whether a tool's check covers this file, by its name (with key final, its first final step)."""
     check = (manifest or {}).get(key) or {}
+    if key == "final":
+        check = (steps_of(check) or [{}])[0]
     return bool(check.get("files")) and fnmatch.fnmatch(os.path.basename(filename), check["files"])
 
 
 def check_file(entry, path, work, apps=None, shims=None, limit=CHECK_LIMIT):
-    """Check one file of a run's workspace with a tool's check or final (entry: what prepare kept of it), in the
-    tool's wall: the workspace at its own path, so that paths read the same inside and out. (status, output)."""
+    """Check one file of a run's workspace with a tool's check or a final step (entry: what prepare kept of it), in
+    the tool's wall: the workspace at its own path, so that paths read the same inside and out, and the round's
+    task at TASK_INSIDE when prepare was given it. (status, output)."""
     values = {"tool": mount(entry["name"]), "job": work, "file": path, "dir": os.path.dirname(path),
-              "name": os.path.basename(path).split(".")[0]}
+              "name": os.path.basename(path).split(".")[0], "task": f"{TASK_INSIDE}/{TASK_FILE}"}
     return walled(entry["name"], entry["dir"], filled(entry["run"], values), entry.get("commands"), work,
-                  job_at=work, apps=apps, shims=shims, limit=limit)
+                  job_at=work, apps=apps, shims=shims, limit=limit, task=entry.get("task"))
 
 
 def changed_files(work, pattern, since=None):
@@ -687,13 +842,20 @@ def changed_files(work, pattern, since=None):
     return found
 
 
-def prepare(out, work, writes, given):
+def prepare(out, work, writes, given, task=None):
     """What a run needs of the tools it is given (given: [(name, installed folder)]), written into out: each
     tool's flatpak apps as commands (apps/), the folders to show in the wall (binds) and the PATH they add
-    (path), what the app door opens (door.json), the checks as the agent saves (checks.json) and after the round
-    (finals.json), and what the agent is told (prompt.md). Returns the problems: a tool with no manifest."""
+    (path), what the app door opens and the screens it gives (door.json), the checks as the agent saves
+    (checks.json) and the steps after the round (finals.json), a copy of the round's task for them (task/,
+    from task), and what the agent is told (prompt.md). Returns the problems: a tool with no manifest."""
     os.makedirs(out, exist_ok=True)
     binds, path, apps, maps, check, final, told, problems = [], [], {}, [], [], [], [], []
+    screens = []
+    task_dir = None
+    if task:
+        task_dir = os.path.join(out, "task")
+        os.makedirs(task_dir, exist_ok=True)
+        shutil.copyfile(task, os.path.join(task_dir, TASK_FILE))
     for name, folder in given:
         try:
             with open(os.path.join(folder, MANIFEST), encoding="utf-8") as f:
@@ -703,14 +865,23 @@ def prepare(out, work, writes, given):
             continue
         binds.append(f"{folder}\t{mount(name)}")
         path.append(os.path.join(mount(name), manifest.get("commands") or ""))
+        if os.path.isdir(os.path.join(folder, APT_DIR, "commands")):
+            path.append(os.path.join(mount(name), APT_DIR, "commands"))
         maps.append(f"{mount(name)}={folder}:ro")
         for command, app in apps_of(manifest.get("needs")).items():
             apps.setdefault(command, app)
+            if (manifest.get("needs") or {}).get("display") and command not in screens:
+                screens.append(command)
         entry = {"name": name, "dir": folder, "commands": manifest.get("commands")}
-        for key, kept in (("check", check), ("final", final)):
-            given_check = manifest.get(key) or (manifest.get("check") if key == "final" else None)
-            if given_check:
-                kept.append(dict(entry, files=given_check["files"], run=given_check["run"], key=key))
+        if task_dir:
+            entry["task"] = task_dir
+        if manifest.get("check"):
+            check.append(dict(entry, files=manifest["check"]["files"], run=manifest["check"]["run"], key="check"))
+        steps = steps_of(manifest.get("final")) if manifest.get("final") else (
+            [dict(files=manifest["check"]["files"], run=manifest["check"]["run"], show="quote")]
+            if manifest.get("check") else None)
+        if steps:
+            final.append(dict(entry, steps=steps, key="final"))
         told += [f"## {name}", "", f"Its folder, read-only: {mount(name)}"]
         commands = commands_of(folder, manifest)
         if commands:
@@ -727,6 +898,8 @@ def prepare(out, work, writes, given):
             pass
         told.append("")
     maps.append(f"{work}={work}" + ("" if writes else ":ro"))
+    if task_dir:
+        maps.append(f"{TASK_INSIDE}={task_dir}:ro")
     if apps:
         make_shims(os.path.join(out, "apps"), apps)
     lead = ["The owner has given this run the tools below, each in a folder of its own that you can read "
@@ -734,12 +907,12 @@ def prepare(out, work, writes, given):
             "Each tool's own guide follows its commands: read it before you start, and do as it says."]
     if check:
         lead.append("Whenever you save a file a tool checks, visor checks it for you, and tells you what it found "
-                    "before your next step. Fix what it finds before you go on.")
+                    "before your next step: problems and warnings alike. Fix all of it before you go on.")
     if final:
         lead.append("When the round ends, visor checks what you made once more, and the owner reads what that "
                     "check says beside your final message, so say in it only what you made and checked.")
     files = {"binds": "\n".join(binds) + "\n", "path": ":".join(path) + "\n",
-             "door.json": json.dumps({"apps": apps, "maps": maps}, indent=2),
+             "door.json": json.dumps({"apps": apps, "maps": maps, "screens": screens}, indent=2),
              "checks.json": json.dumps(check, indent=2), "finals.json": json.dumps(final, indent=2),
              "prompt.md": "\n".join(["# Tools", " ".join(lead), ""] + told).rstrip() + "\n"}
     for filename, text in files.items():
@@ -749,28 +922,34 @@ def prepare(out, work, writes, given):
 
 
 def final(out, work, since, show=None, apps=None, shims=None):
-    """After a round: each file a tool's final check (or its check) covers that the round made or changed, checked
-    in the tool's wall, and what was found written for the reply (final.md). With show, a run whose folder goes
-    with the round (an errand with no project): each such file is shown, so that it is kept. Returns the number
-    of files checked."""
+    """After a round: each file the first of a tool's final steps (or its check) covers that the round made or
+    changed, put through the steps in order, each in the tool's wall, up to the first that fails; what each said
+    written for the reply (final.md): a step shown as `quote` as a check's result, with what it printed, open when
+    it is anything but a silent pass; one shown as `text`, what it printed, as part of the reply (a comic's
+    script, say). What a step writes into the workspace is the round's, shown as the round's pictures are. With
+    show, a run whose folder goes with the round (an errand with no project): each such file is shown, so that
+    it is kept. Returns the number of files checked."""
     with open(os.path.join(out, "finals.json"), encoding="utf-8") as f:
         finals = json.load(f)
     lines, checked = [], 0
     for entry in finals:
-        for path in changed_files(work, entry["files"], since):
+        steps = entry.get("steps") or [{"files": entry["files"], "run": entry["run"], "show": "quote"}]
+        for path in changed_files(work, steps[0]["files"], since):
             rel = os.path.relpath(path, work)
-            status, output = check_file(entry, path, work, apps, shims, limit=FINAL_LIMIT)
             checked += 1
-            output = _tail(output.replace(work + "/", ""), FINAL_LINES)
-            run = filled(entry["run"], {"file": rel})
-            if status == 0:
-                lines += [f"- `{rel}`, by {entry['name']}'s `{run}`: passed."]
-            else:
-                lines += [f"- `{rel}`, by {entry['name']}'s `{run}`: **failed**" +
-                          (f", after {FINAL_LIMIT // 60} minutes" if status == 124 else f" (exit {status})") + "."]
-            if output:
-                lines += [f"  > [!quote]{'-' if status == 0 else ''} What it printed", "  > ```"]
-                lines += [f"  > {line}".rstrip() for line in output.splitlines()] + ["  > ```"]
+            failed = None
+            for step in steps:
+                run = filled(step["run"], {"file": rel})
+                if not fnmatch.fnmatch(os.path.basename(path), step["files"]):
+                    continue
+                if failed:
+                    lines += [f"- `{rel}`, by {entry['name']}'s `{run}`: not run, as `{failed}` failed."]
+                    continue
+                status, output = check_file(dict(entry, **step), path, work, apps, shims, limit=FINAL_LIMIT)
+                output = output.replace(work + "/", "")
+                lines += _step_said(rel, entry["name"], run, step.get("show", "quote"), status, output)
+                if status != 0:
+                    failed = run
             if show and os.path.isdir(show):
                 target, n = os.path.join(show, os.path.basename(path)), 2
                 stem, ext = os.path.splitext(os.path.basename(path))
@@ -782,11 +961,41 @@ def final(out, work, since, show=None, apps=None, shims=None):
     return checked
 
 
+def _step_said(rel, name, run, show, status, output):
+    """What one final step found, for the reply: lines of final.md."""
+    head = f"- `{rel}`, by {name}'s `{run}`"
+    if status != 0:
+        lines = [head + ": **failed**" + (f", after {FINAL_LIMIT // 60} minutes" if status == 124
+                                          else f" (exit {status})") + "."]
+        said, title = _tail(output, FINAL_LINES), "What it printed"
+    elif show == "text":
+        text = output.rstrip()
+        kept = text.splitlines()[:TEXT_LINES]
+        if not text:
+            return [head + ": it wrote nothing."]
+        lines = [head + ":", "", "  > [!note] What it wrote"]
+        lines += [f"  > {line}".rstrip() for line in kept]
+        if len(text.splitlines()) > TEXT_LINES:
+            lines.append(f"  > *(… and {len(text.splitlines()) - TEXT_LINES} more lines.)*")
+        return lines + [""]
+    else:
+        said = _tail(output, FINAL_LINES)
+        if not said.strip():
+            return [head + ": passed."]
+        # A pass that says something is read: a warning leaves the exit status alone.
+        lines, title = [head + ": passed, and it said something."], "What it said"
+    lines += [f"  > [!quote] {title}", "  > ```"]
+    lines += [f"  > {line}".rstrip() for line in said.splitlines()] + ["  > ```"]
+    return lines
+
+
 def main(argv):
     if len(argv) >= 5 and argv[1] == "prepare":
-        # tools.py prepare OUT WORK rw|ro NAME=FOLDER...
-        problems = prepare(argv[2], argv[3], argv[4] == "rw",
-                           [tuple(given.split("=", 1)) for given in argv[5:]])
+        # tools.py prepare OUT WORK rw|ro [--task FILE] NAME=FOLDER...
+        rest, task = argv[5:], None
+        if rest[:1] == ["--task"] and len(rest) > 1:
+            task, rest = rest[1], rest[2:]
+        problems = prepare(argv[2], argv[3], argv[4] == "rw", [tuple(given.split("=", 1)) for given in rest], task)
         for problem in problems:
             print(problem, file=sys.stderr)
         return 1 if problems else 0

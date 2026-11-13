@@ -50,7 +50,8 @@ For a run given tools (MODEL_DOOR_CHECKS, what tools.prepare kept of their check
 workspace), it does the same for each file a tool's check covers (with_tool_checks): changed since the last
 look, the file is checked in the tool's own wall, with the run's app door (MODEL_DOOR_APPS, MODEL_DOOR_SHIMS),
 and the agent told what the check found, when that is not what it was last told of that file: its
-problems, or that there are none. Each time is logged (`TOOL CHECK`).
+problems, what a check that passed still said (a warning leaves the exit status alone), or that there are
+none. Each time is logged (`TOOL CHECK`).
 
 Usage: model-door.py <socket path> <upstream host:port> <model> <calls file> [window]
 """
@@ -241,13 +242,19 @@ class Door(http.server.BaseHTTPRequestHandler):
                 before = cls.tool_told.get(key)
                 cls.tool_told[key] = verdict
                 run = tools.filled(entry["run"], {"file": rel})
-                if status == 0:
+                # A check may pass and still say something: a warning does not change its exit status. What it
+                # says is told as something to deal with, whatever it is; only a check that says nothing is clean.
+                if status == 0 and not said:
                     text = (f"Visor checked {rel} again with `{run}`: no problems now." if before else
-                            f"Visor checked {rel} with `{run}`: no problems.") + (f"\n\n{said}" if said else "")
+                            f"Visor checked {rel} with `{run}`: no problems.")
+                elif status == 0:
+                    text = (f"Visor checked {rel} with `{run}` after your last change. It passed, and it said "
+                            f"this:\n\n{said}\n\nDeal with every warning in it before you go on.")
                 else:
                     text = (f"Visor checked {rel} with `{run}` after your last change, and it found problems "
                             f"(exit {status}):\n\n{said or '(it printed nothing)'}\n\nFix them before you go on.")
-                log(f"TOOL CHECK {'passed' if status == 0 else 'told'}: {entry['name']} {rel} exit {status}")
+                told = status != 0 or bool(said)
+                log(f"TOOL CHECK {'told' if told else 'passed'}: {entry['name']} {rel} exit {status}")
                 with cls.calls_lock:
                     cls.told.append((len(messages), text))
 

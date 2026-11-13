@@ -110,15 +110,18 @@ class ToolNotes:
             check = installed.get("check")
             if check:
                 lines.append(f"> - A check as the agent saves `{check['files']}` files: `{check['run']}`")
-            after = installed.get("final") or check
+            after = tools.steps_of(installed.get("final") or check) if (installed.get("final") or check) else None
             if after:
-                lines.append(f"> - A check after the round, of the `{after['files']}` files it made: `{after['run']}`")
+                lines.append(f"> - After the round, for the `{after[0]['files']}` files it made: " + ", then ".join(
+                    f"`{step['run']}`" + (" (what it writes goes in the reply)" if step["show"] == "text" else "")
+                    for step in after))
             for app, commit in sorted((installed.get("apps") or {}).items()):
-                lines.append(f"> - Runs `{app}`, from flatpak" + (f" (`{commit[:10]}`)" if commit else ""))
-            if installed.get("display"):
-                lines.append("> - It asks for a display, to draw: " + (
-                    "this server has Xvfb" if shutil.which("Xvfb") else
-                    "this server has none yet, so what it draws cannot be drawn here yet"))
+                lines.append(f"> - Runs `{app}`, from flatpak" + (f" (`{commit[:10]}`)" if commit else "") + (
+                    ", on a screen of its own each time (the server's Xvfb)" if installed.get("display") else ""))
+            packages = installed.get("packages") or {}
+            if packages:
+                lines.append(f"> - Ubuntu packages, unpacked for it and never installed: " + ", ".join(
+                    f"`{name}` {version}" for name, version in sorted(packages.items())))
             seconds = installed.get("seconds") or {}
             if seconds:
                 lines.append("> - Took: " + ", ".join(f"{'setup' if k == 'setup' else 'self-test'} "

@@ -3,7 +3,7 @@
 # reduced view of this machine, enforced by the kernel through bubblewrap, as media_wall.sh is for the media tools.
 #
 #   tool_wall.sh --name NAME --tool DIR --job DIR [--job-at PATH] --commands PATH [--writable]
-#                [--apps SOCKET --shims DIR] [--net SOCKET] -- <command> [args...]
+#                [--apps SOCKET --shims DIR] [--net SOCKET] [--task DIR] -- <command> [args...]
 #
 # --name NAME     the tool's name: its folder is seen as /opt/tools/NAME, as in the agent's wall.
 # --tool DIR      the tool's installed folder: read-only, unless --writable (its setup).
@@ -16,12 +16,17 @@
 #                 tool runs; --shims DIR holds a command for each, which asks the door (inside/app-request).
 # --net SOCKET    the net door (doors/net-door.py), seen as /run/visor/net.sock: found inside as an ordinary
 #                 web proxy, and the only way out. Without it there is no network at all.
+# --task DIR      the round's task, as the agent was given it (task.md), seen read-only at /opt/visor/task: a
+#                 check's `{task}`.
+#
+# The programs of the Ubuntu packages visor unpacked for the tool (tools.py, needs.apt) are on the PATH, after
+# its own commands.
 #
 # Nothing of the account's is inside: no home, no keys, no notes, no other tools.
 set -u
 
 HERE="$(dirname "$(realpath "$0")")"
-NAME="" TOOL="" JOB="" JOB_AT="/job" COMMANDS="" WRITABLE="" APPS="" SHIMS="" NET=""
+NAME="" TOOL="" JOB="" JOB_AT="/job" COMMANDS="" WRITABLE="" APPS="" SHIMS="" NET="" TASK=""
 while [ $# -gt 0 ] && [ "$1" != "--" ]; do
   case "$1" in
     --name) NAME="${2:?--name needs a name}"; shift 2 ;;
@@ -33,6 +38,7 @@ while [ $# -gt 0 ] && [ "$1" != "--" ]; do
     --apps) APPS="$(realpath "${2:?--apps needs a socket}")"; shift 2 ;;
     --shims) SHIMS="$(realpath "${2:?--shims needs a folder}")"; shift 2 ;;
     --net) NET="$(realpath "${2:?--net needs a socket}")"; shift 2 ;;
+    --task) TASK="$(realpath "${2:?--task needs a folder}")"; shift 2 ;;
     *) echo "tool_wall: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -56,11 +62,13 @@ tool=(--ro-bind "$TOOL" "$INSIDE")
 [ -n "$WRITABLE" ] && tool=(--bind "$TOOL" "$INSIDE")
 doors=()
 path="${COMMANDS:-$INSIDE}:/usr/local/bin:/usr/bin:/bin"
+[ -d "$TOOL/.visor-apt/commands" ] && path="${COMMANDS:-$INSIDE}:$INSIDE/.visor-apt/commands:/usr/local/bin:/usr/bin:/bin"
 if [ -n "$APPS" ]; then
   doors+=(--ro-bind "$APPS" /run/visor/apps.sock --ro-bind "$SHIMS" /opt/visor/apps)
   path="/opt/visor/apps:$path"
 fi
 [ -n "$NET" ] && doors+=(--ro-bind "$NET" /run/visor/net.sock)
+[ -n "$TASK" ] && doors+=(--ro-bind "$TASK" /opt/visor/task)
 # A run's workspace keeps its .git read-only, as in the agent's wall: the runner uses git on it afterwards.
 job=(--bind "$JOB" "$JOB_AT")
 [ -d "$JOB/.git" ] && job+=(--ro-bind "$JOB/.git" "$JOB_AT/.git")

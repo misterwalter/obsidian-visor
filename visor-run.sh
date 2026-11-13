@@ -368,9 +368,10 @@ TESTED=no
 if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
 
 # The tools the owner gave this run: what each needs, worked out from its manifest (tools.py prepare) into
-# $OUT/tools: the folders the wall shows, the PATH, the app door's apps and folders, the checks, what it is told.
+# $OUT/tools: the folders the wall shows, the PATH, the app door's apps, folders and screens, the checks, a copy of
+# the task for them to check against, what it is told.
 if [ ${#TOOLS[@]} -gt 0 ]; then
-  python3 "$HERE/tools.py" prepare "$OUT/tools" "$WORK" "$ACCESS" "${TOOLS[@]}" 2> "$OUT/tools.log" \
+  python3 "$HERE/tools.py" prepare "$OUT/tools" "$WORK" "$ACCESS" --task "$TASK" "${TOOLS[@]}" 2> "$OUT/tools.log" \
     || { say "the tools could not be made ready: $(paste -sd' ' "$OUT/tools.log")"; exit 1; }
   export VISOR_TOOL_BINDS="$OUT/tools/binds" VISOR_TOOL_PATH="$(cat "$OUT/tools/path")"
 fi
@@ -579,7 +580,8 @@ fi
 APP_DOOR=""
 if [ ${#TOOLS[@]} -gt 0 ] && [ -d "$OUT/tools/apps" ]; then
   cp -r "$OUT/tools/apps" "$WALL/apps"
-  mapfile -t APP_ARGS < <(jq -r '(.apps | to_entries[] | "--app", "\(.key)=\(.value)"), (.maps[] | "--map", .)' \
+  mapfile -t APP_ARGS < <(jq -r '(.apps | to_entries[] | "--app", "\(.key)=\(.value)"), (.maps[] | "--map", .),
+                                 (.screens // [] | .[] | "--screen", .)' \
                             "$OUT/tools/door.json")
   python3 "$HERE/doors/app-door.py" "$WALL/apps.sock" --flatpak "${VISOR_FLATPAK:-flatpak}" --lock "$WALL/godot.lock" \
     "${APP_ARGS[@]}" 2> "$OUT/app-door.log" &
@@ -1156,7 +1158,7 @@ fi
   if [ ${#TOOLS[@]} -gt 0 ] && { [ "$TOOL_TOLD" != 0 ] || [ -s "$OUT/tools/final.md" ]; }; then
     echo "## Tools"
     echo
-    [ "$TOOL_TOLD" = 0 ] || { echo "As it worked, a tool's check found problems in what it saved, and told it so," \
+    [ "$TOOL_TOLD" = 0 ] || { echo "As it worked, a tool's check found problems or warnings in what it saved, and told it so," \
                                     "$TOOL_TOLD time$([ "$TOOL_TOLD" = 1 ] || echo s)."; echo; }
     if [ -s "$OUT/tools/final.md" ]; then
       echo "Checked after the round, by the tools themselves:"

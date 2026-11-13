@@ -25,7 +25,8 @@ Network: no
 - `Network:` is what the tool's setup may reach: `no` (the default), `vpn`
   (the internet through the VPN tunnel) or `direct` (from the server's own
   address). With `vpn` or `direct`, a flatpak app the tool needs and the
-  server lacks is installed from Flathub. It covers setup only.
+  server lacks is installed from Flathub, and the Ubuntu packages it needs
+  are fetched. It covers installing only.
 - `Fetch` installs it when visor is next idle, and follows its branch from
   then on: visor looks for a new commit each time it looks for its own updates.
 - `Update` looks for a new commit now, and clears.
@@ -34,8 +35,9 @@ Network: no
 
 Visor writes the note back with `On this server:`, what it has of the tool,
 and below it what the tool gives a run: its commands, what its standing guide
-costs in reading time, the flatpak apps it runs, whether it asks for a
-display, and what is new since the version before. When an install fails,
+costs in reading time, the flatpak apps it runs and whether each has a screen
+of its own, the Ubuntu packages unpacked for it, what it does after a round,
+and what is new since the version before. When an install fails,
 the note says why, with the end of what the tool printed. `VISOR.md` lists
 every tool under `## Tools`.
 
@@ -52,7 +54,9 @@ tools.py install SPEC`), one tool at a time:
    `<agent_tools>/<name>/<commit>-<time>.part`.
 4. Read and check the manifest.
 5. Look for each flatpak app it runs in this account's flatpak, and install a
-   missing one from Flathub if `Network:` allows.
+   missing one from Flathub if `Network:` allows. Fetch the Ubuntu packages
+   `needs.apt` names, and if `needs.display` asks for a screen, check that
+   the server has Xvfb (see "Packages and screens" below).
 6. Copy what the manifest's `carry` lists from the version installed, so that
    setup can start from it (a cache it built, say).
 7. Run its `setup` in a wall, with the tool's folder writable and the network
@@ -78,11 +82,15 @@ nothing it names outside a wall.
   "guide": "agent/guide.md",
   "topics": "agent/topics",
   "starter": "agent/starter.json",
-  "needs": {"flatpak": {"app": "org.example.App"}, "display": false},
+  "needs": {"flatpak": {"app": "org.example.App"}, "display": true, "apt": ["some-package"]},
   "setup": "app --path {tool} --prepare",
   "test": "my-tool-check {tool}/examples/sample.json",
-  "check": {"files": "*.json", "run": "my-tool-check {file}"},
-  "final": {"files": "*.json", "run": "my-tool-render {file} --out {dir}/{name}-out"},
+  "check": {"files": "*.json", "run": "my-tool-check {file} --task {task}"},
+  "final": [
+    {"files": "*.json", "run": "my-tool-check {file} --task {task}"},
+    {"run": "my-tool-script {file}", "show": "text"},
+    {"run": "my-tool-render {file} --out {dir}/{name}-out"}
+  ],
   "carry": [".cache"]
 }
 ```
@@ -95,11 +103,12 @@ nothing it names outside a wall.
 | `topics` | A folder of the longer guide, read on demand. |
 | `starter` | A small valid file for the agent to start from. |
 | `needs.flatpak` | The flatpak apps it runs: `{"command": "app id"}`, or a list of app ids, each then a command named after the id's last part (`org.example.App` is `app`). |
-| `needs.display` | Whether it draws, and so needs a display. |
+| `needs.display` | Whether its flatpak apps draw, and so need a screen: each is given one of the server's Xvfb each time it runs. |
+| `needs.apt` | Ubuntu packages its own programs need, fetched and unpacked into its folder, never installed. |
 | `setup` | Run once a version, with the tool's folder writable. |
 | `test` | The self-test, run once a version, read-only. A version that fails it is never used. |
-| `check` | Which files it checks, and how, as an agent saves them. |
-| `final` | Which files it checks, and how, after the round: what the owner reads in the reply. Left out, `check`. |
+| `check` | Which files it checks, and how, as an agent saves them. Silent when all is well: anything it says, warnings too, is told to the agent as something to fix. |
+| `final` | What it does after the round, a step or a list of steps run in order on each file the first step's `files` covers, up to the first that fails. A step that gives no `files` takes the step before's. `"show": "text"` puts what a step prints in the reply as written (a script, say); otherwise it is shown as a check's result. Left out, `check`. |
 | `carry` | Paths kept from the version before, for setup to start from. |
 
 Every path is inside the repository. In every command it gives, `{tool}` is
@@ -109,10 +118,34 @@ for `check` and `final` the run's workspace. `$TOOL` and `$JOB` say the same.
 `check` and `final` also have `{file}`, the file checked, `{dir}`, its folder,
 and `{name}`, its name up to the first dot: what a check makes beside the file
 (pictures, in `{dir}/{name}-out`, say) is the run's, as if the agent
-had made it.
+had made it. And `{task}`: a file holding the round's task, as the agent was
+given it, read-only. A tool can check what was made against what was asked,
+whether or not the agent wrote its plan down: what it reads in the task, and
+how, is the tool's own business.
 
 A tool with no setup, no check, no display and no flatpak apps needs only
 `name`, `commands` and `guide`.
+
+## Packages and screens
+
+Visor runs with no root, so it installs nothing into the system.
+
+- **`needs.apt`**: what a tool needs from Ubuntu is fetched with
+  `apt-get download`, which needs no root, as the note's `Network:` allows:
+  the packages named, and whatever they need that this server lacks, unpacked
+  into the tool's folder, `.visor-apt/`, never installed. Their programs are
+  on the `PATH` in every wall the tool is in, each run with its packages'
+  libraries found. A program that looks for its own files at a fixed place in
+  `/usr` does not find them there: that one needs to be told where they are.
+  This works on Ubuntu, Pop!_OS, Debian and their kin, which have apt.
+- **`needs.display`**: each flatpak app the tool runs gets a screen of its own
+  each time it runs. The app door starts the server's Xvfb on the first free
+  display, hands the app that display alone, and stops it when the app ends,
+  so the tool's commands need not know: an app just finds a display.
+  Rendering is in software (llvmpipe), with full OpenGL. Xvfb is the one
+  thing visor cannot install itself: it is installed on the server once
+  (`sudo apt install xvfb`), and an install of a tool that needs a screen on a
+  server without it fails, saying so.
 
 ## The walls
 
@@ -131,8 +164,9 @@ door. Inside, each app the manifest names is a command
 `flatpak run --user --sandbox`, which drops the app's own wide permissions,
 and gives it the wall's folders alone: read-only where the wall's are. Paths
 are turned from the wall's into this machine's, in the arguments and in the
-folder it starts in. One app runs at a time, and every request is logged
-outside.
+folder it starts in. An app with a screen (`needs.display`) is given an
+Xvfb of its own for the run, and no other display of this machine's. One app
+runs at a time, and every request is logged outside.
 
 ## In a run
 
@@ -153,13 +187,15 @@ what the round needs of it from its manifest (`tools.py prepare`):
 - **As the agent works,** the model door looks before each request for files a
   tool's `check` covers that have changed, checks each in the tool's own wall,
   with the workspace at its own path, and tells the agent what the check found
-  when that is not what it was last told of the file: the problems, or that
-  there are none. A small model does not run a check it is told to run; this
-  one runs itself. The reply says how often it found problems.
+  when that is not what it was last told of the file: the problems, what a
+  check that passed still said (a warning leaves the exit status alone), or
+  that there are none. A small model does not run a check it is told to run;
+  this one runs itself. The reply says how often it found something.
 - **After the round,** each file a tool's `final` (else its `check`) covers that
-  the round made or changed is checked once more, the same way, and what it
-  printed goes in the reply, under what the tools found, beside the agent's own
-  account. What a check makes, such as pages, is the round's: committed on a
+  the round made or changed is put through its steps, the same way, and what
+  each said goes in the reply, under what the tools found, beside the agent's
+  own account: a check's result, open unless it passed silently; a `text`
+  step's words as written. What a step makes, such as pages, is the round's: committed on a
   repository, and pictures shown in the note as any picture the round made. An
   errand with no project loses its folder when the round ends, so each file
   checked is shown too, and kept in the notes.
