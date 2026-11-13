@@ -100,10 +100,9 @@ models, and the job's scratch folder (`~/.local/state/visor/media/<job>/`).
   comes (`plan`), and the job reads the note in `working/` again each time, so a
   variation ticked, unticked or added, or `Count:` changed, counts from the next
   picture on; with every one unticked, it stops there. The reply and the live log
-  give each picture's variation and link its sources by name. With a vision model
-  (`vision.py`, `Kind: vision`) each is compared with the first picture it went
-  by, and those that are not her go to `candidates/rejected/`. The owner moves the
-  good ones into `looks/`.
+  give each picture's variation and link its sources by name. Every picture goes in
+  `looks/candidates/`, and `looks/rejected/` is made beside it: the owner sorts them
+  by hand, the good ones into `looks/` and the rest into `rejected/`.
 - `Train: Mara` trains a LoRA from her `looks/` with ComfyUI's own trainer
   (`train_graph`: `LoadImageTextDataSetFromFolder`, `ResizeImagesByShorterEdge`,
   `CenterCropImages`, `MakeTrainingDataset`, `TrainLoraNode`, `SaveLoRA`, every

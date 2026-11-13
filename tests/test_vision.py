@@ -65,13 +65,11 @@ class VisionTest(unittest.TestCase):
                          [True, False, False, True])
         self.assertEqual(Ollama.asked[0][1]["messages"][0]["images"], [base64.b64encode(b"picture").decode()])
 
-    def test_same_person_and_a_caption(self):
-        Ollama.answers = ["Yes.", "no", "Standing on a quay in a yellow coat."]
-        self.assertTrue(vision.same_person(self.address, "m", self.picture, self.picture))
-        self.assertFalse(vision.same_person(self.address, "m", self.picture, self.picture))
+    def test_a_caption(self):
+        Ollama.answers = ["Standing on a quay in a yellow coat."]
         self.assertEqual(vision.caption(self.address, "m", self.picture, "mara_char"),
                          "mara_char, Standing on a quay in a yellow coat")
-        self.assertEqual(len(Ollama.asked[0][1]["messages"][0]["images"]), 2)
+        self.assertEqual(len(Ollama.asked[0][1]["messages"][0]["images"]), 1)
 
     def test_no_list_or_no_server_is_said_plainly(self):
         Ollama.answers = ["I cannot help with that."]

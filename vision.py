@@ -3,8 +3,8 @@
 
 These are not runs: no agent, no tools, nothing the model says is acted on but its
 answer to a narrow question. What it is shown is the owner's own pictures and words. It
-checks a picture against a list of things it should show, says whether two pictures
-are of the same person, captions a picture for training, and turns a long description
+checks a picture against a list of things it should show, captions a picture for
+training, and turns a long description
 into such a list. A vision model is a note in the models folder, `Kind: vision`.
 """
 
@@ -59,15 +59,6 @@ def check(address, model, picture, items):
                  [picture])
     said = {int(n): word.lower() == "yes" for n, word in re.findall(r"(\d+)\s*[:.)-]\s*(yes|no)\b", answer, re.I)}
     return [said.get(i, False) for i in range(1, len(items) + 1)]
-
-
-def same_person(address, model, reference, candidate):
-    """Whether the second picture shows the same person as the first."""
-    answer = ask(address, model,
-                 "Do these two pictures show the same person? Judge by the face, hair and build, not by "
-                 "clothes, pose, light or background. Answer yes or no, and nothing else.",
-                 [reference, candidate])
-    return answer.strip().lower().startswith("yes")
 
 
 def caption(address, model, picture, trigger):

@@ -2939,25 +2939,27 @@ class DispatchTest(unittest.TestCase):
         self.assertTrue(all(p.endswith("Their appearance: Grey plait, oilskin coat.") for p in asked["prompts"]),
                         asked["prompts"])
 
-    def test_a_character_set_makes_candidates_and_a_vision_model_sets_aside_the_wrong_ones(self):
+    def test_a_character_set_puts_every_picture_in_candidates_with_rejected_beside_it_for_the_owner(self):
         self.more_models(seers=["looker"])
         self.character("Mara", "A ferry pilot.")
         folder = self.looks("Mara", "front.png", "side.png")
         self.d._set_character_line("Mara", "Reference", "side.png")
         self.note("inbox", "set.md", "Character set: mara\nCount: 3\n")
-        seen, verdicts = [], iter([True, False, True])
+        seen = []
         with mock.patch.object(dispatch.media, "edit", self.stand_in(None, seen)), \
-                mock.patch.object(dispatch.vision, "same_person", lambda *a: next(verdicts)):
+                mock.patch.object(dispatch.vision, "ask", side_effect=AssertionError("no vision model is asked")):
             self.d.once()
         (asked,) = seen
         self.assertEqual([[os.path.basename(p) for p in these] for these in asked["sources"]], [["side.png"]] * 3,
                          "Source count: 1, and she has a Reference:")
         self.assertEqual(len(asked["prompts"]), 3)
         kept = sorted(os.listdir(os.path.join(folder, "candidates")))
-        self.assertEqual(len([k for k in kept if k.endswith(".png")]), 2)
-        self.assertEqual(len(os.listdir(os.path.join(folder, "candidates", "rejected"))), 1)
+        self.assertEqual(len([k for k in kept if k.endswith(".png")]), 3, "every one, for the owner to sort")
+        self.assertEqual(os.listdir(os.path.join(folder, "rejected")), [], "made beside it, empty")
         note = self.read("output", "set.md")
-        self.assertIn("looker does not see Mara: moved to `candidates/rejected/`", note)
+        self.assertIn("Move the ones that are [[characters/Mara/Mara|Mara]] into `looks/`, and those that are not into "
+                      "`looks/rejected/`", note)
+        self.assertNotIn("looker", note)
         self.assertIn("3 pictures, from [[characters/Mara/looks/side.png|side.png]], their Reference: picture", note)
         self.assertIn("with [[models/quick-edit|quick-edit]] (the default edit model: the note named none) ·", note,
                       "the model, a link to its note, and that it is the default")

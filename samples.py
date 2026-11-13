@@ -550,8 +550,8 @@ def character_set(ctx):
         "**A Character set note makes new pictures of a character**, from the pictures in their `looks/`, for you "
         "to choose from: other angles, poses, expressions, light and clothes. Name them after `Character set:`; "
         f"visor knows {ctx['characters_known']}. The pictures land in `characters/<Name>/looks/candidates/`; move "
-        "the ones that are them into `looks/`. With a vision model, visor moves the ones that do not look like "
-        "them into `candidates/rejected/` first. Each set starts from what `looks/` holds, so sets build on sets, "
+        "the ones that are them into `looks/`, and the rest into `looks/rejected/`, which visor makes beside "
+        "`candidates/`. Each set starts from what `looks/` holds, so sets build on sets, "
         "and a LoRA is trained from it. " + COPY,
         "**Each picture is one of the ticked `Variations:`**, drawn at random from those used least so far, so "
         "none comes twice before every ticked one has come once. Visor fills the list in with a dozen of its own "

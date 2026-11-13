@@ -323,8 +323,11 @@ class Looks:
                     "skin exactly as in picture 1." + (f" Their appearance: {appearance.rstrip('.')}." if appearance
                                                        else ""), these)
 
+        # Every picture goes in candidates/, for the owner to sort by hand: the good ones into looks/, the rest into
+        # rejected/ beside it, which is made with it.
         candidates = os.path.join(folder, "candidates")
-        os.makedirs(candidates, exist_ok=True)
+        for made_folder in (candidates, os.path.join(folder, "rejected")):
+            os.makedirs(made_folder, exist_ok=True)
         made, took = [], time.time()
         model, model_said = self._drawn_by(header["model"], self.media.default_edit, "edit")
         livelog.append(self.live_log(name, "character set"), f"*{time.strftime('%H:%M')}* drawing with {model_said}\n")
@@ -377,26 +380,12 @@ class Looks:
             lines += ["`Negative:` has no effect on fast quality, which follows the prompt alone: tick "
                       "`Quality: full` for it to count, at several times the time.", ""]
         lines += [f"They are in `characters/{who}/{characters.LOOKS_FOLDER}/candidates/`. Move the ones that are "
-                  f"{self.character_link(who)} into `{characters.LOOKS_FOLDER}/`: the next set, and a LoRA, start from what is there.", ""]
-        seer, tag = models.vision(self.model_notes)
-        if tag and self._not_in_ollama([seer], "vision"):
-            raise media.MediaError(self._not_in_ollama([seer], "vision"))
-        rejected = os.path.join(candidates, "rejected")
+                  f"{self.character_link(who)} into `{characters.LOOKS_FOLDER}/`, and those that are not into "
+                  f"`{characters.LOOKS_FOLDER}/rejected/`: the next set, and a LoRA, start from what is in "
+                  f"`{characters.LOOKS_FOLDER}/`.", ""]
         for target, variation, these in zip(made, chosen, sources):
-            verdict = ""
-            if tag:
-                if vision.same_person(self.ollama, tag, these[0], os.path.join(candidates, target)):
-                    verdict = f" · {seer} sees {who}"
-                else:
-                    os.makedirs(rejected, exist_ok=True)
-                    os.replace(os.path.join(candidates, target), os.path.join(rejected, target))
-                    verdict = f" · {seer} does not see {who}: moved to `candidates/rejected/`"
             # What each was asked for and went by: the owner's to judge it by, and to caption a LoRA with.
-            lines += [f"![[{target}]]", f"*{variation}* · from {', '.join(self.link(p) for p in these)} · by {model}"
-                      + verdict, ""]
-        if not tag:
-            lines.append("No vision model to check them with (a note in `models/`, `Kind: vision`): every candidate "
-                         "is kept for you to judge.")
+            lines += [f"![[{target}]]", f"*{variation}* · from {', '.join(self.link(p) for p in these)} · by {model}", ""]
         return "\n".join(lines) + "\n"
 
     def _character_set_now(self, path):
