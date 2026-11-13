@@ -115,5 +115,54 @@ class Visit(unittest.TestCase):
         self.assertTrue(board.recent_log(log, 20).startswith("## 2026-10-18"))
 
 
+class House(unittest.TestCase):
+    """The forum's house secret: kept in a file of its own, sent from a file of headers, never on a command line."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.house = os.path.join(self.tmp.name, "chan-house")
+        self.seen = os.path.join(self.tmp.name, "seen.json")
+        self.curl = os.path.join(self.tmp.name, "curl")
+        with open(self.curl, "w") as f:
+            f.write("#!/usr/bin/env python3\n"
+                    "import json, sys\n"
+                    "a = sys.argv[1:]\n"
+                    "files = [open(x[1:]).read() for x in a if x.startswith('@') and x != '@-']\n"
+                    f"json.dump({{'args': a, 'files': files}}, open({self.seen!r}, 'w'))\n"
+                    "print('{}')\n"
+                    "print('200', end='')\n")
+        os.chmod(self.curl, 0o755)
+
+    def test_it_is_kept_for_this_account_alone_and_taken_away_with_none(self):
+        board.keep_house(self.house, "s3cret")
+        self.assertEqual(board.house_secret(self.house), "s3cret")
+        self.assertEqual(os.stat(self.house).st_mode & 0o777, 0o600)
+        board.keep_house(self.house, "")
+        self.assertFalse(os.path.exists(self.house))
+        self.assertIsNone(board.house_secret(self.house))
+
+    def test_the_forum_s_transport_sends_it_from_a_file_and_never_on_the_command_line(self):
+        board.keep_house(self.house, "s3cret")
+        board.curl(None, self.curl, house=self.house)("POST", "https://forum.test/api/boards/b/threads", "{}")
+        seen = json.load(open(self.seen))
+        self.assertNotIn("s3cret", " ".join(seen["args"]))
+        self.assertIn("X-House-Secret: s3cret\n", seen["files"])
+        made = [x[1:] for x in seen["args"] if x.startswith("@") and x != "@-"]
+        self.assertFalse(any(os.path.exists(p) for p in made), "the file of headers is gone after")
+        # And the web's transport, or the forum's with no secret, sends none.
+        board.curl(None, self.curl)("GET", "https://example.org/")
+        self.assertEqual(json.load(open(self.seen))["files"], [])
+
+    def test_a_refusal_of_it_is_said_as_the_owner_s_to_fix(self):
+        forum = board.Forum("forum.test", lambda method, url, body=None: (
+            401, '{"error": "unauthorized", "message": "X-House-Secret is not this server\'s"}'))
+        with self.assertRaises(board.BoardError) as said:
+            forum.call("POST", "/api/boards/b/threads", body={"body": "hi"})
+        self.assertIn("the forum refused visor's house secret, so nothing was posted", str(said.exception))
+        self.assertIn("VISOR.md, under `House secret:`", str(said.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

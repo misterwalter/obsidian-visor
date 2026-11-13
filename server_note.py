@@ -72,8 +72,11 @@ RETAIN = (retention.LINE, "retain_logs", 0, retention.MOST,
 DIRECT = "Allow non-VPN web traffic"
 # The Prompt writer choice that has no model rewrite appearances.
 NO_WRITER = "none"
+# The forum's house secret (board.py): written here by the owner, kept by visor outside the notes, and shown here
+# only as HOUSE_SET.
+HOUSE, HOUSE_SET = "House secret", "(set)"
 KEYS = ("auto-update", "update now", "pause", "restart", "default model", "review", "reviewer", "prompt writer",
-        "safe search",
+        "safe search", HOUSE.lower(),
         DIRECT.lower(), retention.KEY) + tuple(line.lower() for line, *_ in TIMING)
 # DuckDuckGo's levels of safe search, and what each does.
 SAFE_SEARCH = board.SAFE_SEARCH_SAYS
@@ -203,7 +206,7 @@ def read_loose(text):
 
 
 def render(said, version, health, models, problems=(), reading=({}, {}, ()), net=None, logs=(), loose=None,
-           tools=None):
+           tools=None, house=None):
     """The note, whole. said: the settings as they stand ({"auto", "paused", "default_model",
     "review", "reviewer", "direct"} and each
     TIMING setting). version: {"commits": [(when, message, hash)],
@@ -211,7 +214,8 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
     what visor found in each, problems with the section) for `## Browse` (sources.render).
     net: the VPN's state for `## Network` ({"installed", "up", "proxy"}). logs: a line for each log on this
     server, for `## Logs`. loose: the models no note names, and visor's own (loose_section); None leaves the
-    section out. tools: the lines of `## Tools`, each tool and what this server has of it; None leaves it out."""
+    section out. tools: the lines of `## Tools`, each tool and what this server has of it; None leaves it out.
+    house: whether a house secret is kept for the forum; None leaves its line out."""
     net = net or {"installed": True, "up": False, "proxy": ""}
     lines = ["# Visor", "",
              "This server's version, settings and health. Tick or untick a box to change a setting: one on its "
@@ -260,6 +264,13 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
     lines += ["How what searches the web here searches: a character on the board, and a run given the web, "
               "which is told to search with it. A character's own note can say otherwise for them.", ""]
     lines += settings.group("Safe search", list(SAFE_SEARCH), said.get("safe_search", "moderate"), SAFE_SEARCH) + [""]
+    if house is not None:
+        lines += ["The forum's house secret: sent with what your agents and characters post on 2^32.channel, it labels "
+                  "their posts `## House ##`. Write it after the colon, as the forum's server has it. Visor keeps it "
+                  "on this server, outside every wall, sends it to the forum and nowhere else, and shows it here only "
+                  f"as `{HOUSE_SET}`, so that nothing reading your notes finds it. Write another to replace it, or "
+                  "`none` to post unlabeled. A wrong one posts nothing, and the run's reply, or the character's "
+                  "board log, says so.", "", f"{HOUSE}: {HOUSE_SET if house else ''}".rstrip(), ""]
     lines += ["## Timing", "", "Each in seconds. Change the number after the colon; a number out of its range "
               "is not taken, and what was set before stays.", ""]
     for line, setting, recommended, low, high, what in TIMING:
@@ -276,6 +287,18 @@ def render(said, version, health, models, problems=(), reading=({}, {}, ()), net
         lines += list(tools)
     lines += ["## Health", ""] + (list(health) or ["- (checked every ten minutes)"]) + [""]
     return "\n".join(lines)
+
+
+def read_house(text):
+    """What the `House secret:` line asks: None to keep the secret kept (the line shows HOUSE_SET, or is not
+    there), "" for none (empty, or `none`), or else the new secret, as written."""
+    found = [e for e in settings.scan(text or "", (HOUSE.lower(),))[0] if e["boxes"] is None]
+    if not found:
+        return None
+    value = found[-1]["value"].strip().strip("`").strip()
+    if value == HOUSE_SET:
+        return None
+    return "" if value.lower() in ("", "none") else value
 
 
 def read(text, said, models):
@@ -303,6 +326,8 @@ def read(text, said, models):
     for entry in settings.scan(text, KEYS)[0]:
         # A link read as the name of what it points to, `Default model: [[gemma]]` (settings.named).
         key, written = entry["key"], settings.named(entry["value"])
+        if key == HOUSE.lower():
+            continue  # read by read_house, and never kept with the rest
         boxes = None if entry["boxes"] is None else [(on, settings.named(c).strip()) for on, c in entry["boxes"]]
         if key in ("update now", "restart"):
             if boxes and any(on for on, _ in boxes):

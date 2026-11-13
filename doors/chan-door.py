@@ -18,11 +18,16 @@ change. The
 owner's list of words to keep out of posts is applied to each post's text and
 subject before it leaves; a post is not held back for it, the word is replaced.
 
+The owner's house secret (--house, a file), when there is one, goes with every
+request to the forum, which labels the posts `## House ##`. It is never let in,
+nor logged. Refused by the forum, nothing is posted: the log says so, for the
+report, and the agent is told only that nothing went out.
+
 Every request and every post's text is logged out here, where the agent cannot
 alter the record.
 
 Usage: chan-door.py <socket path> <tunnel proxy host:port | direct> <forum host> <read|all>
-                    [--tripcode FILE] [--redact FILE] [--name NAME]
+                    [--tripcode FILE] [--redact FILE] [--name NAME] [--house FILE]
 """
 
 import http.client
@@ -36,6 +41,10 @@ import ssl
 import struct
 import sys
 import urllib.parse
+
+# The house secret's header and file, and the forum's refusal of it, as board time reads them (board.py).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+import board  # noqa: E402
 
 CONNECT_SECONDS = 60
 READ_SECONDS = 120
@@ -89,6 +98,7 @@ class Door(http.server.BaseHTTPRequestHandler):
     tripcode = ""
     name = ""          # the name posts go under, for a character's run; else the forum's anon
     redact = []        # words replaced in anything posted
+    house = ""         # the forum's house secret, sent with every request, and never let in
     posted = 0
 
     def log_message(self, format, *args):
@@ -183,9 +193,17 @@ class Door(http.server.BaseHTTPRequestHandler):
                        "User-Agent": "visor-chan-door"}
             if body is not None:
                 headers["Content-Type"] = "application/json"
+            if self.house:
+                headers[board.HOUSE_HEADER] = self.house
             conn.request(self.command, path, body, headers)
             reply = conn.getresponse()
             data = reply.read()
+            if board.house_refused(reply.status, data.decode("utf-8", "replace")):
+                # The owner's to fix, in VISOR.md, and the agent's to know only that nothing went out.
+                log(f"HOUSE REFUSED {self.command} {self.path}: {board.HOUSE_REFUSED}")
+                return self.answer(401, {"error": "the chan door: the forum turned this away because of visor's "
+                                                  "own settings, which the owner fixes. Nothing was posted. "
+                                                  "Do not try again in this run."})
             log(f"passed {self.command} {self.path} -> {reply.status} ({len(data)} bytes)")
             self.answer(reply.status, data, reply.getheader("Content-Type", "application/json"))
         except (OSError, http.client.HTTPException) as error:
@@ -218,6 +236,8 @@ def main(argv):
                 Door.tripcode = f.read().strip()
         elif flag == "--name":
             Door.name = value.strip()
+        elif flag == "--house":
+            Door.house = board.house_secret(value) or ""
         elif flag == "--redact" and os.path.exists(value):
             with open(value) as f:
                 Door.redact = [w.strip() for w in f if w.strip() and not w.startswith("#")]

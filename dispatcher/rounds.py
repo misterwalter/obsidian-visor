@@ -710,7 +710,8 @@ class Rounds:
                                                 VISOR_NET_ROUTE=self.internet()[0] or "none",
                                                 VISOR_VPN_PROXY=self.vpn_proxy, VISOR_CHAN_HOST=self.chan_host,
                                                 VISOR_CHAN_REDACT=self.chan_redact,
-                                                VISOR_CHAN_TRIPCODES=self.chan_tripcodes))
+                                                VISOR_CHAN_TRIPCODES=self.chan_tripcodes,
+                                                VISOR_CHAN_HOUSE=self.chan_house))
             run_name, told, heard = None, False, {"told": set(), "read": set()}
             while True:
                 try:

@@ -32,6 +32,8 @@ class FakeForum(socketserver.ThreadingTCPServer):
 
     def __init__(self, certdir):
         self.received = []
+        # Each request's headers; and the house secret this forum has, as the real one refuses any other.
+        self.headers, self.house = [], None
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.context.load_cert_chain(os.path.join(certdir, "cert.pem"), os.path.join(certdir, "key.pem"))
         super().__init__(("127.0.0.1", 0), FakeForumHandler)
@@ -58,6 +60,14 @@ class FakeForumHandler(socketserver.BaseRequestHandler):
         while len(body) < want:
             body += s.recv(65536)
         self.server.received.append((method, path, body.decode()))
+        self.server.headers.append(headers)
+        given = headers.get("X-House-Secret")
+        if given and given != self.server.house:
+            reply = json.dumps({"error": "unauthorized", "message": "X-House-Secret is not this server's"}).encode()
+            s.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: "
+                      + str(len(reply)).encode() + b"\r\nConnection: close\r\n\r\n" + reply)
+            s.close()
+            return
         reply = json.dumps({"ok": True, "saw": path, "body": json.loads(body) if body else None}).encode()
         s.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + str(len(reply)).encode()
                   + b"\r\nConnection: close\r\n\r\n" + reply)
@@ -135,19 +145,23 @@ class ChanDoorTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def start(self, mode, tripcode=None, redact=None, name=None):
+    def start(self, mode, tripcode=None, redact=None, name=None, house=None):
         self.sock = os.path.join(self.tmp.name, f"door-{mode}-{time.time_ns()}.sock")
         args = [sys.executable, DOOR, self.sock, f"127.0.0.1:{self.tunnel.server_address[1]}", "forum.test", mode]
         if name:
             args += ["--name", name]
         if tripcode:
             p = os.path.join(self.tmp.name, "trip"); open(p, "w").write(tripcode); args += ["--tripcode", p]
+        if house is not None:
+            p = os.path.join(self.tmp.name, "house"); open(p, "w").write(house); args += ["--house", p]
         if redact:
             p = os.path.join(self.tmp.name, "redact"); open(p, "w").write("\n".join(redact)); args += ["--redact", p]
         self.log = open(os.path.join(self.tmp.name, "door.log"), "w+")
         self.door = subprocess.Popen(args, stderr=self.log, env=self.env)
         self.wait_for_door()
         self.forum.received.clear()
+        self.forum.headers.clear()
+        self.forum.house = None
         self.addCleanup(self.stop)
 
     def wait_for_door(self):
@@ -215,6 +229,31 @@ class ChanDoorTest(unittest.TestCase):
         self.assertIn("POST /api/boards/b/threads/42/replies", log)
         self.assertIn("[redacted] about the [redacted]", log)
         self.assertNotIn("s3cret", log, "the tripcode is not written to the log")
+
+    def test_the_house_secret_goes_with_every_request_and_is_never_logged(self):
+        self.start("all", house="h0use-s3cret\n")
+        self.forum.house = "h0use-s3cret"
+        self.assertEqual(self.ask("GET", "/api/boards")[0], 200)
+        self.assertEqual(self.ask("POST", "/api/boards/b/threads", {"body": "hello", "subject": "hi"})[0], 200)
+        self.assertEqual([h.get("X-House-Secret") for h in self.forum.headers], ["h0use-s3cret"] * 2)
+        self.assertNotIn("h0use-s3cret", self.logged())
+
+    def test_with_no_house_secret_none_is_sent(self):
+        self.start("all", house="")
+        self.ask("GET", "/api/boards")
+        self.assertNotIn("X-House-Secret", self.forum.headers[0])
+
+    def test_a_house_secret_the_forum_refuses_posts_nothing_and_is_said_for_the_owner(self):
+        self.start("all", house="wrong-one")
+        self.forum.house = "right-one"
+        status, reply = self.ask("POST", "/api/boards/b/threads", {"body": "hello", "subject": "hi"})
+        self.assertEqual(status, 401)
+        self.assertIn("Nothing was posted. Do not try again", reply["error"])
+        self.assertNotIn("wrong-one", json.dumps(reply))
+        self.assertEqual(len(self.forum.received), 1, "asked once, and not again without the secret")
+        log = self.logged()
+        self.assertIn("HOUSE REFUSED POST /api/boards/b/threads", log)
+        self.assertNotIn("wrong-one", log)
 
     def test_a_catch_up_carries_the_tripcode_and_a_character_s_posts_their_name(self):
         self.start("all", tripcode="s3cret", name="Mara")

@@ -890,6 +890,30 @@ class DispatchTest(unittest.TestCase):
         self.d.once()
         self.assertEqual(forum.asked[-1][:3], ("catch_up", ["env"], "e:20"))
 
+    def test_the_house_secret_is_set_in_visor_md_kept_outside_the_notes_and_never_shown_or_logged(self):
+        self.d.once()
+        self.assertIn("\nHouse secret:\n", self.server_note())
+        self.edit_server_note("\nHouse secret:\n", "\nHouse secret: `h0use-s3cret`\n")
+        self.d.sync_server_note()
+        house = os.path.join(self.tmp.name, "chan-house")
+        self.assertEqual(open(house).read(), "h0use-s3cret\n")
+        self.assertEqual(os.stat(house).st_mode & 0o777, 0o600)
+        self.assertIn("\nHouse secret: (set)\n", self.server_note())
+        self.assertNotIn("h0use-s3cret", self.server_note())
+        self.assertFalse(any("h0use-s3cret" in line for line in self.logged), "never in visor's log")
+        self.assertTrue(any("house secret set" in line for line in self.logged))
+        # Read again as `(set)`, it is kept; the rest of VISOR.md is read as ever.
+        self.edit_server_note("- [ ] strict (anything adult", "- [x] strict (anything adult")
+        self.d.sync_server_note()
+        self.assertEqual(open(house).read(), "h0use-s3cret\n")
+        self.assertEqual(self.d.safe_search, "strict")
+        # Board time sends it, from the file, and every run given the board is told where it is.
+        self.assertEqual(self.d.chan_house, house)
+        self.edit_server_note("\nHouse secret: (set)\n", "\nHouse secret: none\n")
+        self.d.sync_server_note()
+        self.assertFalse(os.path.exists(house))
+        self.assertIn("\nHouse secret:\n", self.server_note())
+
     def test_safe_search_is_visor_md_s_and_a_character_s_own_over_it(self):
         self.d.once()
         self.assertIn("Safe search\n- [ ] off (nothing held back)\n- [x] moderate", self.server_note())

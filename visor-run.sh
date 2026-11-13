@@ -155,6 +155,8 @@ case "$SAFE_SEARCH" in off) SAFE_KP=-2 ;; moderate) SAFE_KP=-1 ;; strict) SAFE_K
 CHAN_HOST="${VISOR_CHAN_HOST:-}"
 CHAN_TRIPCODES="${VISOR_CHAN_TRIPCODES:-$HOME/.config/visor/chan-tripcodes}"
 CHAN_REDACT="${VISOR_CHAN_REDACT:-$HOME/.config/visor/chan-redact}"
+# The forum's house secret, set in VISOR.md: the chan door sends it, and it never enters the wall.
+CHAN_HOUSE="${VISOR_CHAN_HOUSE:-$HOME/.config/visor/chan-house}"
 case "$CHAN" in ""|read|all) ;; *) echo "--chan takes read or all, not $CHAN" >&2; exit 2 ;; esac
 if [ -n "$CHAN" ] && [ -z "$CHAN_HOST" ]; then
   echo "a run given the board needs the forum's address in VISOR_CHAN_HOST, which visor gives it (board.FORUM)" >&2
@@ -585,7 +587,8 @@ if [ -n "$CHAN" ]; then
     || say "WARNING: could not read or keep the tripcode in $CHAN_TRIPCODES; posts go out with no handle"
   echo "$MODEL" > "$WALL/chan-model"   # read by inside/chan, for the post's model field
   python3 "$HERE/doors/chan-door.py" "$WALL/chan.sock" "$([ "$NET_ROUTE" = direct ] && echo direct || echo "$VPN_PROXY")" "$CHAN_HOST" "$CHAN" \
-    --tripcode "$TRIP_FILE" --redact "$CHAN_REDACT" ${CHAN_AS:+--name "$CHAN_AS"} 2> "$OUT/chan-door.log" &
+    --tripcode "$TRIP_FILE" --redact "$CHAN_REDACT" --house "$CHAN_HOUSE" ${CHAN_AS:+--name "$CHAN_AS"} \
+    2> "$OUT/chan-door.log" &
   CHAN_DOOR=$!
   DOOR_LOGS+=("$OUT/chan-door.log")
 fi
@@ -1084,6 +1087,12 @@ fi
         2>/dev/null || echo "- \`$where\` (cut short in the log)"
     done
     echo
+    refused="$(grep -c '^chan-door: HOUSE REFUSED' "$OUT/chan-door.log")"
+    if [ "$refused" -gt 0 ]; then
+      echo "> [!warning] The forum refused visor's house secret $refused time$([ "$refused" -gt 1 ] && echo s), and posted nothing of those"
+      echo "> It is not the one the forum has, or the forum has none. Set the right one in \`VISOR.md\`, under \`House secret:\`, or \`none\` to post unlabeled."
+      echo
+    fi
   fi
   # Tests that failed, said here, where the owner reads: the first error, and the end of what they printed.
   failing() { [ "$1" != 0 ] && [ "$1" != none ] && [ "$1" != n/a ]; }

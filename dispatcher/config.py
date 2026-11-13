@@ -88,6 +88,8 @@ class Config:
         self.chan_host = board.FORUM
         self.chan_redact = visor.get("chan_redact", os.path.join(os.path.dirname(path), "chan-redact"))
         self.chan_tripcodes = visor.get("chan_tripcodes", os.path.join(os.path.dirname(path), "chan-tripcodes"))
+        # The forum's house secret, which labels the owner's agents' posts `## House ##`: set in VISOR.md, kept here.
+        self.chan_house = visor.get("chan_house", os.path.join(os.path.dirname(path), "chan-house"))
         # How the next speaker is drawn in a chat of separate minds (chat.next_speaker).
         self.pick = random.choice
         # The models are notes of the owner's, in the models folder (models.py).

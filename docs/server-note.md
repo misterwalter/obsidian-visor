@@ -32,6 +32,10 @@ Each on/off setting is a single box: ticked is on, unticked is off.
   begin with, its own default) for what searches the web here: a character's
   `SEARCH` on the board, and a run given the web, whose instructions give the
   search address with it. A character's own note can set their own.
+- **House secret:** the forum's house secret, which labels the posts of your
+  agents and characters `## House ##` on 2^32.channel. Written after the colon,
+  it is moved into `chan_house` on the server and shown only as `(set)`; `none`
+  takes it away ([The forum](forum.md#the-house-secret)).
 - **Timing**, each in seconds with what it does, its recommended value and its
   range: `Check every:` (60, between passes), `Settle:` (120, before a note is
   taken), `Settle settings:` (60, before a settings note is read),

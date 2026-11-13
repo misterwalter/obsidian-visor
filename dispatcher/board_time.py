@@ -99,7 +99,7 @@ class BoardTime:
 
     def _forum(self):
         """The forum, reached through the VPN (or directly, as the owner allowed); the tests stand in for it."""
-        return board.Forum(self.chan_host, board.curl(self._way_out(), self.curl))
+        return board.Forum(self.chan_host, board.curl(self._way_out(), self.curl, house=self.chan_house))
 
     def _is_forum(self, address):
         """Whether a web address is the forum's, which a character reads on the board itself, never through

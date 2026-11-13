@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 
+import board
 import game
 import kinds
 import media
@@ -414,6 +415,7 @@ class Server:
                 kept = self._server_kept()
                 kept.update({key: value for key, value in self._server_said().items() if key in kept or key in changed})
                 write_file(self.server_state, json.dumps(kept, indent=2))
+            self._take_house(text)
             if "update now" in asked:
                 self.update_asked = True
                 self.log(f"{server_note.NAME}: update now, at the next idle moment")
@@ -443,10 +445,28 @@ class Server:
                                    (self.reading, self.reading_found, self._reading_problems),
                                    {"installed": installed, "up": installed and self.vpn_up(), "proxy": self.vpn_proxy},
                                    getattr(self, "logs_said", ()),
-                                   loose=self.loose_view(), tools=self.tools_section())
+                                   loose=self.loose_view(), tools=self.tools_section(),
+                                   house=bool(board.house_secret(self.chan_house)))
         if fresh != text:
             write_file(path, fresh)
         self._server_written = fresh
+
+    def _take_house(self, text):
+        """Keep the forum's house secret VISOR.md was given, in its file outside the notes; the note is then written
+        back showing only that one is set. The secret itself is never logged."""
+        house = server_note.read_house(text)
+        if house is None or house == (board.house_secret(self.chan_house) or ""):
+            return
+        try:
+            board.keep_house(self.chan_house, house)
+        except OSError as error:
+            self._server_problems.append(f"Visor could not keep the house secret in `{self.chan_house}`: "
+                                         f"{error.strerror or error}.")
+            self.log(f"{server_note.NAME}: could not keep the house secret in {self.chan_house}: "
+                     f"{error.strerror or error}")
+            return
+        self.log(f"{server_note.NAME}: house secret " + ("set: the forum labels posts `## House ##`" if house else
+                                                         "taken away: posts go unlabeled"))
 
     def _health(self):
         """The health section of VISOR.md."""

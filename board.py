@@ -34,13 +34,22 @@ import ipaddress
 import json
 import re
 import socket
+import os
 import subprocess
+import tempfile
 import time
 import urllib.parse
 
 # The forum for agents: 2^32.channel. Not a setting: it is the only site with the API that visor, the chan
 # door and `chan` speak (/api/boards, /api/catch_up, tripcodes).
 FORUM = "4294967296.channel"
+# The forum's house secret: sent with every request to the forum, and only to the forum, it labels the posts of the
+# owner's own agents and characters `## House ##`. Kept in a file of its own (visor.conf's `chan_house`), outside
+# every wall, set from VISOR.md, and never shown to a model, written in a log or put on a command line.
+HOUSE_HEADER = "X-House-Secret"
+HOUSE_REFUSED = ("the forum refused visor's house secret, so nothing was posted: it is not the one the forum has, or "
+                 "the forum has none. Set the right one in VISOR.md, under `House secret:`, or `none` to post "
+                 "unlabeled")
 NOTES, LOG, THREADS, FINDS = "board.md", "board-log.md", "threads", "finds"
 # A visit takes at most this many steps: no setting, only a stop for a model that never says DONE.
 MOST_STEPS = 12
@@ -63,17 +72,57 @@ class BoardError(Exception):
 
 # ── The forum ─────────────────────────────────────────────────────────────────
 
-def curl(proxy, curl_command="curl", pinned=None):
+def house_secret(path):
+    """The house secret kept in its file: None when there is none."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() or None
+    except (OSError, TypeError):
+        return None
+
+
+def keep_house(path, secret):
+    """Keep a house secret in its file, readable by this account alone; with none, take the file away."""
+    if not secret:
+        if os.path.exists(path):
+            os.remove(path)
+        return
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    made = os.open(path + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(made, "w", encoding="utf-8") as f:
+        f.write(secret + "\n")
+    os.chmod(path + ".new", 0o600)
+    os.replace(path + ".new", path)
+
+
+def house_refused(status, text):
+    """Whether the forum's answer is its refusal of the house secret."""
+    return status == 401 and HOUSE_HEADER.lower() in (text or "").lower()
+
+
+def curl(proxy, curl_command="curl", pinned=None, house=None):
     """A transport through the VPN tunnel's SOCKS proxy, or with proxy None directly (a server with no
     VPN whose owner allowed that), its name's address checked first and given as pinned, curl's
-    host:port:address: (method, url, body) -> (status, text)."""
+    host:port:address: (method, url, body) -> (status, text). house: the file of the forum's house secret, for
+    the forum's transport alone, sent from a file of headers so that it is never on curl's command line."""
     def send(method, url, body=None):
         command = [curl_command, "--silent", "--show-error", "--max-time", "120", "--proto", "=https",
                    *(["--socks5-hostname", proxy] if proxy else []), *(["--resolve", pinned] if pinned else []),
                    "--user-agent", BROWSER, "--write-out", "\n%{http_code}", "--request", method, url]
         if body is not None:
             command += ["--header", "Content-Type: application/json", "--data-binary", "@-"]
-        done = subprocess.run(command, input=body, capture_output=True, text=True)
+        secret = house_secret(house) if house else None
+        headers = None
+        if secret:
+            made, headers = tempfile.mkstemp(prefix="visor-house-")
+            with os.fdopen(made, "w", encoding="utf-8") as f:
+                f.write(f"{HOUSE_HEADER}: {secret}\n")
+            command += ["--header", f"@{headers}"]
+        try:
+            done = subprocess.run(command, input=body, capture_output=True, text=True)
+        finally:
+            if headers:
+                os.remove(headers)
         if done.returncode != 0:
             raise BoardError(f"could not reach {urllib.parse.urlsplit(url).hostname} "
                              f"{'through the VPN' if proxy else 'directly'}: "
@@ -106,6 +155,8 @@ class Forum:
     def call(self, method, path, params=None, body=None):
         url = f"https://{self.host}{path}" + (("?" + urllib.parse.urlencode(params)) if params else "")
         status, text = self.send(method, url, json.dumps(body) if body is not None else None)
+        if house_refused(status, text):
+            raise BoardError(HOUSE_REFUSED)
         if not 200 <= status < 300:
             raise BoardError(f"the forum said {status} to {method} {path}: {text.strip()[:300]}")
         if (params or {}).get("format") == "text":
