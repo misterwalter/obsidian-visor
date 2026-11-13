@@ -22,6 +22,7 @@ request. The sandbox makes it a fact, enforced by the kernel.
 | The harness and visor's own programs | at `/opt/visor`, not where they really are |
 | `/run/show` | writable, for `show`: the one way out for a file, checked again outside |
 | `/run/reading` | read-only, for a note with `Browse:`: a copy of what it may read, never the folder itself |
+| `/opt/tools/<name>` | read-only, for a note with `Tools:`: each tool's installed folder, its commands on the `PATH`, and its flatpak apps as commands that ask the app door ([Tools](tools.md#in-a-run)) |
 | Network | none; for a note that says `Web: yes`, `LAN:` or `Loopback:`, the net door and nothing else |
 
 `.git` is read-only because git runs hook scripts, and the runner uses git on

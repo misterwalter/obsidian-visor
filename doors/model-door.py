@@ -46,6 +46,12 @@ what the agent was last told, it puts a message after everything the agent has s
 compiles, file, line and error, or that everything compiles again. Like the owner's messages, it is put
 back in the same place in every later request. Each time is logged (`GODOT CHECK`).
 
+For a run given tools (MODEL_DOOR_CHECKS, what tools.prepare kept of their checks; MODEL_DOOR_WORK, the
+workspace), it does the same for each file a tool's check covers (with_tool_checks): changed since the last
+look, the file is checked in the tool's own wall, with the run's app door (MODEL_DOOR_APPS, MODEL_DOOR_SHIMS),
+and the agent told what the check found, when that is not what it was last told of that file: its
+problems, or that there are none. Each time is logged (`TOOL CHECK`).
+
 Usage: model-door.py <socket path> <upstream host:port> <model> <calls file> [window]
 """
 
@@ -59,6 +65,10 @@ import subprocess
 import sys
 import threading
 import time
+
+# The checks of a run's tools: which files each covers, and running one in the tool's own wall.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+import tools  # noqa: E402
 
 ALLOWED_PATH = "/v1/chat/completions"
 # Headers that describe one connection, not the message, and must not be passed on.
@@ -98,6 +108,11 @@ class Door(http.server.BaseHTTPRequestHandler):
     godot_seen = None  # the scripts as they were when last checked: {path: (modified, size)}
     godot_told = None  # what the agent was last told does not compile; None: told nothing yet
     told = []          # the door's own messages in the conversation: (where it goes, text)
+    tool_checks = []   # the checks of the run's tools (MODEL_DOOR_CHECKS, tools.prepare); [] for none
+    work = None        # the workspace they look in (MODEL_DOOR_WORK)
+    apps = shims = None  # the run's app door, and its commands for the tools' flatpak apps
+    tool_seen = {}     # each file a check covers, as it was when last checked: {(tool, path): (modified, size)}
+    tool_told = {}     # what the agent was last told of each: {(tool, path): (passed, output)}
 
     def log_message(self, format, *args):
         pass  # the default logger wants a client address, and a unix socket has none
@@ -200,6 +215,43 @@ class Door(http.server.BaseHTTPRequestHandler):
             cls.told.append((len(messages), text))
 
     @classmethod
+    def with_tool_checks(cls, request):
+        """Each file of the workspace a tool's check covers, checked when it has changed since the last look, in the
+        tool's own wall (tools.check_file), and the agent told what was found when that is not what it was last
+        told of the file: the problems, or that there are none now."""
+        messages = request.get("messages")
+        if not cls.tool_checks or not cls.work or not isinstance(messages, list) or not messages:
+            return
+        for entry in cls.tool_checks:
+            for path in tools.changed_files(cls.work, entry["files"]):
+                try:
+                    stat = os.stat(path)
+                except OSError:
+                    continue
+                key = (entry["name"], path)
+                if cls.tool_seen.get(key) == (stat.st_mtime_ns, stat.st_size):
+                    continue
+                cls.tool_seen[key] = (stat.st_mtime_ns, stat.st_size)
+                rel = os.path.relpath(path, cls.work)
+                status, output = tools.check_file(entry, path, cls.work, cls.apps, cls.shims)
+                said = tools._tail(output, tools.CHECK_LINES).strip()
+                verdict = (status == 0, said)
+                if cls.tool_told.get(key) == verdict:
+                    continue
+                before = cls.tool_told.get(key)
+                cls.tool_told[key] = verdict
+                run = tools.filled(entry["run"], {"file": rel})
+                if status == 0:
+                    text = (f"Visor checked {rel} again with `{run}`: no problems now." if before else
+                            f"Visor checked {rel} with `{run}`: no problems.") + (f"\n\n{said}" if said else "")
+                else:
+                    text = (f"Visor checked {rel} with `{run}` after your last change, and it found problems "
+                            f"(exit {status}):\n\n{said or '(it printed nothing)'}\n\nFix them before you go on.")
+                log(f"TOOL CHECK {'passed' if status == 0 else 'told'}: {entry['name']} {rel} exit {status}")
+                with cls.calls_lock:
+                    cls.told.append((len(messages), text))
+
+    @classmethod
     def with_owner_messages(cls, request):
         """The request with the owner's messages in it, and the door's own (told): those already delivered back
         where they were first put, and any new one after everything else. Returns whether anything was added."""
@@ -282,6 +334,7 @@ class Door(http.server.BaseHTTPRequestHandler):
         if asked_model is not None and asked_model != self.model:
             return self.refuse(f"this run's model is {self.model}, not {asked_model}")
         self.with_godot_check(request)
+        self.with_tool_checks(request)
         added = self.with_owner_messages(request)
         fixed = self.with_a_question(request)
         if fixed:
@@ -379,6 +432,12 @@ def main():
     Door.godot = os.environ.get("MODEL_DOOR_GODOT") or None
     Door.godot_lock = os.environ.get("MODEL_DOOR_GODOT_LOCK") or None
     Door.godot_check = os.environ.get("MODEL_DOOR_GODOT_CHECK") or GODOT_CHECK
+    if os.environ.get("MODEL_DOOR_CHECKS"):
+        with open(os.environ["MODEL_DOOR_CHECKS"], encoding="utf-8") as f:
+            Door.tool_checks = json.load(f)
+    Door.work = os.environ.get("MODEL_DOOR_WORK") or None
+    Door.apps = os.environ.get("MODEL_DOOR_APPS") or None
+    Door.shims = os.environ.get("MODEL_DOOR_SHIMS") or None
     open(calls_file, "a").close()
     if os.path.exists(path):
         os.unlink(path)

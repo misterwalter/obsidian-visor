@@ -52,7 +52,8 @@ The words these docs use for the sandbox, and what each is:
   requests each door must refuse) and stops the run if any succeeds.
 - **Openings that are not doors**, with no program behind them: `/run/show`,
   `/run/tell` and `/run/finish`, folders the agent writes into for you, and
-  `/run/reading`, the read-only copy a note's `Browse:` gives it.
+  `/run/reading`, the read-only copy a note's `Browse:` gives it; and
+  `/opt/tools/<name>`, each tool a note's `Tools:` gives it, read-only.
 
 To learn more: bubblewrap's manual (`man bwrap`) and Linux namespaces
 (`man namespaces`) for the wall; Unix domain sockets (`man unix`) and `socat`

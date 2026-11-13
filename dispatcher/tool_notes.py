@@ -109,7 +109,10 @@ class ToolNotes:
             lines.append(f"> - Its standing guide: {tools.reading_said(installed.get('guide_tokens') or 0)}")
             check = installed.get("check")
             if check:
-                lines.append(f"> - A check, for `{check['files']}` files: `{check['run']}`")
+                lines.append(f"> - A check as the agent saves `{check['files']}` files: `{check['run']}`")
+            after = installed.get("final") or check
+            if after:
+                lines.append(f"> - A check after the round, of the `{after['files']}` files it made: `{after['run']}`")
             for app, commit in sorted((installed.get("apps") or {}).items()):
                 lines.append(f"> - Runs `{app}`, from flatpak" + (f" (`{commit[:10]}`)" if commit else ""))
             if installed.get("display"):

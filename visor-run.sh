@@ -59,6 +59,10 @@
 # --reading DIR  what the owner lets this run read besides the project: a copy the dispatcher
 #               made (sources.py), one folder per source and .sources.json saying what each is.
 #               The wall shows it at /run/reading, read-only; `browse` reads it by date
+# --tool NAME=DIR  a tool the owner installed (tools.py), at DIR: shown read-only in the wall at
+#               /opt/tools/NAME, its commands on the PATH, its flatpak apps through the app door
+#               (doors/app-door.py), its guide in the instructions; what the agent saves that its check
+#               covers is checked as it works (model-door.py), and what it made, after the round. Repeatable
 # --tests CMD   how to run the project's tests, for a project that is not Godot.
 #               A Godot project (one with project.godot) uses bin/gut-test.
 #               `--tests none`: the project has none; a build is made, and nothing checks it
@@ -71,7 +75,7 @@ REPO_SRC="${1:?repo required}"; [ "$REPO_SRC" = - ] || REPO_SRC="$(realpath "$RE
 SCRATCH=no; [ "$REPO_SRC" = - ] && SCRATCH=yes
 TASK="$(realpath "${2:?task file required}")"
 MODEL="${3:?model required}"; HARNESS="${4:?harness required: pi}"; shift 4
-ROUND="build"; NOTES=""; CONTINUE=""; BRANCH=""; FORK=""; TESTS=""; LIVE_LOG=""; FOLDER=no; CANON=no; SETTING=""; THINKING=""; WEB=no; SAFE_SEARCH=moderate; LAN=""; LOOPBACK=""; CHAN=""; CHAN_AS=""; PERSONA=""; DRAW=""; NARRATOR=no; READING=""; SELF=no
+ROUND="build"; NOTES=""; CONTINUE=""; BRANCH=""; FORK=""; TESTS=""; LIVE_LOG=""; FOLDER=no; CANON=no; SETTING=""; THINKING=""; WEB=no; SAFE_SEARCH=moderate; LAN=""; LOOPBACK=""; CHAN=""; CHAN_AS=""; PERSONA=""; DRAW=""; NARRATOR=no; READING=""; SELF=no; TOOLS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --plan-only) ROUND="plan" ;;
@@ -100,6 +104,7 @@ while [ $# -gt 0 ]; do
     --persona) PERSONA="$(realpath "$2")"; shift ;;
     --draw) DRAW="$2"; shift ;;
     --tests) TESTS="$2"; shift ;;
+    --tool) TOOLS+=("$2"); shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -191,6 +196,11 @@ fi
 if [ -n "$SETTING" ] && { [ "$ROUND" != chat ] || [ ! -d "$SETTING" ]; }; then
   say "--setting is for a chat (--chat), and names a folder"; exit 2
 fi
+if [ ${#TOOLS[@]} -gt 0 ] && [ "$ROUND" = chat ]; then
+  say "--tool is for an agent's round, not a chat"; exit 2
+fi
+TOOL_NAMES=""
+[ ${#TOOLS[@]} -gt 0 ] && TOOL_NAMES="$(printf '%s\n' "${TOOLS[@]}" | cut -d= -f1 | paste -sd, - | sed 's/,/, /g')"
 if [ -n "$READING" ]; then
   [ -f "$READING/.sources.json" ] || { say "--reading names a folder with no .sources.json: $READING"; exit 2; }
   READ_NAMES="$(jq -r 'keys_unsorted | join(", ")' "$READING/.sources.json")"
@@ -211,7 +221,7 @@ if [ -n "$LIVE_LOG" ]; then
   mkdir -p "$(dirname "$LIVE_LOG")" && touch "$LIVE_LOG" \
     || { say "cannot write the live log $LIVE_LOG"; exit 1; }
   live_note "
-## $(date '+%Y-%m-%d %H:%M') · $ROUND round$([ "$SELF" = yes ] && echo ", self-directed") · $MODEL${THINKING:+ · thinking $THINKING}$([ "$WEB" = yes ] && echo " · web")${LAN:+ · LAN: $LAN}${LOOPBACK:+ · loopback: $LOOPBACK}${CHAN:+ · board: $CHAN}${READING:+ · browse: $READ_NAMES}
+## $(date '+%Y-%m-%d %H:%M') · $ROUND round$([ "$SELF" = yes ] && echo ", self-directed") · $MODEL${THINKING:+ · thinking $THINKING}$([ "$WEB" = yes ] && echo " · web")${LAN:+ · LAN: $LAN}${LOOPBACK:+ · loopback: $LOOPBACK}${CHAN:+ · board: $CHAN}${READING:+ · browse: $READ_NAMES}${TOOL_NAMES:+ · tools: $TOOL_NAMES}
 
 \`$RUN\`${FORK:+ · carries on the conversation of \`$FORK\`}${CONTINUE:+ · builds on \`$CONTINUE\`}
 "
@@ -357,6 +367,14 @@ TESTED=no
 
 if [ "$WRITES" = yes ]; then ACCESS="rw"; else ACCESS="ro"; fi
 
+# The tools the owner gave this run: what each needs, worked out from its manifest (tools.py prepare) into
+# $OUT/tools: the folders the wall shows, the PATH, the app door's apps and folders, the checks, what it is told.
+if [ ${#TOOLS[@]} -gt 0 ]; then
+  python3 "$HERE/tools.py" prepare "$OUT/tools" "$WORK" "$ACCESS" "${TOOLS[@]}" 2> "$OUT/tools.log" \
+    || { say "the tools could not be made ready: $(paste -sd' ' "$OUT/tools.log")"; exit 1; }
+  export VISOR_TOOL_BINDS="$OUT/tools/binds" VISOR_TOOL_PATH="$(cat "$OUT/tools/path")"
+fi
+
 # visor's own commands this run has (inside/): said in its instructions (bin/commands-said), and set up below.
 # A chat talks and draws in its own ways; a folder project's files are all in the owner's notes already.
 TALKS=no; [ "$ROUND" != chat ] && TALKS=yes
@@ -404,6 +422,8 @@ COMMANDS=()
   fi
   # The commands, said together and early: they are not in the model's list of tools, where it looks first.
   [ ${#COMMANDS[@]} -gt 0 ] && { echo; bash "$HERE/bin/commands-said" "${COMMANDS[@]}"; }
+  # Each tool's commands and its own guide (tools.py prepare), kept whole through every summary, as these are.
+  [ ${#TOOLS[@]} -gt 0 ] && { echo; cat "$OUT/tools/prompt.md"; }
   if [ "$KIND" = godot ] && [ "$WRITES" = yes ]; then
     echo; cat "$HERE/prompts/godot.md"
   elif [ -n "$TESTS" ]; then
@@ -553,11 +573,29 @@ if [ "$TALKS" = yes ]; then
   # And an agent that ends with a command rather than a reply leaves its final message in finish/.
   export VISOR_FINISH_DIR="$OUT/finish"
 fi
+# The flatpak apps the run's tools run, as commands in the wall (apps/, which wall.sh puts first on the PATH), and
+# the app door they ask: each app is run by flatpak in its own sandbox, with the tools' folders and the workspace
+# alone, one Godot at a time as for a Godot project (the same lock).
+APP_DOOR=""
+if [ ${#TOOLS[@]} -gt 0 ] && [ -d "$OUT/tools/apps" ]; then
+  cp -r "$OUT/tools/apps" "$WALL/apps"
+  mapfile -t APP_ARGS < <(jq -r '(.apps | to_entries[] | "--app", "\(.key)=\(.value)"), (.maps[] | "--map", .)' \
+                            "$OUT/tools/door.json")
+  python3 "$HERE/doors/app-door.py" "$WALL/apps.sock" --flatpak "${VISOR_FLATPAK:-flatpak}" --lock "$WALL/godot.lock" \
+    "${APP_ARGS[@]}" 2> "$OUT/app-door.log" &
+  APP_DOOR=$!
+fi
+# What the agent saves that a tool checks, checked as it works (model-door.py), when the round may write.
+TOOL_CHECKS=""
+[ ${#TOOLS[@]} -gt 0 ] && [ "$WRITES" = yes ] && [ "$(jq length "$OUT/tools/checks.json")" -gt 0 ] \
+  && TOOL_CHECKS="$OUT/tools/checks.json"
 # In a build on a Godot project, the model door keeps the scripts compiling in front of the agent: it checks them
 # whenever one has changed, and tells the agent what no longer compiles (model-door.py).
 GODOT_WATCH=""
 [ "$KIND" = godot ] && [ "$WRITES" = yes ] && GODOT_WATCH="$WORK"
 MODEL_DOOR_TALK="$TALK" MODEL_DOOR_GODOT="$GODOT_WATCH" MODEL_DOOR_GODOT_LOCK="$WALL/godot.lock" \
+  MODEL_DOOR_CHECKS="$TOOL_CHECKS" MODEL_DOOR_WORK="$WORK" \
+  MODEL_DOOR_APPS="$([ -n "$APP_DOOR" ] && echo "$WALL/apps.sock")" MODEL_DOOR_SHIMS="$WALL/apps" \
   python3 "$HERE/doors/model-door.py" "$WALL/model.sock" "$MODEL_SERVER" "$MODEL" "$CALLS" "$WINDOW" \
   2> "$OUT/model-door.log" &
 MODEL_DOOR=$!
@@ -567,6 +605,7 @@ socat -t 3600 UNIX-LISTEN:"$WALL/godot.sock",fork EXEC:"$HERE/doors/godot-door $
   2> "$OUT/godot-door.log" &
 GODOT_DOOR=$!
 DOOR_LOGS=("$OUT/model-door.log" "$OUT/godot-door.log")
+[ -n "$APP_DOOR" ] && DOOR_LOGS+=("$OUT/app-door.log")
 MEDIA_DOOR=""
 if [ -n "$DRAW" ]; then
   python3 "$HERE/doors/media-door.py" "$WALL/media.sock" "${VISOR_CONFIG:-$HOME/.config/visor/visor.conf}" \
@@ -608,7 +647,7 @@ WATCHERS=""; DOORS_OPEN=1
 close_doors() {
   [ "$DOORS_OPEN" = 1 ] || return 0
   DOORS_OPEN=0
-  kill $MODEL_DOOR $GODOT_DOOR $NET_DOOR $CHAN_DOOR $MEDIA_DOOR $WATCHERS 2>/dev/null
+  kill $MODEL_DOOR $GODOT_DOOR $NET_DOOR $CHAN_DOOR $MEDIA_DOOR $APP_DOOR $WATCHERS 2>/dev/null
   [ -n "${TRIP_FILE:-}" ] && rm -f "$TRIP_FILE"
   # A Godot the agent started through the test door must not outlive the run.
   if [ "$KIND" = godot ] && flatpak ps --columns=application 2>/dev/null | grep -q org.godotengine.Godot; then
@@ -619,7 +658,8 @@ close_doors() {
 }
 trap close_doors EXIT
 doors_open() {
-  [ -S "$WALL/model.sock" ] && [ -S "$WALL/godot.sock" ] && { [ "$NET_GIVEN" = none ] || [ -S "$WALL/net.sock" ]; } && { [ -z "$CHAN" ] || [ -S "$WALL/chan.sock" ]; } && { [ -z "$DRAW" ] || [ -S "$WALL/media.sock" ]; }
+  [ -S "$WALL/model.sock" ] && [ -S "$WALL/godot.sock" ] && { [ "$NET_GIVEN" = none ] || [ -S "$WALL/net.sock" ]; } && { [ -z "$CHAN" ] || [ -S "$WALL/chan.sock" ]; } && { [ -z "$DRAW" ] || [ -S "$WALL/media.sock" ]; } \
+    && { [ -z "$APP_DOOR" ] || [ -S "$WALL/apps.sock" ]; }
 }
 for _ in $(seq 1 50); do
   doors_open && break
@@ -704,6 +744,8 @@ for _ in $(seq 1 60); do
 done
 
 say "agent start ($HARNESS, $ROUND round)"
+# What the round makes or changes from here on is what a tool's final check looks at.
+[ ${#TOOLS[@]} -gt 0 ] && touch "$OUT/tools/started"
 T0=$(date +%s)
 harness_command
 # stdin must be readable: under nohup it is not, and a harness dies with EBADF.
@@ -886,6 +928,7 @@ TOO_LONG="$(grep -c 'TOO LONG' "$OUT/model-door.log")"
 # Requests the harness sent with no message from the user, which some models' templates refuse (model-door.py).
 NO_QUESTION="$(grep -c 'NO USER MESSAGE' "$OUT/model-door.log")"
 GODOT_TOLD="$(grep -c 'GODOT CHECK: [1-9]' "$OUT/model-door.log")"
+TOOL_TOLD="$(grep -c '^model-door: TOOL CHECK told' "$OUT/model-door.log")"
 [ "$NO_QUESTION" = 0 ] || say "the model door gave $NO_QUESTION requests the user message they lacked"
 REFUSED=$(( $(refusals) - REFUSED_BY_CHECK ))
 [ "$REFUSED" = 0 ] || say "the doors refused $REFUSED requests from the agent -- see the door logs in $OUT"
@@ -900,6 +943,20 @@ open(sys.argv[1], "w", encoding="utf-8").write(whole + "\n")
 EOF
 fi
 [ -s "$OUT/final-message.md" ] || say "WARNING: the agent left no closing message"
+# What the round made, checked once more by each tool that covers it (its final check, else its check), outside
+# the agent's account of it: what that found goes in the reply. An errand's own folder goes with the round, so
+# what was checked is shown, and kept, unless a later part carries on in the folder.
+TOOL_FINAL=0
+if [ ${#TOOLS[@]} -gt 0 ] && [ "$WRITES" = yes ] && [ "$(jq length "$OUT/tools/finals.json")" -gt 0 ]; then
+  say "the tools check what the round made"
+  final_args=()
+  [ "$SCRATCH" = yes ] && [ -z "$PAUSED" ] && [ -n "${VISOR_SHOW_DIR:-}" ] && final_args+=(--show "$VISOR_SHOW_DIR")
+  [ -n "$APP_DOOR" ] && final_args+=(--apps "$WALL/apps.sock" "$WALL/apps")
+  TOOL_FINAL="$(python3 "$HERE/tools.py" final "$OUT/tools" "$WORK" "$OUT/tools/started" "${final_args[@]}" \
+                  2>> "$OUT/tools.log")" \
+    || { TOOL_FINAL=0; say "WARNING: the tools' check after the round did not run: $(tail -n 2 "$OUT/tools.log" | paste -sd' ' -)"; }
+  say "the tools checked $TOOL_FINAL file$([ "$TOOL_FINAL" = 1 ] || echo s)"
+fi
 # What the agent made for the owner to see and did not show: what its closing message names,
 # and the pictures, video, sound and PDFs it made (autoshow.py).
 if [ -n "${VISOR_SHOW_DIR:-}" ] && [ -d "$VISOR_SHOW_DIR" ]; then
@@ -1013,6 +1070,7 @@ fi
   fi
   [ -n "$THINKING" ] && echo "- thinking: $THINKING"
   [ -n "$READING" ] && echo "- browse: $READ_NAMES, copied for the run and shown read-only"
+  [ -n "$TOOL_NAMES" ] && echo "- tools: $TOOL_NAMES"
   [ -n "$CONTINUE" ] && echo "- continues: $CONTINUE"
   [ -n "$FORK" ] && echo "- carries on the conversation of: $FORK"
   echo "- base: $START"
@@ -1091,6 +1149,19 @@ fi
     if [ "$refused" -gt 0 ]; then
       echo "> [!warning] The forum refused visor's house secret $refused time$([ "$refused" -gt 1 ] && echo s), and posted nothing of those"
       echo "> It is not the one the forum has, or the forum has none. Set the right one in \`VISOR.md\`, under \`House secret:\`, or \`none\` to post unlabeled."
+      echo
+    fi
+  fi
+  # What the tools found: as the agent worked, and in what it made, after the round.
+  if [ ${#TOOLS[@]} -gt 0 ] && { [ "$TOOL_TOLD" != 0 ] || [ -s "$OUT/tools/final.md" ]; }; then
+    echo "## Tools"
+    echo
+    [ "$TOOL_TOLD" = 0 ] || { echo "As it worked, a tool's check found problems in what it saved, and told it so," \
+                                    "$TOOL_TOLD time$([ "$TOOL_TOLD" = 1 ] || echo s)."; echo; }
+    if [ -s "$OUT/tools/final.md" ]; then
+      echo "Checked after the round, by the tools themselves:"
+      echo
+      cat "$OUT/tools/final.md"
       echo
     fi
   fi

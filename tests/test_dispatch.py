@@ -139,6 +139,8 @@ FAKE_RUNNER = textwrap.dedent('''\
                    "> [!quote]- The tests' last lines", "> ```", "> FAILED (failures=1)", "> ```", ""]
     if os.environ.get("FAKE_POSTS"):
         report += ["## Posts", "", os.environ["FAKE_POSTS"], ""]
+    if os.environ.get("FAKE_TOOLS_FOUND"):
+        report += ["## Tools", "", os.environ["FAKE_TOOLS_FOUND"], ""]
     report += ["## Pull request", "", f"https://example.invalid/pull/{n}" if pushes and not paused else "none"]
     with open(os.path.join(out, "agent-output.jsonl"), "w") as f:
         f.write(json.dumps({"type": "compaction_end", "result": {"summary": f"Summary from part {n}."}}) + "\\n")
@@ -234,6 +236,7 @@ class DispatchTest(unittest.TestCase):
         os.environ.pop("FAKE_TALK", None)
         os.environ.pop("FAKE_NOTE", None)
         os.environ.pop("FAKE_POSTS", None)
+        os.environ.pop("FAKE_TOOLS_FOUND", None)
         for given in ("FAKE_REPLIES", "FAKE_PICTURES", "FAKE_QUEUED", "FAKE_REMEMBERS", "FAKE_SHOWN", "FAKE_TESTS_AFTER"):
             os.environ.pop(given, None)
         self.state = os.path.join(root, "state")
@@ -312,7 +315,7 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("--plan-only", call)
         self.assertNotIn("--notes", call, "a fresh task has nothing to add")
         note = self.read("output", "task.md")
-        self.assertTrue(note.startswith("Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nBranch:\nRetain Logs (days):\nRepeat: no\nOn repeat:\nMake the thing.\n"),
+        self.assertTrue(note.startswith("Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nTools:\nBranch:\nRetain Logs (days):\nRepeat: no\nOn repeat:\nMake the thing.\n"),
                         "the owner's text is kept, with the lines a Plan reads added to its top")
         self.assertIn("## Plan, ", note)
         self.assertIn("official model", note)
@@ -324,7 +327,7 @@ class DispatchTest(unittest.TestCase):
         self.note("inbox", "task.md", "Project: game\nMake the thing.\n")
         self.d.once()
         with open(self.calls_made()[0][1]) as f:
-            self.assertEqual(f.read(), "Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nBranch:\nRetain Logs (days):\nRepeat: no\nOn repeat:\nMake the thing.\n")
+            self.assertEqual(f.read(), "Project: game\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nTools:\nBranch:\nRetain Logs (days):\nRepeat: no\nOn repeat:\nMake the thing.\n")
 
     def test_an_analysis_question_gets_an_analysis_round(self):
         self.note("inbox", "q.md", "Project: textgame\nModel: official\nAnalysis: why is it slow?\n")
@@ -3214,7 +3217,7 @@ class DispatchTest(unittest.TestCase):
         note = self.read("output", "president.md")
         self.assertTrue(os.path.exists(os.path.join(self.tasks, "output", "agent", "president.md")))
         self.assertTrue(note.startswith("Agent: who was the 19th president?\nUNUSED Branch: x\nUNUSED Canon only: yes\n"
-                                        "Project:\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\n"
+                                        "Project:\nModel:\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nTools:\n"
                                         "Retain Logs (days):\nRepeat: no\nOn repeat:\n"), note)
         self.assertIn("## Answer, ", note)
         self.assertIn("Answer from official.", note)
@@ -4048,6 +4051,32 @@ class DispatchTest(unittest.TestCase):
         self.assertIn(" · browse: journal, copied for the run and shown read-only", answer)
         self.assertNotIn("[!warning]", answer, "nothing could leave the machine")
         self.assertIn("diary.md: copied for the run to read: journal (2 files)", self.logged)
+
+    def test_a_note_is_given_the_tools_it_names_and_the_reply_says_what_they_found(self):
+        self.d.agent_tools = os.path.join(self.tmp.name, "agent-tools")
+        os.makedirs(os.path.join(self.d.agent_tools, "hello", "abc-1"))
+        os.symlink("abc-1", os.path.join(self.d.agent_tools, "hello", "current"))
+        self.note("tools", "hello.md", "Repo: me/hello\n- [x] Fetch\n")
+        self.note("tools", "later.md", "Repo: me/later\n- [x] Fetch\n")
+        os.environ["FAKE_TOOLS_FOUND"] = "- `card.greeting`, by hello's `greet-check card.greeting`: passed."
+        self.note("inbox", "card.md", "Agent: write me a greeting card\nModel: official\nTools: [[hello]]\n")
+        self.d.once()
+        (call,) = self.calls_made()
+        self.assertEqual(call[call.index("--tool") + 1],
+                         "hello=" + os.path.realpath(os.path.join(self.d.agent_tools, "hello", "abc-1")))
+        answer = self.read("output", "card.md")
+        self.assertIn("**What the tools found:**\n\n- `card.greeting`, by hello's `greet-check card.greeting`: passed.",
+                      answer)
+        # A tool visor has no note for, or has not installed, is said, and nothing is started.
+        self.note("inbox", "two.md", "Agent: x\nModel: official\nTools: hello, nothing\n")
+        self.d.once()
+        self.assertIn("`Tools: hello, nothing` names `nothing`, and visor has no tool called that. It has: `hello`, "
+                      "`later`.", self.read("output", "two.md"))
+        self.note("inbox", "three.md", "Agent: x\nModel: official\nTools: later\n")
+        self.d.once()
+        self.assertIn("`Tools:` names `later`, which is not installed on this server yet: `tools/later.md` says why.",
+                      self.read("output", "three.md"))
+        self.assertEqual(len(self.calls_made()), 1)
 
     def test_tidying_a_plan_adds_its_reading_line(self):
         self.note("inbox", "plan.md", "Project: game\nModel: official\nPlan: something\n")
@@ -5299,7 +5328,7 @@ class DispatchTest(unittest.TestCase):
         (call,) = self.calls_made()
         note = self.read("output", "a.md")
         self.assertTrue(note.startswith("Project: story\nModel: official\nWrite: five\nUNUSED Branch: tidy\n"
-                                        "UNUSED Voice: bf_emma\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\n"
+                                        "UNUSED Voice: bf_emma\nThinking:\nWeb:\nLAN:\nLoopback:\nChan:\nChan as:\nBrowse:\nTools:\n"
                                         "- [x] Canon only\n\nRetain Logs (days):\nRepeat: no\nOn repeat:\n\nDarker.\n"), note)
         self.assertEqual(call[2], "official")
         self.assertNotIn("--thinking", call, "an empty line is the project's setting, which is none")

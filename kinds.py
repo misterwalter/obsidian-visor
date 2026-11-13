@@ -98,7 +98,7 @@ def agent(round_, *more):
     out `Project:`, so for it alone the line is added, empty."""
     return [line(round_.capitalize(), given=True), line("Project", given=round_ != "agent"), line("Model"),
             line("Thinking"), WEB, line("LAN"), line("Loopback"), line("Chan"), line("Chan as"),
-            line("Browse")] + list(more)
+            line("Browse"), line("Tools")] + list(more)
 
 
 BRANCH = line("Branch", when=repository)

@@ -184,7 +184,11 @@ def _rows(ctx, *extra, project_row=None):
              "| `Browse: journal, visor-logs` | What the agent may read besides the project: the sources under "
              "`## Browse` in `VISOR.md`, and `visor-logs`, visor's own records. Each is copied into the run, where "
              "the agent reads it by date and can change nothing in it. With `Web:` or `Chan:` as well, the reply "
-             "opens with a warning, every time. | Nothing besides the project. |"]
+             "opens with a warning, every time. | Nothing besides the project. |",
+             "| `Tools: my-tool` | Tools of yours from GitHub the agent may use, each a note in `tools/` "
+             "that visor has installed: their commands in its wall, and their guides in its instructions. What it "
+             "saves that a tool checks is checked as it works, and what it made is checked again after the round, "
+             "with what that found in the reply. | None. |"]
     return "\n".join(rows)
 
 

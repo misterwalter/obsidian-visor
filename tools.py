@@ -2,7 +2,7 @@
 """Tools: programs from the owner's own GitHub repositories, for agents to use, each a note in the
 notes' tools folder, kept as a model's note is (models.py).
 
-    Repo: owner/comic-builder          the repository: owner/name, or a name of `github_owner`'s
+    Repo: owner/my-tool                the repository: owner/name, or a name of `github_owner`'s
     Branch: main                       the branch it follows
     Network: no                        what its setup may reach: no, vpn or direct
     - [x] Fetch                        install it, and follow its branch
@@ -19,21 +19,24 @@ own updates, and tests a version again when a flatpak app it runs on changes.
 What a tool needs and gives a run is the tool's own to say, in a manifest at the top of its repository,
 `visor-tool.json` (MANIFEST), which visor reads and checks but never runs outside a wall:
 
-    {"name": "comic-builder",
+    {"name": "my-tool",
      "commands": "agent/bin",                   a folder of programs a run can use (required)
      "guide": "agent/guide.md",                 the standing guide, for the system prompt (required)
      "topics": "agent/topics",                  the longer guide, read on demand
-     "starter": "agent/starter.comic.json",     a small valid file for the agent to start from
-     "needs": {"flatpak": {"godot": "org.godotengine.Godot"}, "display": true},
-     "setup": "godot --headless --path {tool} --import",
-     "test": "comic-check {tool}/comics/demo.comic.json",
-     "check": {"files": "*.comic.json", "run": "comic-check {file}"},
-     "carry": [".godot"]}                       kept from the version before, for setup to start from
+     "starter": "agent/starter.json",           a small valid file for the agent to start from
+     "needs": {"flatpak": {"app": "org.example.App"}, "display": false},
+     "setup": "app --path {tool} --prepare",
+     "test": "my-tool-check {tool}/examples/sample.json",
+     "check": {"files": "*.json", "run": "my-tool-check {file}"},             as the agent saves
+     "final": {"files": "*.json", "run": "my-tool-render {file} --out {dir}/{name}-out"},  after
+     "carry": [".cache"]}                       kept from the version before, for setup to start from
+
+A note's `Tools:` line gives an agent's round the tools it names (see "A run with tools" below).
 
 A flatpak app a tool runs is reached through the app door (doors/app-door.py), run by flatpak in its own
 sandbox, as Godot projects reach Godot: inside a wall, the app is a command of the name the manifest
-gives it. A list of app ids names each command after the id's last part (`org.blender.Blender`:
-`blender`). One missing from this server is installed, from Flathub, when the note's `Network:` allows.
+gives it. A list of app ids names each command after the id's last part (`org.example.App`:
+`app`). One missing from this server is installed, from Flathub, when the note's `Network:` allows.
 
 `python3 tools.py install SPEC` is the install itself, run by the dispatcher in the background
 (dispatcher/tool_notes.py): it writes how far it got to `stage`, and what came of it to `result.json`,
@@ -68,8 +71,9 @@ SWITCHES = {"fetch": "visor installs it when it is next idle, and follows its br
             "update": "look for a new commit now, not at visor's next look for updates; then this clears",
             "delete": "visor deletes it from this server when it is next idle, and keeps this note"}
 WORDS = tuple(n.lower() for n, _ in LINES) + tuple(SWITCHES) + ("on this server",)
-# Where a tool and the job are inside the walls of its setup, self-test and checks (tool_wall.sh).
-TOOL_INSIDE, JOB_INSIDE = "/opt/tool", "/job"
+# Where the scratch folder of a tool's setup and self-test is, inside its wall (tool_wall.sh); the tool's own folder
+# is at mount(name), there and in the agent's wall alike.
+JOB_INSIDE = "/job"
 # How long a tool's setup and its self-test may take, in seconds.
 SETUP_LIMIT, TEST_LIMIT = 2 * 3600, 30 * 60
 # How fast this server reads a prompt, in tokens a second, slowest and fastest: what a guide costs.
@@ -227,11 +231,12 @@ def manifest_problems(manifest, folder):
     for key in ("setup", "test"):
         if manifest.get(key) is not None and not isinstance(manifest[key], str):
             problems.append(f"`{key}` in `{MANIFEST}` must be a command, as text.")
-    check = manifest.get("check")
-    if check is not None and not (isinstance(check, dict) and isinstance(check.get("files"), str)
-                                  and isinstance(check.get("run"), str)):
-        problems.append(f"`check` in `{MANIFEST}` must say which files it checks and how: "
-                        '`{"files": "*.comic.json", "run": "comic-check {file}"}`.')
+    for key in ("check", "final"):
+        check = manifest.get(key)
+        if check is not None and not (isinstance(check, dict) and isinstance(check.get("files"), str)
+                                      and isinstance(check.get("run"), str)):
+            problems.append(f"`{key}` in `{MANIFEST}` must say which files it checks and how: "
+                            '`{"files": "*.json", "run": "my-tool-check {file}"}`.')
     needs = manifest.get("needs") or {}
     if not isinstance(needs, dict):
         problems.append(f"`needs` in `{MANIFEST}` must be an object: `{{\"flatpak\": [...], \"display\": true}}`.")
@@ -241,7 +246,7 @@ def manifest_problems(manifest, folder):
             problems.append(f"`needs.flatpak` in `{MANIFEST}` must list app ids, or map commands to them.")
         for command, app in apps_of(needs).items():
             if not re.fullmatch(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){2,}", app):
-                problems.append(f"`{app}` in `needs.flatpak` is not a flatpak app id, such as `org.godotengine.Godot`.")
+                problems.append(f"`{app}` in `needs.flatpak` is not a flatpak app id, such as `org.example.App`.")
             if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", command):
                 problems.append(f"`{command}` cannot be a command's name: lower-case letters, digits, - and _.")
     carry = manifest.get("carry") or []
@@ -477,7 +482,7 @@ class Install:
             "commit": commit, "subject": subject, "when": when, "url": spec["url"], "branch": spec["branch"],
             "dir": final, "size": size_of(final), "apps": versions, "commands": commands_of(final, manifest),
             "guide_tokens": guide_tokens(final, manifest), "display": bool((manifest.get("needs") or {}).get("display")),
-            "check": manifest.get("check"), "tested": bool(manifest.get("test")), "seconds": timed, "new": new,
+            "check": manifest.get("check"), "final": manifest.get("final"), "tested": bool(manifest.get("test")), "seconds": timed, "new": new,
             "at": time.strftime("%Y-%m-%d %H:%M")}}
 
     def _fetch(self, url, branch):
@@ -547,36 +552,72 @@ class Install:
 
     def walled(self, command, manifest, apps, writable, network, limit):
         """Run one of the tool's commands in a wall of its own (tool_wall.sh): (exit status, what it printed)."""
-        return run_walled(self.part, self.job, command, manifest, apps, writable, network, limit, self.spec)
+        return run_walled(self.name, self.part, self.job, command, manifest, apps, writable, network, limit,
+                          self.spec)
 
 
-def run_walled(tool, job, command, manifest, apps, writable, network, limit, spec, values=None):
-    """Run a command a tool's manifest gives in a wall of its own, with the tool's folder at TOOL_INSIDE
-    (writable only for its setup) and a scratch folder at JOB_INSIDE; its flatpak apps through the app
-    door, and with network vpn or direct, the internet through the net door: (exit status, output)."""
+def mount(name):
+    """Where a tool's folder is inside every wall: the agent's, and the tool's own."""
+    return f"/opt/tools/{name}"
+
+
+def filled(command, values):
+    """A manifest's command with its placeholders, `{tool}`, `{job}`, `{file}`..., filled in."""
+    for key, value in values.items():
+        command = command.replace("{" + key + "}", value)
+    return command
+
+
+def make_shims(folder, apps):
+    """A command for each flatpak app a tool runs, which asks the app door (inside/app-request)."""
+    os.makedirs(folder, exist_ok=True)
+    for name in apps:
+        path = os.path.join(folder, name)
+        with open(path, "w") as f:
+            f.write(f'#!/bin/sh\nexec /opt/visor/inside/app-request {name} "$@"\n')
+        os.chmod(path, 0o755)
+
+
+def walled(name, tool, command, commands, job, job_at=JOB_INSIDE, writable=False, apps=None, shims=None,
+           net=None, limit=TEST_LIMIT):
+    """Run a command in a tool's own wall (tool_wall.sh): the tool's folder at mount(name), read-only unless
+    writable; a folder job, writable, at job_at; the app door at apps, with its commands in shims; the net door
+    at net. (exit status, what it printed)."""
+    wall = [os.path.join(HERE, "tool_wall.sh"), "--name", name, "--tool", tool, "--job", job, "--job-at", job_at,
+            "--commands", os.path.join(mount(name), commands or "")]
+    wall += (["--writable"] if writable else []) + (["--apps", apps, "--shims", shims] if apps else [])
+    wall += (["--net", net] if net else []) + ["--", "bash", "-c", command]
+    try:
+        done = subprocess.run(["timeout", "--kill-after=10", str(limit)] + wall, capture_output=True, text=True,
+                              errors="replace", stdin=subprocess.DEVNULL)
+    except OSError as error:
+        return 127, f"visor could not start the wall: {error}"
+    return done.returncode, done.stdout + done.stderr
+
+
+def run_walled(name, tool, job, command, manifest, apps, writable, network, limit, spec):
+    """Run a command a tool's manifest gives during its install, in a wall of its own, with the tool's folder at
+    mount(name) (writable only for its setup) and a scratch folder at JOB_INSIDE; its flatpak apps through an
+    app door of its own, and with network vpn or direct, the internet through the net door: (status, output)."""
     doors = os.path.join(job, "doors")
     scratch = os.path.join(job, "scratch")
     shutil.rmtree(doors, ignore_errors=True)
     os.makedirs(doors)
     os.makedirs(scratch, exist_ok=True)
-    started, args = [], []
+    started, sockets, shims, net = [], [], None, None
     try:
         if apps:
             shims = os.path.join(doors, "apps")
-            os.makedirs(shims)
-            for name in apps:
-                with open(os.path.join(shims, name), "w") as f:
-                    f.write(f'#!/bin/sh\nexec /opt/visor/inside/app-request {name} "$@"\n')
-                os.chmod(os.path.join(shims, name), 0o755)
+            make_shims(shims, apps)
             door = [sys.executable, os.path.join(HERE, "doors", "app-door.py"), os.path.join(doors, "apps.sock"),
                     "--flatpak", spec.get("flatpak") or "flatpak", "--lock", os.path.join(job, "apps.lock"),
-                    "--map", f"{TOOL_INSIDE}={tool}" + ("" if writable else ":ro"),
+                    "--map", f"{mount(name)}={tool}" + ("" if writable else ":ro"),
                     "--map", f"{JOB_INSIDE}={scratch}"]
-            for name, app in apps.items():
-                door += ["--app", f"{name}={app}"]
+            for command_name, app in apps.items():
+                door += ["--app", f"{command_name}={app}"]
             with open(os.path.join(job, "app-door.log"), "a") as log:
                 started.append(subprocess.Popen(door, stdout=subprocess.DEVNULL, stderr=log))
-            args += ["--apps", os.path.join(doors, "apps.sock"), "--shims", shims]
+            sockets.append("apps.sock")
         if network in ("vpn", "direct"):
             route = f"tunnel:{spec['vpn_proxy']}" if network == "vpn" else "direct"
             door = [sys.executable, os.path.join(HERE, "doors", "net-door.py"), os.path.join(doors, "net.sock"),
@@ -586,24 +627,15 @@ def run_walled(tool, job, command, manifest, apps, writable, network, limit, spe
                 door += ["--forum", spec["forum"]]
             with open(os.path.join(job, "net-door.log"), "a") as log:
                 started.append(subprocess.Popen(door, stdout=subprocess.DEVNULL, stderr=log))
-            args += ["--net", os.path.join(doors, "net.sock")]
+            sockets.append("net.sock")
+            net = os.path.join(doors, "net.sock")
         for _ in range(100):
-            if all(os.path.exists(os.path.join(doors, s)) for s in
-                   (["apps.sock"] if apps else []) + (["net.sock"] if "--net" in args else [])):
+            if all(os.path.exists(os.path.join(doors, s)) for s in sockets):
                 break
             time.sleep(0.05)
-        commands = os.path.join(TOOL_INSIDE, manifest.get("commands") or "")
-        said = command
-        for key, value in dict({"tool": TOOL_INSIDE, "job": JOB_INSIDE}, **(values or {})).items():
-            said = said.replace("{" + key + "}", value)
-        wall = [os.path.join(HERE, "tool_wall.sh"), "--tool", tool, "--job", scratch, "--commands", commands]
-        wall += (["--writable"] if writable else []) + args + ["--", "bash", "-c", said]
-        try:
-            done = subprocess.run(["timeout", "--kill-after=10", str(limit)] + wall, capture_output=True,
-                                  text=True, errors="replace")
-        except OSError as error:
-            return 127, f"visor could not start the wall: {error}"
-        return done.returncode, done.stdout + done.stderr
+        said = filled(command, {"tool": mount(name), "job": JOB_INSIDE})
+        return walled(name, tool, said, manifest.get("commands"), scratch, writable=writable,
+                      apps=os.path.join(doors, "apps.sock") if apps else None, shims=shims, net=net, limit=limit)
     finally:
         for process in started:
             process.terminate()
@@ -614,15 +646,166 @@ def run_walled(tool, job, command, manifest, apps, writable, network, limit, spe
         shutil.rmtree(doors, ignore_errors=True)
 
 
-def checks(manifest, filename):
-    """Whether a tool's check covers this file, by its name."""
-    check = (manifest or {}).get("check") or {}
+# ── A run with tools ──────────────────────────────────────────────────────────
+#
+# A note's `Tools:` line gives a round the tools it names (dispatcher/rounds.py), each as `--tool NAME=FOLDER` to
+# visor-run.sh, which has `prepare` say what the round needs of them, the model door check what the agent saves
+# (check_file), and `final` check what it made, after the round.
+
+# How long one check of a file may take, as the agent works, and after the round, in seconds.
+CHECK_LIMIT, FINAL_LIMIT = 300, 30 * 60
+# The longest a check's output is shown, in lines: to the agent as it works, and to the owner after.
+CHECK_LINES, FINAL_LINES = 40, 30
+
+
+def checks(manifest, filename, key="check"):
+    """Whether a tool's check (or its final, with key) covers this file, by its name."""
+    check = (manifest or {}).get(key) or {}
     return bool(check.get("files")) and fnmatch.fnmatch(os.path.basename(filename), check["files"])
 
 
+def check_file(entry, path, work, apps=None, shims=None, limit=CHECK_LIMIT):
+    """Check one file of a run's workspace with a tool's check or final (entry: what prepare kept of it), in the
+    tool's wall: the workspace at its own path, so that paths read the same inside and out. (status, output)."""
+    values = {"tool": mount(entry["name"]), "job": work, "file": path, "dir": os.path.dirname(path),
+              "name": os.path.basename(path).split(".")[0]}
+    return walled(entry["name"], entry["dir"], filled(entry["run"], values), entry.get("commands"), work,
+                  job_at=work, apps=apps, shims=shims, limit=limit)
+
+
+def changed_files(work, pattern, since=None):
+    """The files of a workspace a pattern covers, by name, made or changed since a time (all, with None), outside
+    hidden folders: [path], in order."""
+    found = []
+    for top, dirs, files in os.walk(work):
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        for name in sorted(files):
+            path = os.path.join(top, name)
+            if fnmatch.fnmatch(name, pattern) and os.path.isfile(path) and not os.path.islink(path):
+                if since is None or os.stat(path).st_mtime >= since:
+                    found.append(path)
+    return found
+
+
+def prepare(out, work, writes, given):
+    """What a run needs of the tools it is given (given: [(name, installed folder)]), written into out: each
+    tool's flatpak apps as commands (apps/), the folders to show in the wall (binds) and the PATH they add
+    (path), what the app door opens (door.json), the checks as the agent saves (checks.json) and after the round
+    (finals.json), and what the agent is told (prompt.md). Returns the problems: a tool with no manifest."""
+    os.makedirs(out, exist_ok=True)
+    binds, path, apps, maps, check, final, told, problems = [], [], {}, [], [], [], [], []
+    for name, folder in given:
+        try:
+            with open(os.path.join(folder, MANIFEST), encoding="utf-8") as f:
+                manifest = json.load(f)
+        except (OSError, ValueError) as error:
+            problems.append(f"{name}: its manifest could not be read: {error}")
+            continue
+        binds.append(f"{folder}\t{mount(name)}")
+        path.append(os.path.join(mount(name), manifest.get("commands") or ""))
+        maps.append(f"{mount(name)}={folder}:ro")
+        for command, app in apps_of(manifest.get("needs")).items():
+            apps.setdefault(command, app)
+        entry = {"name": name, "dir": folder, "commands": manifest.get("commands")}
+        for key, kept in (("check", check), ("final", final)):
+            given_check = manifest.get(key) or (manifest.get("check") if key == "final" else None)
+            if given_check:
+                kept.append(dict(entry, files=given_check["files"], run=given_check["run"], key=key))
+        told += [f"## {name}", "", f"Its folder, read-only: {mount(name)}"]
+        commands = commands_of(folder, manifest)
+        if commands:
+            told += ["Its commands:"] + [f"- `{c}`" + (f": {said}" if said else "") for c, said in commands]
+        if manifest.get("starter"):
+            told.append(f"A small file that works, to copy and change rather than start from nothing: "
+                        f"{mount(name)}/{manifest['starter']}")
+        if manifest.get("check"):
+            told.append(f"Checked as you save: `{manifest['check']['files']}` files.")
+        try:
+            with open(os.path.join(folder, manifest["guide"]), encoding="utf-8", errors="replace") as f:
+                told += ["", f.read().strip()]
+        except (OSError, KeyError):
+            pass
+        told.append("")
+    maps.append(f"{work}={work}" + ("" if writes else ":ro"))
+    if apps:
+        make_shims(os.path.join(out, "apps"), apps)
+    lead = ["The owner has given this run the tools below, each in a folder of its own that you can read "
+            "and not change, with its commands on your PATH: run them with your bash tool, as you would run `ls`. "
+            "Each tool's own guide follows its commands: read it before you start, and do as it says."]
+    if check:
+        lead.append("Whenever you save a file a tool checks, visor checks it for you, and tells you what it found "
+                    "before your next step. Fix what it finds before you go on.")
+    if final:
+        lead.append("When the round ends, visor checks what you made once more, and the owner reads what that "
+                    "check says beside your final message, so say in it only what you made and checked.")
+    files = {"binds": "\n".join(binds) + "\n", "path": ":".join(path) + "\n",
+             "door.json": json.dumps({"apps": apps, "maps": maps}, indent=2),
+             "checks.json": json.dumps(check, indent=2), "finals.json": json.dumps(final, indent=2),
+             "prompt.md": "\n".join(["# Tools", " ".join(lead), ""] + told).rstrip() + "\n"}
+    for filename, text in files.items():
+        with open(os.path.join(out, filename), "w", encoding="utf-8") as f:
+            f.write(text)
+    return problems
+
+
+def final(out, work, since, show=None, apps=None, shims=None):
+    """After a round: each file a tool's final check (or its check) covers that the round made or changed, checked
+    in the tool's wall, and what was found written for the reply (final.md). With show, a run whose folder goes
+    with the round (an errand with no project): each such file is shown, so that it is kept. Returns the number
+    of files checked."""
+    with open(os.path.join(out, "finals.json"), encoding="utf-8") as f:
+        finals = json.load(f)
+    lines, checked = [], 0
+    for entry in finals:
+        for path in changed_files(work, entry["files"], since):
+            rel = os.path.relpath(path, work)
+            status, output = check_file(entry, path, work, apps, shims, limit=FINAL_LIMIT)
+            checked += 1
+            output = _tail(output.replace(work + "/", ""), FINAL_LINES)
+            run = filled(entry["run"], {"file": rel})
+            if status == 0:
+                lines += [f"- `{rel}`, by {entry['name']}'s `{run}`: passed."]
+            else:
+                lines += [f"- `{rel}`, by {entry['name']}'s `{run}`: **failed**" +
+                          (f", after {FINAL_LIMIT // 60} minutes" if status == 124 else f" (exit {status})") + "."]
+            if output:
+                lines += [f"  > [!quote]{'-' if status == 0 else ''} What it printed", "  > ```"]
+                lines += [f"  > {line}".rstrip() for line in output.splitlines()] + ["  > ```"]
+            if show and os.path.isdir(show):
+                target, n = os.path.join(show, os.path.basename(path)), 2
+                stem, ext = os.path.splitext(os.path.basename(path))
+                while os.path.exists(target):
+                    target, n = os.path.join(show, f"{stem}-{n}{ext}"), n + 1
+                shutil.copyfile(path, target)
+    with open(os.path.join(out, "final.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + ("\n" if lines else ""))
+    return checked
+
+
 def main(argv):
+    if len(argv) >= 5 and argv[1] == "prepare":
+        # tools.py prepare OUT WORK rw|ro NAME=FOLDER...
+        problems = prepare(argv[2], argv[3], argv[4] == "rw",
+                           [tuple(given.split("=", 1)) for given in argv[5:]])
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        return 1 if problems else 0
+    if len(argv) >= 5 and argv[1] == "final":
+        # tools.py final OUT WORK SINCE_FILE [--show DIR] [--apps SOCKET SHIMS]
+        rest, show, apps, shims = argv[5:], None, None, None
+        while rest:
+            if rest[0] == "--show" and len(rest) > 1:
+                show, rest = rest[1], rest[2:]
+            elif rest[0] == "--apps" and len(rest) > 2:
+                apps, shims, rest = rest[1], rest[2], rest[3:]
+            else:
+                print(f"tools.py final: unknown option {rest[0]}", file=sys.stderr)
+                return 2
+        print(final(argv[2], argv[3], os.stat(argv[4]).st_mtime, show, apps, shims))
+        return 0
     if len(argv) != 3 or argv[1] != "install":
-        print("usage: tools.py install SPEC", file=sys.stderr)
+        print("usage: tools.py install SPEC | prepare OUT WORK rw|ro NAME=FOLDER... | final OUT WORK SINCE_FILE "
+              "[--show DIR] [--apps SOCKET SHIMS]", file=sys.stderr)
         return 2
     with open(argv[2], encoding="utf-8") as f:
         spec = json.load(f)

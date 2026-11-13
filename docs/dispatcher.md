@@ -29,7 +29,7 @@ earlier branch.
 **Errands.** An `Agent:` note sends an agent to do what it says: a question, a
 sum, something to find on the web or the local network, something to fetch or
 make. It is given what the note gives it (`Web:`, `LAN:`, `Loopback:`,
-`Browse:`, `Chan:`), with the shell and its tools (`prompts/agent.md`). With no
+`Browse:`, `Chan:`, `Tools:`), with the shell and its tools (`prompts/agent.md`). With no
 `Project:` line it works in an empty folder of its own, made for the round and
 deleted when it ends (`prompts/scratch.md`, and `-` for the runner's
 `<repo>`): what it should hand over it shows, and that lands in the note's own

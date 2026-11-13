@@ -22,6 +22,7 @@ import projects
 import settings
 import sources
 import talk
+import tools
 
 from dispatcher.notes import (
                               _is_godot, _link, _stamp, append_to_note, CANON, CHAN, copy_in, drop_guide, FLAG_RE,
@@ -161,7 +162,7 @@ class Rounds:
             problem = network.problem(key, said)
             if problem:
                 return None, None, None, problem + where(key)
-        problem = self._reading_asked(header)[1]
+        problem = self._reading_asked(header)[1] or self._tools_asked(header)[1]
         if problem:
             return None, None, None, problem
         chan_as = (header["chan as"] or "").strip()
@@ -265,6 +266,7 @@ class Rounds:
         thinking, web, chan = THINKING[said_thinking.lower()], WEB[said_web.lower()], CHAN[said_chan.lower()]
         lan, loopback = self._reach_for_this_note(header, project)
         reading = self._reading_asked(header)[0]
+        given_tools = self._tools_asked(header)[0]
         own = (header["self-directed"] or "no").strip().lower() in YES and round_ == "build"
         chan_as = (header["chan as"] or "").strip()
         outward = (["use the web"] if web else []) + (
@@ -292,7 +294,7 @@ class Rounds:
         while True:
             run_name, exit_code, result, parts, log, continue_build = self._run_in_parts(
                 path, name, state, round_, model, project, task_file, rest, fix, continue_build,
-                (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback))
+                (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback, given_tools))
             path = self._wherever_the_owner_put(path)
             broke = (round_ == "build" and exit_code == 0 and result["pushed"] and result["tests_before"] == "0"
                      and result["tests_after"] not in ("0", "none", "n/a"))
@@ -330,9 +332,9 @@ class Rounds:
     def _run_in_parts(self, path, name, state, round_, model, project, task_file, rest, fix, continue_build, asked):
         """One try of a round: a part after another, each a run of visor-run.sh carrying on the one
         before (its conversation, or a note on where it got to), until one ends, is stopped, or
-        MAX_PARTS is reached. asked: (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback) as
+        MAX_PARTS is reached. asked: (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback, tools) as
         the note has them. Returns (run_name, exit_code, result, parts, log, continue_build) of the last part."""
-        thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback = asked
+        thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback, given_tools = asked
         settings_ = self.project_settings(project)
         parts = []
         resume, fork = "", ""
@@ -361,6 +363,8 @@ class Rounds:
                 flags += ["--chan", chan] + (["--chan-as", chan_as] if chan_as else [])
             if own:
                 flags += ["--self-directed"]
+            for tool_name, folder in given_tools:
+                flags += ["--tool", f"{tool_name}={folder}"]
             staged = self._stage_reading(name, reading, log) if reading else None
             if staged:
                 flags += ["--reading", staged]
@@ -711,7 +715,7 @@ class Rounds:
                                                 VISOR_VPN_PROXY=self.vpn_proxy, VISOR_CHAN_HOST=self.chan_host,
                                                 VISOR_CHAN_REDACT=self.chan_redact,
                                                 VISOR_CHAN_TRIPCODES=self.chan_tripcodes,
-                                                VISOR_CHAN_HOUSE=self.chan_house))
+                                                VISOR_CHAN_HOUSE=self.chan_house, VISOR_FLATPAK=self.flatpak))
             run_name, told, heard = None, False, {"told": set(), "read": set()}
             while True:
                 try:
@@ -891,6 +895,28 @@ class Rounds:
                                "See `## Browse` in `VISOR.md`, or take it off the line.")
         return names, None
 
+    def _tools_asked(self, header):
+        """The tools a note's `Tools:` line names, each with the folder of its installed version (tools.current),
+        and what stops one being given: ([(name, folder)], problem)."""
+        names = [settings.named(n).strip().lower() for n in re.split(r"[,;]+|\s+and\s+", header.get("tools") or "")]
+        names = list(dict.fromkeys(n for n in names if n and n not in ("no", "none")))
+        if not names:
+            return [], None
+        self.load_tools()
+        given = []
+        for name in names:
+            if name not in self.tool_notes:
+                known = ", ".join(f"`{n}`" for n in sorted(self.tool_notes)) or "none yet"
+                return given, (f"`Tools: {header['tools']}` names `{name}`, and visor has no tool called that. It has: "
+                               f"{known}. A tool is a note in `tools/` naming its repository.")
+            folder = tools.current(self.agent_tools, name)
+            if not folder:
+                return given, (f"`Tools:` names `{name}`, which is not installed on this server yet: "
+                               f"`tools/{os.path.basename(self.tool_notes[name][2])}` says why. Tick `Fetch` there, "
+                               "and move this note back to `inbox/` once it says `On this server: yes`.")
+            given.append((name, folder))
+        return given, None
+
     def _stage_reading(self, name, names, log):
         """A copy of each source the note reads, for this part alone (sources.stage): the wall shows it to
         the agent read-only, and it is deleted when the part ends. visor-logs leaves out a live log that saw
@@ -971,6 +997,9 @@ class Rounds:
         posts = re.search(r"^## Posts\s+(.*?)(?=\n## |\Z)", result["report"], re.MULTILINE | re.DOTALL)
         if posts:
             lines += ["Posted on the board:", "", posts.group(1).strip(), ""]
+        found = re.search(r"^## Tools\s+(.*?)(?=\n## |\Z)", result["report"], re.MULTILINE | re.DOTALL)
+        if found:
+            lines += ["**What the tools found:**", "", found.group(1).strip(), ""]
         lines += [result["message"] or "(The agent left no closing message.)", ""]
         if files:
             lines += ["Shown:", ""] + [line for line in files] + [""]

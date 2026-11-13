@@ -19,7 +19,8 @@
 #               `tell` sends the owner while the run goes; /run/finish when VISOR_FINISH_DIR
 #               names one: the final message `finish` ends the round with
 #   read-only   /run/reading when VISOR_READING_DIR names a folder: the copy of what the owner lets
-#               this run read (sources.py), never the owner's own folders
+#               this run read (sources.py), never the owner's own folders; /opt/tools/<name>, each
+#               tool the run was given (VISOR_TOOL_BINDS), its commands on the PATH
 #   absent      everything else: the real home, other runs, the source clone, notes
 # Nothing inside names the owner: the account is `agent`, its home /home/agent, the
 # machine `visor`, and /etc's hostname, hosts and machine-id are generic.
@@ -84,11 +85,24 @@ settings=(
 
 # Nothing is inherited from the caller's environment except the harnesses' own
 # PI_* settings.
+# The tools a run was given (tools.py): each installed folder read-only at /opt/tools/<name>, listed a line each,
+# `folder<TAB>where`, in VISOR_TOOL_BINDS; their commands first on the PATH (VISOR_TOOL_PATH), and before them the
+# flatpak apps they run, as commands the runner put in the wall dir's apps/, which ask the app door.
+tools=()
+tool_path=""
+if [ -n "${VISOR_TOOL_BINDS:-}" ] && [ -f "$VISOR_TOOL_BINDS" ]; then
+  while IFS=$'\t' read -r folder where; do
+    [ -n "$folder" ] && [[ "$where" =~ ^/opt/tools/[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || continue
+    tools+=(--ro-bind "$(realpath "$folder")" "$where")
+  done < "$VISOR_TOOL_BINDS"
+  tool_path="${VISOR_TOOL_PATH:+$VISOR_TOOL_PATH:}"
+  [ -d "$WALL/apps" ] && tool_path="/run/visor/apps:$tool_path"
+fi
 environment=(
   --setenv HOME "$INSIDE_HOME"
   --setenv USER agent
   --setenv LOGNAME agent
-  --setenv PATH "/opt/visor/inside:/opt/visor/npm-global/bin:/usr/local/bin:/usr/bin:/bin"
+  --setenv PATH "${tool_path}/opt/visor/inside:/opt/visor/npm-global/bin:/usr/local/bin:/usr/bin:/bin"
   --setenv LANG C.UTF-8
   --setenv TERM dumb
 )
@@ -122,6 +136,7 @@ exec bwrap \
   "${settings[@]}" \
   --ro-bind "$HERE/inside" /opt/visor/inside \
   --ro-bind "$WALL" /run/visor \
+  "${tools[@]}" \
   "${shown[@]}" \
   "${workspace[@]}" \
   --bind "$LOGS" "$LOGS" \
