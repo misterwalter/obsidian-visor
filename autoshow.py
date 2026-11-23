@@ -10,7 +10,8 @@ After the agent is done, the runner calls this, outside the wall, on the workspa
   hidden folder (a tool's cache, as `.godot/`). Text the run changed is code, or near
   enough, and is shown only when named.
 
-At most ten files, each up to 50 MB, and none the agent showed already. Only plain files
+At most ten files, each up to 50 MB, and none the agent showed already: the same contents, whatever its name
+(every comic's first page may be `page_001.png`, and only one of them is in the folder already). Only plain files
 inside the workspace: a link, or a path that leads out of it, is passed over. What is
 brought out goes in the show folder, where the dispatcher takes it as it takes the
 agent's own (dispatch._bring_out_shown), with the same limits again.
@@ -19,6 +20,7 @@ Usage: autoshow.py <workspace> <closing message file> <show folder>
 Prints the workspace path of each file it showed, one a line.
 """
 
+import hashlib
 import os
 import re
 import shutil
@@ -74,6 +76,15 @@ def made(work):
     return found
 
 
+def contents(path):
+    """What a file holds, as a hash, to tell the same file from another of the same name."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def main():
     if len(sys.argv) != 4:
         sys.exit(__doc__)
@@ -83,9 +94,15 @@ def main():
             message = f.read()
     except OSError:
         message = ""
-    already = set(os.listdir(folder))
-    chosen = [p for p in named(message, work) + made(work) if os.path.basename(p) not in already]
-    for place in list(dict.fromkeys(chosen))[:MOST]:
+    already = {contents(os.path.join(folder, name)) for name in os.listdir(folder)
+               if os.path.isfile(os.path.join(folder, name))}
+    chosen = []
+    for place in dict.fromkeys(named(message, work) + made(work)):
+        held = contents(os.path.join(work, place))
+        if held not in already:
+            already.add(held)
+            chosen.append(place)
+    for place in chosen[:MOST]:
         name = os.path.basename(place)
         target, n = os.path.join(folder, name), 2
         while os.path.exists(target):

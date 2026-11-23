@@ -616,6 +616,26 @@ class ToolRunTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.work, "good.png")))
         self.assertFalse(os.path.exists(os.path.join(self.work, "bad.png")))
 
+    def test_every_picture_the_steps_make_goes_to_the_note_named_after_its_file(self):
+        finals = json.load(open(os.path.join(self.out, "finals.json")))
+        finals[0]["steps"] = tools.steps_of([
+            {"files": "*.greeting", "run": "mkdir -p {dir}/out/{name} && cp {file} {dir}/out/{name}/page_001.png"
+                                           " && echo two > {dir}/out/{name}/page_002.png"},
+            {"run": "greet-check {file}"}])
+        json.dump(finals, open(os.path.join(self.out, "finals.json"), "w"))
+        os.makedirs(os.path.join(self.work, "out", "old"))
+        open(os.path.join(self.work, "out", "old", "page_001.png"), "w").write("from before")
+        open(os.path.join(self.work, "one.greeting"), "w").write("hello one\n")
+        open(os.path.join(self.work, "two.greeting"), "w").write("goodbye\n")
+        pictures = os.path.join(self.tmp.name, "shown")
+        os.makedirs(pictures)
+        self.assertEqual(tools.final(self.out, self.work, time.time() - 60, pictures=pictures), 2)
+        # Both files' pages, the one whose check then failed too, and nothing the steps did not make.
+        self.assertEqual(sorted(os.listdir(pictures)), ["one-page_001.png", "one-page_002.png",
+                                                        "two-page_001.png", "two-page_002.png"])
+        self.assertEqual(open(os.path.join(pictures, "two-page_001.png")).read(), "goodbye\n")
+        self.assertIn("**failed**", open(os.path.join(self.out, "final.md")).read())
+
     def test_a_check_can_read_the_round_s_task_as_the_agent_was_given_it(self):
         task = os.path.join(self.tmp.name, "card.md")
         open(task, "w").write('A card.\n\nMara: "Happy birthday, Tom!"\n')

@@ -67,6 +67,7 @@ import sys
 import time
 
 import settings
+from autoshow import MEDIA
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 MANIFEST = "visor-tool.json"
@@ -842,6 +843,35 @@ def changed_files(work, pattern, since=None):
     return found
 
 
+def pictures_of(work):
+    """The pictures, video, sound and PDFs in a workspace, outside hidden folders: {path: (size, mtime)}."""
+    found = {}
+    for top, dirs, files in os.walk(work):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for name in files:
+            path = os.path.join(top, name)
+            if name.lower().endswith(MEDIA) and os.path.isfile(path) and not os.path.islink(path):
+                status = os.stat(path)
+                found[path] = (status.st_size, status.st_mtime_ns)
+    return found
+
+
+def send_pictures(made, of, folder):
+    """Copy the pictures a tool's steps made for one file into the show folder, in order, each named after that
+    file (`story.comic.json`'s `out/story/page_001.png` is `story-page_001.png`), so that two files' pictures
+    never take each other's place. Returns how many."""
+    stem = os.path.basename(of).split(".")[0]
+    for path in made:
+        name = os.path.basename(path)
+        name = name if name.startswith(stem) else f"{stem}-{name}"
+        target, n = os.path.join(folder, name), 2
+        while os.path.exists(target):
+            base, ext = os.path.splitext(name)
+            target, n = os.path.join(folder, f"{base} {n}{ext}"), n + 1
+        shutil.copyfile(path, target)
+    return len(made)
+
+
 def prepare(out, work, writes, given, task=None):
     """What a run needs of the tools it is given (given: [(name, installed folder)]), written into out: each
     tool's flatpak apps as commands (apps/), the folders to show in the wall (binds) and the PATH they add
@@ -921,14 +951,15 @@ def prepare(out, work, writes, given, task=None):
     return problems
 
 
-def final(out, work, since, show=None, apps=None, shims=None):
+def final(out, work, since, show=None, apps=None, shims=None, pictures=None):
     """After a round: each file the first of a tool's final steps (or its check) covers that the round made or
     changed, put through the steps in order, each in the tool's wall, up to the first that fails; what each said
     written for the reply (final.md): a step shown as `quote` as a check's result, with what it printed, open when
     it is anything but a silent pass; one shown as `text`, what it printed, as part of the reply (a comic's
     script, say). What a step writes into the workspace is the round's, shown as the round's pictures are. With
     show, a run whose folder goes with the round (an errand with no project): each such file is shown, so that
-    it is kept. Returns the number of files checked."""
+    it is kept. With pictures, the show folder: every picture, video, sound or PDF the steps made or changed for
+    a file is sent to the note, all of them, in order (send_pictures). Returns the number of files checked."""
     with open(os.path.join(out, "finals.json"), encoding="utf-8") as f:
         finals = json.load(f)
     lines, checked = [], 0
@@ -938,6 +969,7 @@ def final(out, work, since, show=None, apps=None, shims=None):
             rel = os.path.relpath(path, work)
             checked += 1
             failed = None
+            before = pictures_of(work) if pictures else None
             for step in steps:
                 run = filled(step["run"], {"file": rel})
                 if not fnmatch.fnmatch(os.path.basename(path), step["files"]):
@@ -950,6 +982,9 @@ def final(out, work, since, show=None, apps=None, shims=None):
                 lines += _step_said(rel, entry["name"], run, step.get("show", "quote"), status, output)
                 if status != 0:
                     failed = run
+            if pictures and os.path.isdir(pictures):
+                after = pictures_of(work)
+                send_pictures(sorted(p for p, seen in after.items() if before.get(p) != seen), path, pictures)
             if show and os.path.isdir(show):
                 target, n = os.path.join(show, os.path.basename(path)), 2
                 stem, ext = os.path.splitext(os.path.basename(path))
@@ -1000,21 +1035,23 @@ def main(argv):
             print(problem, file=sys.stderr)
         return 1 if problems else 0
     if len(argv) >= 5 and argv[1] == "final":
-        # tools.py final OUT WORK SINCE_FILE [--show DIR] [--apps SOCKET SHIMS]
-        rest, show, apps, shims = argv[5:], None, None, None
+        # tools.py final OUT WORK SINCE_FILE [--show DIR] [--pictures DIR] [--apps SOCKET SHIMS]
+        rest, show, apps, shims, pictures = argv[5:], None, None, None, None
         while rest:
             if rest[0] == "--show" and len(rest) > 1:
                 show, rest = rest[1], rest[2:]
+            elif rest[0] == "--pictures" and len(rest) > 1:
+                pictures, rest = rest[1], rest[2:]
             elif rest[0] == "--apps" and len(rest) > 2:
                 apps, shims, rest = rest[1], rest[2], rest[3:]
             else:
                 print(f"tools.py final: unknown option {rest[0]}", file=sys.stderr)
                 return 2
-        print(final(argv[2], argv[3], os.stat(argv[4]).st_mtime, show, apps, shims))
+        print(final(argv[2], argv[3], os.stat(argv[4]).st_mtime, show, apps, shims, pictures))
         return 0
     if len(argv) != 3 or argv[1] != "install":
         print("usage: tools.py install SPEC | prepare OUT WORK rw|ro NAME=FOLDER... | final OUT WORK SINCE_FILE "
-              "[--show DIR] [--apps SOCKET SHIMS]", file=sys.stderr)
+              "[--show DIR] [--pictures DIR] [--apps SOCKET SHIMS]", file=sys.stderr)
         return 2
     with open(argv[2], encoding="utf-8") as f:
         spec = json.load(f)

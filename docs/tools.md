@@ -196,6 +196,11 @@ what the round needs of it from its manifest (`tools.py prepare`):
   each said goes in the reply, under what the tools found, beside the agent's
   own account: a check's result, open unless it passed silently; a `text`
   step's words as written. What a step makes, such as pages, is the round's: committed on a
-  repository, and pictures shown in the note as any picture the round made. An
+  repository. Every picture, video, sound or PDF the steps make or change for a
+  file is shown in the note, all of them, in order, each named after that file
+  (`story.comic.json`'s `out/story/page_001.png` comes in as `story-page_001.png`),
+  so two files' pages never take each other's place. A step that fails stops
+  the steps after it, so a tool puts the step that makes what the owner wants
+  first, and its strictest check last. An
   errand with no project loses its folder when the round ends, so each file
   checked is shown too, and kept in the notes.

@@ -59,6 +59,12 @@ class AutoshowTest(unittest.TestCase):
             f.write("chart")
         self.assertEqual(self.run_it("Made out/chart.png."), ["docs/old.png"])
 
+    def test_a_file_of_the_same_name_and_other_contents_is_still_shown(self):
+        with open(os.path.join(self.shown, "chart.png"), "w") as f:
+            f.write("another comic's chart")
+        self.assertEqual(self.run_it("Made out/chart.png."), ["out/chart.png", "docs/old.png"])
+        self.assertEqual(open(os.path.join(self.shown, "chart 2.png")).read(), "chart")
+
     def test_a_path_out_of_the_workspace_is_passed_over(self):
         self.assertEqual(self.run_it("See /etc/hostname.txt and ../outside.png."), ["docs/old.png", "out/chart.png"])
 

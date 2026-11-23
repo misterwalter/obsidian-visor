@@ -953,6 +953,9 @@ if [ ${#TOOLS[@]} -gt 0 ] && [ "$WRITES" = yes ] && [ "$(jq length "$OUT/tools/f
   say "the tools check what the round made"
   final_args=()
   [ "$SCRATCH" = yes ] && [ -z "$PAUSED" ] && [ -n "${VISOR_SHOW_DIR:-}" ] && final_args+=(--show "$VISOR_SHOW_DIR")
+  # Every picture the tools' steps make for the owner (a comic's pages, say) goes to the note, in a round of
+  # any kind, once its last part is done.
+  [ -z "$PAUSED" ] && [ -n "${VISOR_SHOW_DIR:-}" ] && [ -d "$VISOR_SHOW_DIR" ] && final_args+=(--pictures "$VISOR_SHOW_DIR")
   [ -n "$APP_DOOR" ] && final_args+=(--apps "$WALL/apps.sock" "$WALL/apps")
   TOOL_FINAL="$(python3 "$HERE/tools.py" final "$OUT/tools" "$WORK" "$OUT/tools/started" "${final_args[@]}" \
                   2>> "$OUT/tools.log")" \
