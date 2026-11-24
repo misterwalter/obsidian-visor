@@ -951,6 +951,37 @@ def prepare(out, work, writes, given, task=None):
     return problems
 
 
+STILL = "still.md"   # what the tools' checks still found when the agent finished (recheck), for the next part
+
+
+def recheck(out, work, since, apps=None, shims=None):
+    """When the agent says it is done: each file a tool's check covers that the round made or changed, checked
+    once more, as it was as the agent saved it. What any check still says (problems, and warnings too: a check
+    is silent when all is well) is written to out/still.md, for the part that carries on to be told; nothing is
+    written when all is well. Returns the number of files with something left."""
+    with open(os.path.join(out, "checks.json"), encoding="utf-8") as f:
+        entries = json.load(f)
+    lines, left = [], 0
+    for entry in entries:
+        for path in changed_files(work, entry["files"], since):
+            rel = os.path.relpath(path, work)
+            status, output = check_file(entry, path, work, apps, shims)
+            output = output.replace(work + "/", "").strip()
+            if status == 0 and not output:
+                continue
+            left += 1
+            run = filled(entry["run"], {"file": rel})
+            lines += [f"`{run}`" + (f" (exit {status})" if status else "") + ":", "", "```",
+                      _tail(output, FINAL_LINES) or "(it printed nothing)", "```", ""]
+    still = os.path.join(out, STILL)
+    if lines:
+        with open(still, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+    elif os.path.exists(still):
+        os.remove(still)
+    return left
+
+
 def final(out, work, since, show=None, apps=None, shims=None, pictures=None):
     """After a round: each file the first of a tool's final steps (or its check) covers that the round made or
     changed, put through the steps in order, each in the tool's wall, up to the first that fails; what each said
@@ -1034,6 +1065,12 @@ def main(argv):
         for problem in problems:
             print(problem, file=sys.stderr)
         return 1 if problems else 0
+    if len(argv) >= 5 and argv[1] == "recheck":
+        # tools.py recheck OUT WORK SINCE_FILE [--apps SOCKET SHIMS]
+        rest = argv[5:]
+        apps, shims = (rest[1], rest[2]) if rest[:1] == ["--apps"] and len(rest) > 2 else (None, None)
+        print(recheck(argv[2], argv[3], os.stat(argv[4]).st_mtime, apps, shims))
+        return 0
     if len(argv) >= 5 and argv[1] == "final":
         # tools.py final OUT WORK SINCE_FILE [--show DIR] [--pictures DIR] [--apps SOCKET SHIMS]
         rest, show, apps, shims, pictures = argv[5:], None, None, None, None
@@ -1050,7 +1087,8 @@ def main(argv):
         print(final(argv[2], argv[3], os.stat(argv[4]).st_mtime, show, apps, shims, pictures))
         return 0
     if len(argv) != 3 or argv[1] != "install":
-        print("usage: tools.py install SPEC | prepare OUT WORK rw|ro NAME=FOLDER... | final OUT WORK SINCE_FILE "
+        print("usage: tools.py install SPEC | prepare OUT WORK rw|ro NAME=FOLDER... | recheck OUT WORK SINCE_FILE "
+              "[--apps SOCKET SHIMS] | final OUT WORK SINCE_FILE "
               "[--show DIR] [--pictures DIR] [--apps SOCKET SHIMS]", file=sys.stderr)
         return 2
     with open(argv[2], encoding="utf-8") as f:

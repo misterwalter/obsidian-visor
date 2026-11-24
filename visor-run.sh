@@ -514,6 +514,20 @@ if [ -n "$FORK" ] && [ "$ROUND" = chat ]; then
     echo
     cat "$TASK"
   } > "$OUT/prompt.txt"
+elif [ -n "$FORK" ] && [ -f "$RESULTS/$FORK/tools/still.md" ]; then
+  # The agent said it was done, and the tools' checks still found something in what it made (tools.py recheck).
+  {
+    echo "YOU ARE NOT DONE YET. When you finished, visor checked what you made once more, and the tools' checks"
+    echo "still found this:"
+    echo
+    cat "$RESULTS/$FORK/tools/still.md"
+    echo
+    echo "Fix every one of these, run the check again yourself, and finish only when it finds nothing. Carry on with"
+    echo "the files you have; do not start again."
+    PLACE="The repository"; [ "$KIND" = folder ] && PLACE="The folder"; [ "$KIND" = scratch ] && PLACE="Your folder"
+    echo "$PLACE is now at $WORK, with the same files, including everything you wrote."
+    echo "Paths above that begin $WORKS/$FORK now begin $WORK."
+  } > "$OUT/prompt.txt"
 elif [ -n "$FORK" ]; then
   # The task and the discussion are already in the conversation being carried on.
   {
@@ -748,6 +762,15 @@ done
 say "agent start ($HARNESS, $ROUND round)"
 # What the round makes or changes from here on is what a tool's final check looks at.
 [ ${#TOOLS[@]} -gt 0 ] && touch "$OUT/tools/started"
+# A part carrying on an earlier one of the same round looks back to where the round began: what the earlier parts
+# made is the round's too. And it carries on the count of times the tools' checks sent the round back (below).
+TOOL_TRY=0
+if [ ${#TOOLS[@]} -gt 0 ]; then
+  [ "$ROUND" != build ] && [ -n "$CONTINUE" ] && [ -f "$RESULTS/$CONTINUE/tools/started" ] \
+    && touch -r "$RESULTS/$CONTINUE/tools/started" "$OUT/tools/started"
+  [ -n "$FORK" ] && [ -f "$RESULTS/$FORK/tools/tries" ] && TOOL_TRY="$(cat "$RESULTS/$FORK/tools/tries")"
+  echo "$TOOL_TRY" > "$OUT/tools/tries"
+fi
 T0=$(date +%s)
 harness_command
 # stdin must be readable: under nohup it is not, and a harness dies with EBADF.
@@ -914,10 +937,29 @@ fi
 PAUSED=""
 [ -f "$OUT/paused.txt" ] && PAUSED="$(cat "$OUT/paused.txt")"
 [ -f "$OUT/stopped-by-memory.txt" ] && PAUSED="the machine was short of memory: $(cat "$OUT/stopped-by-memory.txt")"
+# Done, by the agent's account, while a tool's check still finds something in what it made: the round carries on,
+# in the same conversation and folder, told what was found (tools.py recheck), up to VISOR_TOOL_TRIES times more.
+# A small model ends its turn on "let me fix that" as often as on the fix. Nothing is drawn until it is done.
+TOOLS_AGAIN=""
+if [ -z "$PAUSED" ] && [ "$AGENT" = 0 ] && [ ${#TOOLS[@]} -gt 0 ] && [ "$WRITES" = yes ] \
+   && [ "${HARNESS_FORKS:-no}" = yes ] && [ "$(jq length "$OUT/tools/checks.json")" -gt 0 ] \
+   && [ "$TOOL_TRY" -lt "${VISOR_TOOL_TRIES:-2}" ]; then
+  recheck_args=()
+  [ -n "$APP_DOOR" ] && recheck_args+=(--apps "$WALL/apps.sock" "$WALL/apps")
+  say "the tools check what the agent made, before it is done"
+  left="$(python3 "$HERE/tools.py" recheck "$OUT/tools" "$WORK" "$OUT/tools/started" "${recheck_args[@]}" \
+            2>> "$OUT/tools.log")" || { left=0; say "WARNING: the tools' check could not run: $(tail -n 2 "$OUT/tools.log" | paste -sd' ' -)"; }
+  if [ "${left:-0}" -gt 0 ]; then
+    TOOL_TRY=$(( TOOL_TRY + 1 )); echo "$TOOL_TRY" > "$OUT/tools/tries"
+    PAUSED="the tools' checks still found something in $left file$([ "$left" = 1 ] || echo s) it made, so it carries on to fix $([ "$left" = 1 ] && echo it || echo them) (try $TOOL_TRY of ${VISOR_TOOL_TRIES:-2})"
+    TOOLS_AGAIN=yes
+  fi
+fi
 if [ -n "$PAUSED" ]; then
   say "PAUSED: $PAUSED"
-  # The point of a pause: the next part starts with a fresh model.
-  ollama stop "$MODEL" || say "WARNING: could not unload $MODEL"
+  # The point of a pause: the next part starts with a fresh model. Not one for the tools' checks: the model is
+  # fine, and loading it again only costs time.
+  [ -n "$TOOLS_AGAIN" ] || ollama stop "$MODEL" || say "WARNING: could not unload $MODEL"
 elif [ "$AGENT" != 0 ]; then
   say "AGENT FAILED: $(grep -v '^[[:space:]]*$' "$OUT/agent.err" | tail -n 1)"
 fi
@@ -949,7 +991,8 @@ fi
 # the agent's account of it: what that found goes in the reply. An errand's own folder goes with the round, so
 # what was checked is shown, and kept, unless a later part carries on in the folder.
 TOOL_FINAL=0
-if [ ${#TOOLS[@]} -gt 0 ] && [ "$WRITES" = yes ] && [ "$(jq length "$OUT/tools/finals.json")" -gt 0 ]; then
+if [ ${#TOOLS[@]} -gt 0 ] && [ "$WRITES" = yes ] && [ -z "$TOOLS_AGAIN" ] \
+   && [ "$(jq length "$OUT/tools/finals.json")" -gt 0 ]; then
   say "the tools check what the round made"
   final_args=()
   [ "$SCRATCH" = yes ] && [ -z "$PAUSED" ] && [ -n "${VISOR_SHOW_DIR:-}" ] && final_args+=(--show "$VISOR_SHOW_DIR")

@@ -636,6 +636,19 @@ class ToolRunTest(unittest.TestCase):
         self.assertEqual(open(os.path.join(pictures, "two-page_001.png")).read(), "goodbye\n")
         self.assertIn("**failed**", open(os.path.join(self.out, "final.md")).read())
 
+    def test_when_the_agent_is_done_what_its_checks_still_find_is_kept_for_the_part_that_carries_on(self):
+        still = os.path.join(self.out, tools.STILL)
+        open(os.path.join(self.work, "good.greeting"), "w").write("hello\n")
+        open(os.path.join(self.work, "bad.greeting"), "w").write("goodbye\n")
+        self.assertEqual(tools.recheck(self.out, self.work, time.time() - 60), 1)
+        said = open(still).read()
+        self.assertIn("`greet-check bad.greeting` (exit 1):", said)
+        self.assertIn("bad.greeting: a greeting starts with hello", said)
+        self.assertNotIn("good.greeting", said)
+        open(os.path.join(self.work, "bad.greeting"), "w").write("hello again\n")
+        self.assertEqual(tools.recheck(self.out, self.work, time.time() - 60), 0)
+        self.assertFalse(os.path.exists(still), "nothing left, nothing to tell")
+
     def test_a_check_can_read_the_round_s_task_as_the_agent_was_given_it(self):
         task = os.path.join(self.tmp.name, "card.md")
         open(task, "w").write('A card.\n\nMara: "Happy birthday, Tom!"\n')

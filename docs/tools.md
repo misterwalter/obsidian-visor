@@ -191,6 +191,13 @@ what the round needs of it from its manifest (`tools.py prepare`):
   check that passed still said (a warning leaves the exit status alone), or
   that there are none. A small model does not run a check it is told to run;
   this one runs itself. The reply says how often it found something.
+- **When the agent says it is done,** each tool's `check` runs once more on
+  every file the round made or changed. When one still finds anything, a
+  problem or a warning, the round carries on in a new part, the same
+  conversation, with what was found at its head and the agent told to fix it
+  and finish only when the check finds nothing. Two such tries a round
+  (`VISOR_TOOL_TRIES`); the reply says how many were used. This needs a harness
+  that carries a conversation on (pi), and a round that writes.
 - **After the round,** each file a tool's `final` (else its `check`) covers that
   the round made or changed is put through its steps, the same way, and what
   each said goes in the reply, under what the tools found, beside the agent's

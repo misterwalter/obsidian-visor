@@ -952,7 +952,16 @@ class Rounds:
         if round_ == "build" and result.get("untested"):
             facts.append("**untested**: the project's `Tests:` is none, so nothing checked this build")
         if parts and len(parts) > 1:
-            facts.append(f"in {len(parts)} parts, restarting the model between them")
+            # How many times the tools' checks sent the agent back (visor-run.sh keeps the count in the last part).
+            try:
+                with open(os.path.join(self.results, parts[-1] or "", "tools", "tries"), encoding="utf-8") as f:
+                    sent_back = int(f.read().strip() or 0)
+            except (OSError, ValueError):
+                sent_back = 0
+            restarts = len(parts) - 1 - sent_back
+            facts.append(f"in {len(parts)} parts" + ": " * bool(sent_back or restarts) + ", ".join(
+                [f"sent back {sent_back} time{'s' if sent_back != 1 else ''} to fix what the tools' checks still "
+                 "found"] * bool(sent_back) + ["restarting the model between them"] * bool(restarts)))
         if canon:
             facts.append(canon)
         if attempt:
