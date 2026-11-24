@@ -1006,8 +1006,10 @@ if [ ${#TOOLS[@]} -gt 0 ] && [ "$WRITES" = yes ] && [ -z "$TOOLS_AGAIN" ] \
   say "the tools checked $TOOL_FINAL file$([ "$TOOL_FINAL" = 1 ] || echo s)"
 fi
 # What the agent made for the owner to see and did not show: what its closing message names,
-# and the pictures, video, sound and PDFs it made (autoshow.py).
-if [ -n "${VISOR_SHOW_DIR:-}" ] && [ -d "$VISOR_SHOW_DIR" ]; then
+# and the pictures, video, sound and PDFs it made (autoshow.py). Once the round's last part is done, as the
+# tools' pictures are: a paused part's folder is the next part's, and each part showing what it found showed
+# the same picture once a part.
+if [ -z "$PAUSED" ] && [ -n "${VISOR_SHOW_DIR:-}" ] && [ -d "$VISOR_SHOW_DIR" ]; then
   AUTOSHOWN="$(python3 "$HERE/autoshow.py" "$WORK" "$OUT/final-message.md" "$VISOR_SHOW_DIR" 2> "$OUT/autoshow.log" \
                | tr '\n' ' ')"
   [ -z "$AUTOSHOWN" ] || say "shown for the agent, which made them and did not show them: $AUTOSHOWN"

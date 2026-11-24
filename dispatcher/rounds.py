@@ -43,6 +43,27 @@ NO_KIND = ("This note has no job type. Its first line says what kind of job it i
 SHOWABLE = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm", ".mov", ".mp3", ".wav", ".ogg", ".m4a",
             ".flac", ".pdf", ".md", ".txt", ".csv", ".json", ".log")
 SHOW_FILE_LIMIT, SHOW_RUN_LIMIT, SHOW_COUNT_LIMIT = 50 * 1024 * 1024, 200 * 1024 * 1024, 40
+SHOW_TEXT_LIMIT = 1024 * 1024   # a text file notes do not show, brought in as a note, at most
+
+
+def _as_note(source, name):
+    """A text file of a kind notes do not show (a script), as a note: the file whole in a code block, its
+    language named by its extension. None when it is no text, or too long to read as a note."""
+    try:
+        if os.path.getsize(source) > SHOW_TEXT_LIMIT:
+            return None
+        with open(source, "rb") as f:
+            data = f.read()
+        if b"\0" in data:
+            return None
+        text = data.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    language = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    fence = "```"
+    while fence in text:
+        fence += "`"
+    return f"{fence}{language}\n{text.rstrip()}\n{fence}\n"
 MAX_PARTS = 6
 # What a note's Canon only: line may say. Left out, it is yes.
 CANON_ONLY = {"yes": True, "on": True, "true": True, "no": False, "off": False, "false": False}
@@ -489,7 +510,12 @@ class Rounds:
             for name in names:
                 source = os.path.join(folder, name)
                 size = os.lstat(source).st_size
-                why = ("it is not a plain file" if os.path.islink(source) or not os.path.isfile(source) else
+                plain = not os.path.islink(source) and os.path.isfile(source)
+                # Text of a kind notes do not show (a script, say) comes in as a note of its own: NAME.py.md.
+                as_note = _as_note(source, name) if plain and not name.lower().endswith(SHOWABLE) else None
+                if as_note is not None:
+                    name, size = name + ".md", len(as_note.encode("utf-8"))
+                why = ("it is not a plain file" if not plain else
                        "notes cannot show that kind of file" if not name.lower().endswith(SHOWABLE) else
                        "it is over 50 MB" if size > SHOW_FILE_LIMIT else
                        "the round showed more than 200 MB" if total + size > SHOW_RUN_LIMIT else
@@ -506,7 +532,10 @@ class Rounds:
                 target, n = f"{stem} {base}{ext}", 2
                 while os.path.exists(os.path.join(target_dir, target)):
                     target, n = f"{stem} {base} {n}{ext}", n + 1
-                copy_in(source, os.path.join(target_dir, target))
+                if as_note is not None:
+                    write_file(os.path.join(target_dir, target), as_note)
+                else:
+                    copy_in(source, os.path.join(target_dir, target))
                 total, count = total + size, count + 1
                 lines.append(f"![[{target}]]")
         return lines

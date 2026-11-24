@@ -320,6 +320,58 @@ class ToolInstallTest(unittest.TestCase):
         self.assertTrue(run["cwd"].endswith("/scratch"), run)
         self.assertIn("> - Runs `org.example.FakeApp`, from flatpak (`c0ffeec0ff`)", self.read())
 
+    def test_its_readme_shows_below_about_and_is_never_read_back_as_the_owner_s(self):
+        self.commit({"README.md": "# Hello\n\nFor whoever runs the agents.\n\n## Costs\n\n```\n# not a heading\n```\n"},
+                    "A README")
+        self.note("Repo: me/hello\n- [x] Fetch\n")
+        self.tend()
+        note = self.read()
+        about, _, readme = note.partition(tools.README_HEAD)
+        self.assertIn("## About", about)
+        self.assertIn("### Hello\n", readme)
+        self.assertIn("#### Costs\n", readme)
+        self.assertIn("\n# not a heading\n", readme, "a code block is left as it is")
+        self.assertEqual(tools.read(note)[0]["about"], "")
+        # The owner's About stays theirs, and the README is written once, below it.
+        self.note(note.replace(tools.ABOUT_HINT, "Mine."))
+        self.tend()
+        note = self.read()
+        self.assertEqual(tools.read(note)[0]["about"], "Mine.")
+        self.assertEqual(note.count(tools.README_HEAD), 1)
+        # A new version's README replaces it.
+        self.commit({"README.md": "# Hello, again\n"}, "A new README")
+        self.clock += self.d.wait("update_every")
+        self.tend()
+        self.assertIn("### Hello, again", self.read())
+        self.assertNotIn("For whoever runs the agents.", self.read())
+
+    def test_its_own_settings_are_lines_of_its_note_and_a_changed_one_installs_it_again(self):
+        self.commit({"visor-tool.json": json.dumps({
+            "name": "hello", "commands": "bin", "guide": "guide.md",
+            "options": {"Greeting": {"default": "hello", "means": "What it says"}},
+            "setup": "echo built > {tool}/built.txt && cp {tool}/.visor-options.json {tool}/seen.json",
+            "test": "hello"})}, "Settings")
+        self.note("Repo: me/hello\n- [x] Fetch\n")
+        self.tend()
+        first = self.installed()
+        self.assertIsNotNone(first, self.read())
+        note = self.read()
+        self.assertIn("Network: no\nGreeting: hello\n", note)
+        self.assertIn("| `Greeting:` | What it says | hello |", note)
+        self.assertEqual(json.load(open(os.path.join(first, "seen.json"))), {"greeting": "hello"})
+        # Nothing changed: nothing done.
+        self.clock += self.d.wait("update_every")
+        self.tend()
+        self.assertEqual(self.installed(), first)
+        # A changed value: the same commit, installed again with it.
+        self.note(note.replace("Greeting: hello", "Greeting: hi there"))
+        self.tend()
+        again = self.installed()
+        self.assertNotEqual(again, first)
+        self.assertEqual(json.load(open(os.path.join(again, "seen.json"))), {"greeting": "hi there"})
+        self.assertIn("Greeting: hi there\n", self.read())
+        self.assertEqual(json.load(open(os.path.join(again, tools.OPTIONS_FILE))), {"greeting": "hi there"})
+
     def test_a_failed_install_says_why_in_the_note_with_what_its_apps_did(self):
         open(os.path.join(self.apps, "org.example.FakeApp"), "w").write("c0ffee\n")
         self.commit({"visor-tool.json": json.dumps({

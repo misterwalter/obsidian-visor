@@ -74,6 +74,14 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 MANIFEST = "visor-tool.json"
 ABOUT = "## About"
 ABOUT_HINT = "*(Optional. What this tool is for, in your own words.)*"
+# Below About, visor's copy of the README of the version installed (the manifest's `readme`), never read back.
+README_HEAD = "## README, from the repository"
+README = "README.md"
+README_LIMIT = 40_000
+# A setting of the tool's own, a line of its note (the manifest's `options`): its name, as the note writes it.
+OPTION = re.compile(r"[A-Za-z][A-Za-z0-9 -]{0,30}")
+# In a tool's installed folder, visor's own: the values of its own settings it was installed with.
+OPTIONS_FILE = ".visor-options.json"
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}")
 REPO = re.compile(r"[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?")
 BRANCH = re.compile(r"(?!-)(?!.*\.\.)[A-Za-z0-9._/-]{1,100}")
@@ -121,7 +129,9 @@ commit is installed when visor next looks for its own updates. | Unticked |
 **Installing.** Visor exports the branch's newest commit without its history, runs the tool's setup and \
 its self-test, each in a wall of its own, and only a version that passes is the one runs get: the one \
 before stays until then. The repository says what the tool needs and gives a run in `{manifest}` at its \
-top: see `docs/tools.md` in visor's repository."""
+top: see `docs/tools.md` in visor's repository. A tool can have settings of its own, lines below \
+`Network:` that it names there: they show once visor has read it, and a changed one installs the tool \
+again with it. Below `## About` is the README of the version installed, for whoever runs the agents."""
 
 
 # ── The note ──────────────────────────────────────────────────────────────────
@@ -131,16 +141,28 @@ def blank():
                 about="")
 
 
-def read(text):
-    """What a tool's note says: (the tool's settings, problems)."""
+def option_key(name):
+    return re.sub(r"\s+", " ", name.strip().lower())
+
+
+def read(text, declared=None):
+    """What a tool's note says: (the tool's settings, problems). declared: the tool's own settings, as its
+    manifest names them ({name: {"default", "means"}}): their values are in tool["options"], by option_key,
+    each its default when the note has no line for it."""
     top, _, about = text.partition("\n" + ABOUT)
+    about = about.partition("\n" + README_HEAD)[0]   # the README below About is visor's copy, never the owner's
     top = settings.drop_guide(top)
     # What visor wrote of the tool, below its settings, is visor's: never read back as settings.
     top = re.sub(r"^>.*$", "", top, flags=re.MULTILINE)
     tool = blank()
-    for entry in settings.scan(top, WORDS)[0]:
-        if entry["key"] in tool and entry["key"] != "on this server" and entry["boxes"] is None:
-            tool[entry["key"]] = entry["value"].strip().strip("`").strip()
+    own = {option_key(name): spec.get("default", "") for name, spec in (declared or {}).items()}
+    tool["options"] = dict(own)
+    for entry in settings.scan(top, WORDS + tuple(own))[0]:
+        value = entry["value"].strip().strip("`").strip()
+        if entry["key"] in own and entry["boxes"] is None:
+            tool["options"][entry["key"]] = value
+        elif entry["key"] in tool and entry["key"] != "on this server" and entry["boxes"] is None:
+            tool[entry["key"]] = value
     for key, on in settings.toggles(top, tuple(SWITCHES)).items():
         tool[key] = "yes" if on else "no"
     tool["about"] = "" if about.strip() == ABOUT_HINT else about.strip()
@@ -169,24 +191,64 @@ def ticked(tool, box):
     return (tool.get(box) or "").lower() in YES
 
 
-def render(name, tool, found="", problems=(), report=()):
-    """A tool's note, whole: its settings, what visor found, what it reported (lines of its own, callouts),
-    a guide folded away, and About."""
+def render(name, tool, found="", problems=(), report=(), declared=None, readme=""):
+    """A tool's note, whole: its settings, its own settings (declared, as its manifest names them), what visor
+    found, what it reported (lines of its own, callouts), a guide folded away, About, and below it the README
+    of the version installed."""
     lines = []
     if problems:
         lines += ["> [!warning] Visor cannot install this tool until this is fixed"]
         lines += [f"> - {problem}" for problem in problems] + [""]
     lines += [f"{n}: {tool.get(n.lower()) or default}".rstrip() for n, default in LINES]
+    values = tool.get("options") or {}
+    rows = []
+    for option, spec in (declared or {}).items():
+        lines.append(f"{option}: {values.get(option_key(option), spec.get('default', ''))}".rstrip())
+        means = spec.get("means") or "One of the tool's own settings."
+        rows.append(f"| `{option}:` | {means} | {spec.get('default') or 'nothing'} |")
     lines += [""] + [settings.toggle(key.capitalize(), ticked(tool, key), note) for key, note in SWITCHES.items()]
     lines += ["", f"On this server: {found}".rstrip(), ""]
     lines += list(report)
-    lines += [settings.guide(f"How a tool's note works", GUIDE.format(name=name, manifest=MANIFEST)).rstrip("\n"), ""]
+    guide = GUIDE.format(name=name, manifest=MANIFEST)
+    if rows:
+        guide = guide.replace("| Unticked |\n\n**Installing.**",
+                              "| Unticked |\n" + "\n".join(rows) + "\n\n**Installing.**", 1)
+    lines += [settings.guide(f"How a tool's note works", guide).rstrip("\n"), ""]
     lines += [ABOUT, "", tool.get("about") or ABOUT_HINT, ""]
+    if readme.strip():
+        lines += [README_HEAD, "", "*The README of the version installed here, for whoever runs the agents: it "
+                  "is changed in the repository, and this copy with it.*", "", _lower_headings(readme).rstrip(), ""]
     return "\n".join(lines)
 
 
-def load(folder):
-    """Every tool note in a folder: {name: (tool or None, problems, path)}, the name in lower case."""
+def _lower_headings(text):
+    """A README's headings two levels down, under the note's own (`# Title` is `### Title`), code fences aside."""
+    out, fenced = [], False
+    for line in text.splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+        elif not fenced and re.match(r"#{1,6} ", line):
+            hashes = len(line) - len(line.lstrip("#"))
+            line = "#" * min(6, hashes + 2) + line[hashes:]
+        out.append(line)
+    return "\n".join(out)
+
+
+def readme_of(folder, path):
+    """The README of an installed tool, as its note shows it: "" when it has none; cut when very long."""
+    try:
+        with open(os.path.join(folder, path or README), encoding="utf-8", errors="replace") as f:
+            text = f.read(README_LIMIT + 1)
+    except OSError:
+        return ""
+    if len(text) > README_LIMIT:
+        text = text[:README_LIMIT].rsplit("\n", 1)[0] + "\n\n*(Cut here: the rest is in the repository.)*"
+    return text
+
+
+def load(folder, declared=None):
+    """Every tool note in a folder: {name: (tool or None, problems, path)}, the name in lower case. declared:
+    {name: the tool's own settings, as its manifest names them}, for the tools visor has read a manifest of."""
     found = {}
     try:
         names = sorted(os.listdir(folder))
@@ -198,7 +260,7 @@ def load(folder):
         if ext != ".md" or filename.startswith(".") or not os.path.isfile(path):
             continue
         with open(path, encoding="utf-8", errors="replace") as f:
-            tool, problems = read(f.read())
+            tool, problems = read(f.read(), (declared or {}).get(stem.lower()))
         if not NAME.fullmatch(stem):
             problems = [f"`{stem}` cannot be a tool's name: use letters, digits, dots and dashes."] + problems
         found[stem.lower()] = (tool, problems, path)
@@ -260,7 +322,8 @@ def manifest_problems(manifest, folder):
     for key in ("name", "commands", "guide"):
         if not manifest.get(key):
             problems.append(f"`{MANIFEST}` has no `{key}`, which every tool needs.")
-    for key, kind in (("commands", "folder"), ("guide", "file"), ("topics", "folder"), ("starter", "file")):
+    for key, kind in (("commands", "folder"), ("guide", "file"), ("topics", "folder"), ("starter", "file"),
+                      ("readme", "file")):
         path = manifest.get(key)
         if not path:
             continue
@@ -303,7 +366,31 @@ def manifest_problems(manifest, folder):
     carry = manifest.get("carry") or []
     if not isinstance(carry, list) or not all(_inside(path) for path in carry):
         problems.append(f"`carry` in `{MANIFEST}` must list paths inside the repository.")
+    options = manifest.get("options")
+    if options is not None and not isinstance(options, dict):
+        problems.append(f"`options` in `{MANIFEST}` must be an object, each setting a line of the tool's note: "
+                        '`{"Colour": {"default": "blue", "means": "What colour it draws in"}}`.')
+    for option, spec in (options if isinstance(options, dict) else {}).items():
+        if not OPTION.fullmatch(option) or option_key(option) in WORDS:
+            problems.append(f"`{option}` in `options` cannot be a line of the note: a word or a few, of letters, "
+                            "digits and dashes, and none of the note's own (Repo, Branch, Network...).")
+        elif not (isinstance(spec, dict) and isinstance(spec.get("default", ""), str)
+                  and isinstance(spec.get("means", ""), str)):
+            problems.append(f"`{option}` in `options` must say its `default` and what it `means`, as text.")
     return problems
+
+
+def declared_of(manifest):
+    """A manifest's own settings, as the note writes them: {name: {"default", "means"}}."""
+    options = manifest.get("options")
+    return {name: {"default": spec.get("default", ""), "means": spec.get("means", "")}
+            for name, spec in options.items()} if isinstance(options, dict) else {}
+
+
+def option_values(declared, asked):
+    """The values a tool is installed with: each of its settings as the note asks, else its default."""
+    return {option_key(name): (asked or {}).get(option_key(name), spec.get("default", ""))
+            for name, spec in declared.items()}
 
 
 def commands_of(folder, manifest):
@@ -464,12 +551,13 @@ class Install:
                 return self._run()
             except Failed as failed:
                 return {"ok": False, "said": failed.said, "output": _tail(failed.output),
-                        "door": _tail(failed.door, DOOR_TAIL), "commit": self.commit}
+                        "door": _tail(failed.door, DOOR_TAIL), "commit": self.commit, "declared": self.declared}
             finally:
                 if self.part and os.path.exists(self.part):
                     _remove(self.part)
 
     commit = None
+    declared = None   # the tool's own settings, once its manifest is read: kept even when the install fails
 
     def _run(self):
         spec, was = self.spec, self.spec.get("installed") or {}
@@ -479,12 +567,17 @@ class Install:
         apps_before = was.get("apps") or {}
         failed = spec.get("failed") or {}
         if (was.get("commit") == commit and was.get("url") == spec["url"] and current(self.root, self.name)
+                and (was.get("options") or {}) == option_values(was.get("declared") or {}, spec.get("options"))
                 and self._apps_now(apps_before) == apps_before):
             return {"ok": True, "up_to_date": True, "commit": commit}
         if failed.get("commit") == commit and failed.get("url") == spec["url"] and not spec.get("again"):
             return {"ok": False, "unchanged": True, "commit": commit, "said": failed.get("said", "")}
         self.stage(f"exporting `{commit[:7]}`")
-        self.part = os.path.join(self.home, f"{commit[:12]}-{time.strftime('%Y%m%d%H%M%S')}.part")
+        # A folder of its own, even for the same commit installed again within the second (a changed setting).
+        base, n = os.path.join(self.home, f"{commit[:12]}-{time.strftime('%Y%m%d%H%M%S')}"), 2
+        while os.path.exists(base) or os.path.exists(base + ".part"):
+            base, n = os.path.join(self.home, f"{commit[:12]}-{time.strftime('%Y%m%d%H%M%S')}-{n}"), n + 1
+        self.part = base + ".part"
         os.makedirs(self.part)
         exported = subprocess.Popen(["git", "-C", self.mirror, "archive", "--format=tar", commit],
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -505,6 +598,12 @@ class Install:
         problems = manifest_problems(manifest, self.part)
         if problems:
             raise Failed(" ".join(problems))
+        self.declared = declared_of(manifest)
+        options = option_values(self.declared, spec.get("options"))
+        if self.declared:
+            # The tool's own settings, as the note asks, for its setup to read; and for runs, read-only then.
+            with open(os.path.join(self.part, OPTIONS_FILE), "w", encoding="utf-8") as f:
+                json.dump(options, f, indent=2)
         needs = manifest.get("needs") or {}
         apps = apps_of(needs)
         self.stage("checking the flatpak apps it runs")
@@ -570,7 +669,8 @@ class Install:
             "commit": commit, "subject": subject, "when": when, "url": spec["url"], "branch": spec["branch"],
             "dir": final, "size": size_of(final), "apps": versions, "commands": commands_of(final, manifest),
             "guide_tokens": guide_tokens(final, manifest), "display": bool(needs.get("display")),
-            "packages": packages, "check": manifest.get("check"),
+            "packages": packages, "check": manifest.get("check"), "options": options, "declared": self.declared,
+            "readme": manifest.get("readme") or README,
             "final": steps_of(manifest.get("final")) if manifest.get("final") else None,
             "tested": bool(manifest.get("test")), "seconds": timed, "new": new, "at": time.strftime("%Y-%m-%d %H:%M")}}
 

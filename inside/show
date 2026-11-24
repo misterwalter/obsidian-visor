@@ -5,8 +5,9 @@
 #   show FILE...
 #
 # Pictures, video, audio, PDF and text: what the notes app shows. Each file up to
-# 50 MB. A file is copied as it is when `show` runs; showing it again after a change
-# shows the new one beside the old.
+# 50 MB. Other text, such as a script, up to 1 MB, comes in as a note of its own
+# (chair.py as chair.py.md, the script in a code block). A file is copied as it is
+# when `show` runs; showing it again after a change shows the new one beside the old.
 [ "${1:-}" = --help ] && { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0; }  # its header, above, says how
 set -u
 OUT=/run/show
@@ -20,9 +21,15 @@ for file in "$@"; do
   fi
   case "${file,,}" in
     *.png|*.jpg|*.jpeg|*.gif|*.webp|*.mp4|*.webm|*.mov|*.mp3|*.wav|*.ogg|*.m4a|*.flac|*.pdf|*.md|*.txt|*.csv|*.json|*.log) ;;
-    *) echo "show: $file: only pictures, video, audio, PDF and text can be shown: png, jpg, jpeg, gif, webp," \
-            "mp4, webm, mov, mp3, wav, ogg, m4a, flac, pdf, md, txt, csv, json, log. Save it as one of those first." >&2
-       status=1; continue ;;
+    *) # Other text (a script, say) comes into the notes as a note of its own, NAME.py.md: up to 1 MB.
+       if [ "$(stat -c %s "$file")" -le $((1024 * 1024)) ] && grep -qI . "$file"; then
+         :
+       else
+         echo "show: $file: only pictures, video, audio, PDF and text can be shown: png, jpg, jpeg, gif, webp," \
+              "mp4, webm, mov, mp3, wav, ogg, m4a, flac, pdf, md, txt, csv, json, log, or other text up to 1 MB" \
+              "(a script). Save it as one of those first." >&2
+         status=1; continue
+       fi ;;
   esac
   if [ "$(stat -c %s "$file")" -gt "$LIMIT" ]; then
     echo "show: $file is over 50 MB" >&2; status=1; continue

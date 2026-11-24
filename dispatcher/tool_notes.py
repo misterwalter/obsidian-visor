@@ -32,16 +32,20 @@ class ToolNotes:
         write_file(os.path.join(self.state_dir, "tools.json"), json.dumps(state, indent=2))
 
     def _asked(self, tool):
-        """What a tool's note asks for, as an install remembers it: (address, branch, network); None when the
-        note names no repository visor can reach."""
+        """What a tool's note asks for, as an install remembers it: (address, branch, network, the values of the
+        tool's own settings); None when the note names no repository visor can reach."""
         try:
             url = tools.repo_url(tool["repo"], self.github_url, self.github_owner)
         except ValueError:
             return None
-        return [url, tool["branch"] or "main", (tool["network"] or "no").lower()]
+        return [url, tool["branch"] or "main", (tool["network"] or "no").lower(), tool.get("options") or {}]
+
+    def _declared(self):
+        """{tool: its own settings, as the manifest visor last read of it names them}."""
+        return {name: kept.get("declared") or {} for name, kept in self._tool_state().items()}
 
     def load_tools(self):
-        self.tool_notes = tools.load(self.tools_folder)
+        self.tool_notes = tools.load(self.tools_folder, self._declared())
 
     def sync_tools(self):
         """Keep the tools folder: made when missing, and each settled note written back in its standard form,
@@ -59,7 +63,10 @@ class ToolNotes:
             except ValueError as error:
                 problems = [str(error)]
         found, report = self._tool_found(name, tool)
-        fresh = tools.render(os.path.splitext(os.path.basename(path))[0], tool, found, problems, report)
+        installed = self._tool_state().get(name, {}).get("installed") or {}
+        readme = tools.readme_of(installed["dir"], installed.get("readme")) if installed.get("dir") else ""
+        fresh = tools.render(os.path.splitext(os.path.basename(path))[0], tool, found, problems, report,
+                             self._declared().get(name), readme)
         with open(path, encoding="utf-8", errors="replace") as f:
             if f.read() == fresh:
                 return
@@ -78,6 +85,9 @@ class ToolNotes:
                       f"installed {installed['at']}, with no self-test to run"))
             if asked and asked[:2] != [installed.get("url"), installed.get("branch")]:
                 found += ". The note now names another repository or branch, which visor installs next"
+            elif asked and asked[3] != (installed.get("options") or {}):
+                found += (". The note now asks for other settings of the tool's own, which visor installs it "
+                          "with next")
         else:
             found = "no"
         if self.tool_job and self.tool_job["name"] == name:
@@ -182,7 +192,8 @@ class ToolNotes:
                 continue
             asked, kept = self._asked(tool), state.get(name, {})
             installed, failed = kept.get("installed"), kept.get("failed")
-            changed = not installed or [installed.get("url"), installed.get("branch")] != asked[:2]
+            changed = (not installed or [installed.get("url"), installed.get("branch")] != asked[:2]
+                       or (installed.get("options") or {}) != asked[3])
             if (changed and not (failed and failed.get("asked") == asked)) or name in self.tools_due:
                 if asked[2] == "vpn" and not self.vpn_up():
                     continue
@@ -201,7 +212,7 @@ class ToolNotes:
         os.makedirs(job)
         spec = {"name": name, "url": asked[0], "branch": asked[1], "network": asked[2], "root": self.agent_tools,
                 "job": job, "flatpak": self.flatpak, "vpn_proxy": self.vpn_proxy, "forum": board.FORUM,
-                "installed": kept.get("installed"), "again": again,
+                "installed": kept.get("installed"), "again": again, "options": asked[3],
                 "failed": dict(kept["failed"], url=asked[0]) if kept.get("failed", {}).get("asked") == asked else None}
         with open(os.path.join(job, "spec.json"), "w", encoding="utf-8") as f:
             json.dump(spec, f, indent=2)
@@ -244,6 +255,11 @@ class ToolNotes:
             kept["failed"] = {"asked": asked, "commit": result.get("commit"), "said": result.get("said", ""),
                               "output": result.get("output", ""), "door": result.get("door", ""), "at": _stamp()}
             self.log(f"tool {name}: could not install it: {result.get('said')}")
+        # The tool's own settings, as the manifest last read names them: its note shows them from now on,
+        # even when this version could not be installed.
+        declared = result.get("declared", (result.get("installed") or {}).get("declared"))
+        if declared is not None:
+            kept["declared"] = declared
         self._keep_tool_state(state)
         self._prune_tool_jobs(name)
         self.sync_tools()

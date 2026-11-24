@@ -21,7 +21,8 @@ class ShowTest(unittest.TestCase):
         self.shown = os.path.join(self.tmp.name, "shown")
         os.makedirs(os.path.join(self.work, "out"))
         os.makedirs(self.shown)
-        for name, data in (("out/frame.png", b"png"), ("out/run.log", b"log"), ("out/tool.exe", b"exe")):
+        for name, data in (("out/frame.png", b"png"), ("out/run.log", b"log"), ("out/tool.exe", b"\x7fELF\x00\x01"),
+                           ("out/chair.py", b"import kit\n")):
             with open(os.path.join(self.work, name), "wb") as f:
                 f.write(data)
         os.symlink("/etc/passwd", os.path.join(self.work, "out", "passwd.txt"))
@@ -46,6 +47,11 @@ class ShowTest(unittest.TestCase):
         self.assertIn("shown: frame.png", done.stdout)
         self.show("out/frame.png")
         self.assertEqual(sorted(os.listdir(self.shown)), ["frame 2.png", "frame.png", "run.log"])
+
+    def test_a_script_is_text_and_shown(self):
+        done = self.show("out/chair.py")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(os.listdir(self.shown), ["chair.py"])
 
     def test_links_other_kinds_of_file_and_large_ones_stay_in(self):
         done = self.show("out/passwd.txt", "out/tool.exe", "out/huge.png", "out/none.png")

@@ -3183,16 +3183,19 @@ class DispatchTest(unittest.TestCase):
     # Showing the owner a file
 
     def test_what_a_run_shows_is_brought_into_the_project_s_folder_and_embedded(self):
-        self.given("FAKE_SHOWN", [{"frame-200.png": "png", "notes.txt": "text", "tool.exe": "binary",
-                                   "secret.md": "->/etc/passwd"}])
+        self.given("FAKE_SHOWN", [{"frame-200.png": "png", "notes.txt": "text", "tool.exe": "bin\u0000ary",
+                                   "secret.md": "->/etc/passwd", "chair.py": "import kit\nkit.box('Seat')\n"}])
         self.note("inbox", "cells.md", "Project: textgame\nModel: official\nAnalysis: render 200 generations\n")
         self.d.once()
         shown = os.path.join(self.tasks, "projects", "textgame", "shown")
-        self.assertEqual(sorted(os.listdir(shown)), ["cells frame-200.png", "cells notes.txt"])
+        self.assertEqual(sorted(os.listdir(shown)), ["cells chair.py.md", "cells frame-200.png", "cells notes.txt"])
         note = self.read("output", "cells.md")
-        self.assertIn("Shown:\n\n![[cells frame-200.png]]\n![[cells notes.txt]]\n", note)
+        self.assertIn("Shown:\n\n![[cells chair.py.md]]\n![[cells frame-200.png]]\n![[cells notes.txt]]\n", note)
         self.assertIn("- `secret.md` was not brought out: it is not a plain file.", note)
         self.assertIn("- `tool.exe` was not brought out: notes cannot show that kind of file.", note)
+        # A script, of a kind notes do not show, comes in as a note: the script whole, in a code block.
+        with open(os.path.join(shown, "cells chair.py.md"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), "```py\nimport kit\nkit.box('Seat')\n```\n")
 
     def test_a_folder_project_s_shown_files_go_beside_its_files_and_a_name_is_never_reused(self):
         self.given("FAKE_SHOWN", [{"map.png": "one"}, {"map.png": "two"}])

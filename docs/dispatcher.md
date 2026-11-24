@@ -92,7 +92,9 @@ note's `Tries:` times (default 2); each try is its own section in the note.
 which copies pictures, video, audio, PDF and text, each up to 50 MB, into a
 folder of the run's own, bound in at `/run/show` and writable even on a
 read-only round. Afterwards the dispatcher checks each again (a regular file,
-a kind the notes app shows, at most 200 MB and 40 files a round), copies it into
+a kind the notes app shows, at most 200 MB and 40 files a round; other text up
+to 1 MB, a script say, comes in as a note of its own, `chair.py.md`, the script
+in a code block), copies it into
 the project's folder in the notes under `shown/`, named after the note, and
 embeds it in the reply; an errand with no project's go in the note's own folder
 in `media/`. A round on a folder project has no `show`: its files are all in
@@ -100,7 +102,9 @@ the notes already. An agent that forgets to show what it made is
 covered after it finishes (`autoshow.py`, outside the wall): the files its
 closing message names, of any kind `show` takes, and the pictures, video, sound
 and PDFs it made or changed outside hidden folders, at most ten, none it showed
-itself, and never a link or a path out of the workspace, go the same way.
+itself, and never a link or a path out of the workspace, go the same way. In a
+round of several parts, once the last part is done: the parts before it leave
+their folder to the next.
 
 **What a run cost.** Each reply says how many tokens the model read and wrote,
 and in how many minutes, from the model door's record of every call: the

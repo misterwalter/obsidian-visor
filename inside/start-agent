@@ -13,7 +13,9 @@ ports="2CAA"
 # the wall has none, and this is the only opening. This machine is host.internal
 # through it: 127.0.0.1 in here is the wall's own.
 if [ -S /run/visor/net.sock ]; then
-  socat TCP-LISTEN:3128,bind=127.0.0.1,reuseaddr,fork UNIX-CONNECT:/run/visor/net.sock &
+  # Its own complaints (a connection the far end reset) are not the agent's: they would land in agent.err,
+  # whose last line is said as the cause when a run fails.
+  socat TCP-LISTEN:3128,bind=127.0.0.1,reuseaddr,fork UNIX-CONNECT:/run/visor/net.sock 2>/dev/null &
   ports="$ports 0C38"
   export http_proxy=http://127.0.0.1:3128 https_proxy=http://127.0.0.1:3128
   export HTTP_PROXY="$http_proxy" HTTPS_PROXY="$https_proxy"

@@ -32,6 +32,11 @@ Network: no
 - `Update` looks for a new commit now, and clears.
 - `Delete` deletes it from the server, every version and its mirror, and
   unticks both. The note stays. Both ticked does neither.
+- A tool can have settings of its own, which its manifest names (`options`,
+  below): each is a line under `Network:`, `Add-ons: mpfb` say, free text,
+  shown with its default once visor has read the manifest. A changed value
+  installs the same commit again, with it: the tool's setup reads the values
+  in `.visor-options.json` in its own folder, and so can its commands.
 
 Visor writes the note back with `On this server:`, what it has of the tool,
 and below it what the tool gives a run: its commands, what its standing guide
@@ -44,14 +49,21 @@ the end of what the tool printed and what the app door saw: each app it ran
 then, and how that ended, or why it could not have a screen. `VISOR.md` lists
 every tool under `## Tools`.
 
+Below `## About`, which is the owner's, visor writes the README of the version
+installed (the manifest's `readme`, `README.md` when it names none), its
+headings two levels down, under `## README, from the repository`. It is
+visor's copy, never read back: a README is for whoever runs the agents, and
+is changed in the repository.
+
 ## Installing
 
 Each step runs when visor is idle, as a job in the background (`python3
 tools.py install SPEC`), one tool at a time:
 
 1. Fetch the branch into a mirror, `<agent_tools>/mirrors/<name>.git`.
-2. If the newest commit is the one installed, and the flatpak apps it runs
-   are unchanged, stop: it is up to date. A commit that failed before is not
+2. If the newest commit is the one installed, with the same values of its
+   own settings, and the flatpak apps it runs are unchanged, stop: it is up
+   to date. A commit that failed before is not
    tried again until the branch moves, the note changes, or `Update` is ticked.
 3. Export the commit as a plain folder, with no history, into
    `<agent_tools>/<name>/<commit>-<time>.part`.
@@ -85,6 +97,8 @@ nothing it names outside a wall.
   "guide": "agent/guide.md",
   "topics": "agent/topics",
   "starter": "agent/starter.json",
+  "readme": "README.md",
+  "options": {"Colour": {"default": "blue", "means": "What colour it draws in"}},
   "needs": {"flatpak": {"app": "org.example.App"}, "display": true, "apt": ["some-package"]},
   "setup": "app --path {tool} --prepare",
   "test": "my-tool-check {tool}/examples/sample.json",
@@ -105,6 +119,8 @@ nothing it names outside a wall.
 | `guide` | The standing guide, for the agent's system prompt. The note says what it costs to read. Required. |
 | `topics` | A folder of the longer guide, read on demand. |
 | `starter` | A small valid file for the agent to start from. |
+| `readme` | The README its note shows below About, for whoever runs the agents. `README.md` when left out; none is fine. |
+| `options` | Settings of its own, each a line of its note: `{"Name": {"default": "...", "means": "..."}}`. The values, as the note says them or the defaults, are in `.visor-options.json` in its folder, by name in lower case, for its setup to read, and its commands. |
 | `needs.flatpak` | The flatpak apps it runs: `{"command": "app id"}`, or a list of app ids, each then a command named after the id's last part (`org.example.App` is `app`). |
 | `needs.display` | Whether its flatpak apps draw, and so need a screen: each is given one of the server's Xvfb each time it runs. |
 | `needs.apt` | Ubuntu packages its own programs need, fetched and unpacked into its folder, never installed. |
