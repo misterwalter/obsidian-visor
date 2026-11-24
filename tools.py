@@ -62,6 +62,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -94,6 +95,7 @@ SETUP_LIMIT, TEST_LIMIT = 2 * 3600, 30 * 60
 READING = (30, 50)
 # The longest a tool's own output is kept for its note, in lines.
 TAIL = 25
+DOOR_TAIL = 15   # lines of the app door's log a failed install's note shows: the apps it ran, and how each ended
 # In a tool's installed folder, visor's own: the Ubuntu packages its manifest's needs.apt names, unpacked.
 APT_DIR = ".visor-apt"
 PACKAGE = re.compile(r"[a-z0-9][a-z0-9+.-]+")
@@ -366,12 +368,36 @@ def _tail(text, lines=TAIL):
     return "\n".join([line for line in (text or "").rstrip().splitlines()][-lines:])
 
 
-class Failed(Exception):
-    """Why an install stopped, for the note, with what the tool printed (output)."""
+CRASHES = ("SIGABRT", "SIGSEGV", "SIGBUS", "SIGFPE", "SIGILL")
 
-    def __init__(self, said, output=""):
+
+def exit_said(status):
+    """An exit status, and what it most often means when that is more than "it found something": `exit 127, a
+    command it runs was not found`, `exit 134, a crash (SIGABRT)`."""
+    meaning = {126: "a command it runs could not be run", 127: "a command it runs was not found, or could not start",
+               124: "it took too long, and was stopped"}.get(status)
+    number = -status if status < 0 else status - 128 if 128 < status <= 128 + 64 else None
+    if number:
+        try:
+            name = signal.Signals(number).name
+        except ValueError:
+            name = f"signal {number}"
+        meaning = (f"a crash ({name})" if name in CRASHES else
+                   "killed (SIGKILL), most often for want of memory" if name == "SIGKILL" else f"stopped by {name}")
+    return f"exit {status}" + (f", {meaning}" if meaning else "")
+
+
+def took_said(seconds):
+    return "under a second" if seconds < 1 else f"{round(seconds)} s" if seconds < 120 else f"{round(seconds / 60)} min"
+
+
+class Failed(Exception):
+    """Why an install stopped, for the note, with what the tool printed (output), and what the app door saw of
+    the apps it ran then (door)."""
+
+    def __init__(self, said, output="", door=""):
         super().__init__(said)
-        self.said, self.output = said, output
+        self.said, self.output, self.door = said, output, door
 
 
 def _git(*args, cwd=None, timeout=1800, **kw):
@@ -437,7 +463,8 @@ class Install:
             try:
                 return self._run()
             except Failed as failed:
-                return {"ok": False, "said": failed.said, "output": _tail(failed.output), "commit": self.commit}
+                return {"ok": False, "said": failed.said, "output": _tail(failed.output),
+                        "door": _tail(failed.door, DOOR_TAIL), "commit": self.commit}
             finally:
                 if self.part and os.path.exists(self.part):
                     _remove(self.part)
@@ -511,13 +538,16 @@ class Install:
             if not command:
                 continue
             self.stage("running its setup" if step == "setup" else "running its self-test")
-            started = time.time()
+            started, door = time.time(), self._door_log()
             status, output = self.walled(command, manifest, apps, writable, network, limit)
-            timed[step] = round(time.time() - started)
+            seconds = time.time() - started
+            timed[step] = round(seconds)
             if status != 0:
                 what = "setup" if step == "setup" else "self-test"
                 raise Failed((f"its {what} took more than {limit // 60} minutes, and was stopped" if status == 124
-                              else f"its {what} failed (exit {status})") + f": `{command}`", output)
+                              else f"its {what} failed ({exit_said(status)}) after {took_said(seconds)}") +
+                             f": `{command}`" + ("" if output.strip() else ". It printed nothing"),
+                             output, self._door_log(door))
         self.stage("putting it in place")
         final = self.part[:-len(".part")]
         os.rename(self.part, final)
@@ -569,7 +599,8 @@ class Install:
         except subprocess.TimeoutExpired:
             raise Failed("fetching Ubuntu packages took more than half an hour, and was stopped.")
         if done.returncode != 0:
-            raise Failed(f"`apt-get download {' '.join(packages)}` failed", done.stdout + done.stderr)
+            raise Failed(f"`apt-get download {' '.join(packages)}` failed ({exit_said(done.returncode)})",
+                         done.stdout + done.stderr)
         found = {}
         for deb in sorted(os.listdir(debs)):
             unpacked = subprocess.run(["dpkg-deb", "-x", os.path.join(debs, deb), into], capture_output=True, text=True)
@@ -660,8 +691,21 @@ class Install:
             except subprocess.TimeoutExpired:
                 raise Failed(f"installing `{app}` from Flathub took more than an hour, and was stopped.")
             if done.returncode != 0:
-                raise Failed(f"`{command}` failed", done.stdout + done.stderr)
+                raise Failed(f"`{command}` failed ({exit_said(done.returncode)})", done.stdout + done.stderr)
         return self._apps_now(apps.values()) if missing else versions
+
+    def _door_log(self, since=None):
+        """The app door's log (run_walled): with since None, where it ends now; else what it wrote after since,
+        each app it ran and how that ended, or why it could not give one a screen."""
+        path = os.path.join(self.job, "app-door.log")
+        try:
+            if since is None:
+                return os.path.getsize(path)
+            with open(path, encoding="utf-8", errors="replace") as f:
+                f.seek(since)
+                return f.read()
+        except OSError:
+            return 0 if since is None else ""
 
     def walled(self, command, manifest, apps, writable, network, limit):
         """Run one of the tool's commands in a wall of its own (tool_wall.sh): (exit status, what it printed)."""
@@ -971,7 +1015,7 @@ def recheck(out, work, since, apps=None, shims=None):
                 continue
             left += 1
             run = filled(entry["run"], {"file": rel})
-            lines += [f"`{run}`" + (f" (exit {status})" if status else "") + ":", "", "```",
+            lines += [f"`{run}`" + (f" ({exit_said(status)})" if status else "") + ":", "", "```",
                       _tail(output, FINAL_LINES) or "(it printed nothing)", "```", ""]
     still = os.path.join(out, STILL)
     if lines:
@@ -1032,7 +1076,7 @@ def _step_said(rel, name, run, show, status, output):
     head = f"- `{rel}`, by {name}'s `{run}`"
     if status != 0:
         lines = [head + ": **failed**" + (f", after {FINAL_LIMIT // 60} minutes" if status == 124
-                                          else f" (exit {status})") + "."]
+                                          else f" ({exit_said(status)})") + "."]
         said, title = _tail(output, FINAL_LINES), "What it printed"
     elif show == "text":
         text = output.rstrip()

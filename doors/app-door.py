@@ -157,6 +157,10 @@ def handler(options, maps, apps, screens=()):
                         self.wfile.write(line)
                         self.wfile.flush()
                     status = process.wait()
+                    # Killed by a signal (a crash, say): told as a shell tells it, 128 and the signal's number, so
+                    # the command that asked exits with it (a negative status is not one a command can exit with).
+                    if status < 0:
+                        status = 128 - status
                 finally:
                     if screen is not None:
                         stop_screen(screen)

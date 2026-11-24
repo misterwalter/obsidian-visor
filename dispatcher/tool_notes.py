@@ -130,9 +130,13 @@ class ToolNotes:
                 lines.append("> - New since the version before: " + "; ".join(
                     f"{subject} (`{short}`)" for short, subject in installed["new"]))
             lines.append("")
-        if failed and failed.get("output") and asked and failed.get("asked") == asked:
-            lines += ["> [!failure]- What it printed, at the end", "> ```"]
-            lines += [f"> {line}".rstrip() for line in failed["output"].splitlines()] + ["> ```", ""]
+        if failed and asked and failed.get("asked") == asked:
+            # Open, under the line that says it failed: what is needed to see why, without the server's files.
+            for key, title in (("output", "What it printed, at the end"),
+                               ("door", "What the app door saw: each app it ran then, and how that ended")):
+                if failed.get(key):
+                    lines += [f"> [!failure] {title}", "> ```"]
+                    lines += [f"> {line}".rstrip() for line in failed[key].splitlines()] + ["> ```", ""]
         return found, lines
 
     def _tool_stage(self):
@@ -238,7 +242,7 @@ class ToolNotes:
             self.log(f"tool {name}: up to date, at `{result['commit'][:7]}`")
         elif not result.get("ok") and not result.get("unchanged"):
             kept["failed"] = {"asked": asked, "commit": result.get("commit"), "said": result.get("said", ""),
-                              "output": result.get("output", ""), "at": _stamp()}
+                              "output": result.get("output", ""), "door": result.get("door", ""), "at": _stamp()}
             self.log(f"tool {name}: could not install it: {result.get('said')}")
         self._keep_tool_state(state)
         self._prune_tool_jobs(name)

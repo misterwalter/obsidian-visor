@@ -34,7 +34,9 @@ FAKE_FLATPAK = textwrap.dedent('''\
         open(os.path.join(APPS, args[-1]), "w").write("c0ffee" * 6 + "\\n")
     elif args[0] == "run":
         given = [a for a in args[1:] if not a.startswith("--")]
-        print("the app ran with:", " ".join(args[1:]))
+        print("the app ran with:", " ".join(args[1:]), flush=True)
+        if "--abort" in args:
+            os.abort()
 ''')
 
 FAKE_XVFB = textwrap.dedent('''\
@@ -83,6 +85,15 @@ class ToolNoteTest(unittest.TestCase):
         self.assertEqual(len(problems), 2)
         self.assertIn("`Repo:` is empty", problems[0])
         self.assertIn("`Network: maybe` must be one of no, vpn, direct", problems[1])
+
+    def test_an_exit_status_says_what_it_most_often_means(self):
+        self.assertEqual(tools.exit_said(1), "exit 1")
+        self.assertEqual(tools.exit_said(127), "exit 127, a command it runs was not found, or could not start")
+        self.assertEqual(tools.exit_said(134), "exit 134, a crash (SIGABRT)")
+        self.assertEqual(tools.exit_said(-11), "exit -11, a crash (SIGSEGV)")
+        self.assertEqual(tools.exit_said(137), "exit 137, killed (SIGKILL), most often for want of memory")
+        self.assertEqual(tools.exit_said(143), "exit 143, stopped by SIGTERM")
+        self.assertEqual(tools.exit_said(255), "exit 255")
 
     def test_a_manifest_says_what_is_missing_from_it(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -241,8 +252,9 @@ class ToolInstallTest(unittest.TestCase):
         self.tend()
         self.assertEqual(self.installed(), first)
         note = self.read()
-        self.assertIn("could not be installed, so runs keep this one: its self-test failed (exit 3): `hello`", note)
-        self.assertIn("> [!failure]- What it printed, at the end", note)
+        self.assertRegex(note, r"could not be installed, so runs keep this one: its self-test failed \(exit 3\) "
+                               r"after (under a second|\d+ s): `hello`")
+        self.assertIn("> [!failure] What it printed, at the end", note)
         self.assertIn("> broken", note)
         # The same broken commit is not tried again at every look.
         self.clock += self.d.wait("update_every")
@@ -307,6 +319,24 @@ class ToolInstallTest(unittest.TestCase):
         self.assertTrue(any(a.startswith("--out=") and a.endswith("/scratch/pages") for a in run["args"]), run)
         self.assertTrue(run["cwd"].endswith("/scratch"), run)
         self.assertIn("> - Runs `org.example.FakeApp`, from flatpak (`c0ffeec0ff`)", self.read())
+
+    def test_a_failed_install_says_why_in_the_note_with_what_its_apps_did(self):
+        open(os.path.join(self.apps, "org.example.FakeApp"), "w").write("c0ffee\n")
+        self.commit({"visor-tool.json": json.dumps({
+            "name": "hello", "commands": "bin", "guide": "guide.md",
+            "needs": {"flatpak": {"fakeapp": "org.example.FakeApp"}},
+            "setup": "fakeapp --abort {tool}"})}, "Crash")
+        self.note("Repo: me/hello\n- [x] Fetch\n")
+        self.tend()
+        self.assertIsNone(self.installed())
+        note = self.read()
+        self.assertRegex(note, r"its setup failed \(exit 134, a crash \(SIGABRT\)\) after (under a second|\d+ s): "
+                               r"`fakeapp --abort \{tool\}`")
+        self.assertIn("> [!failure] What it printed, at the end", note)
+        self.assertIn("> the app ran with:", note)
+        self.assertIn("> [!failure] What the app door saw: each app it ran then, and how that ended", note)
+        self.assertRegex(note, r"> \[\d\d:\d\d:\d\d\] fakeapp: --abort /opt/tools/hello")
+        self.assertRegex(note, r"> \[\d\d:\d\d:\d\d\] fakeapp: exit ")
 
     def test_delete_removes_it_and_keeps_the_note(self):
         self.note("Repo: me/hello\n- [x] Fetch\n")

@@ -38,7 +38,10 @@ and below it what the tool gives a run: its commands, what its standing guide
 costs in reading time, the flatpak apps it runs and whether each has a screen
 of its own, the Ubuntu packages unpacked for it, what it does after a round,
 and what is new since the version before. When an install fails,
-the note says why, with the end of what the tool printed. `VISOR.md` lists
+the note says why: the step, how long it ran, its exit status and what that
+most often means (127, a command not found; 134, a crash), and, open below,
+the end of what the tool printed and what the app door saw: each app it ran
+then, and how that ended, or why it could not have a screen. `VISOR.md` lists
 every tool under `## Tools`.
 
 ## Installing
