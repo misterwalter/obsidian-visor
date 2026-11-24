@@ -68,7 +68,7 @@ import sys
 import time
 
 import settings
-from autoshow import MEDIA
+from autoshow import MEDIA, contents
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 MANIFEST = "visor-tool.json"
@@ -1061,14 +1061,24 @@ def final(out, work, since, show=None, apps=None, shims=None, pictures=None):
                 after = pictures_of(work)
                 send_pictures(sorted(p for p, seen in after.items() if before.get(p) != seen), path, pictures)
             if show and os.path.isdir(show):
-                target, n = os.path.join(show, os.path.basename(path)), 2
-                stem, ext = os.path.splitext(os.path.basename(path))
-                while os.path.exists(target):
-                    target, n = os.path.join(show, f"{stem}-{n}{ext}"), n + 1
-                shutil.copyfile(path, target)
+                _keep(path, show)
     with open(os.path.join(out, "final.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + ("\n" if lines else ""))
     return checked
+
+
+def _keep(path, show):
+    """An errand's file, into the show folder so it is kept: not again when the agent showed it as it is now; a
+    file of the same name and other contents beside it, named as `show` names one ("story.comic 2.json")."""
+    held = contents(path)
+    for other in os.listdir(show):
+        if os.path.isfile(os.path.join(show, other)) and contents(os.path.join(show, other)) == held:
+            return
+    stem, ext = os.path.splitext(os.path.basename(path))
+    target, n = os.path.join(show, os.path.basename(path)), 2
+    while os.path.exists(target):
+        target, n = os.path.join(show, f"{stem} {n}{ext}"), n + 1
+    shutil.copyfile(path, target)
 
 
 def _step_said(rel, name, run, show, status, output):

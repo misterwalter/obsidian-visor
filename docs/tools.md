@@ -213,4 +213,5 @@ what the round needs of it from its manifest (`tools.py prepare`):
   the steps after it, so a tool puts the step that makes what the owner wants
   first, and its strictest check last. An
   errand with no project loses its folder when the round ends, so each file
-  checked is shown too, and kept in the notes.
+  checked is shown too, and kept in the notes: once, not again beside a copy
+  the agent showed as it is.

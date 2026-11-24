@@ -612,6 +612,12 @@ class ToolRunTest(unittest.TestCase):
         self.assertNotIn("old.greeting", said, "only what the round made")
         self.assertEqual(open(os.path.join(self.work, "new.png")).read(), "PNG")
         self.assertEqual(os.listdir(show), ["new.greeting"])
+        # Kept once: not again when the agent showed it as it is, beside it when it has changed since.
+        tools.final(self.out, self.work, os.stat(started).st_mtime, show)
+        self.assertEqual(os.listdir(show), ["new.greeting"])
+        open(os.path.join(self.work, "new.greeting"), "w").write("hello again\n")
+        tools.final(self.out, self.work, os.stat(started).st_mtime, show)
+        self.assertEqual(sorted(os.listdir(show)), ["new 2.greeting", "new.greeting"])
 
     def test_a_check_that_passes_and_still_warns_is_told_as_something_to_deal_with(self):
         door = load_model_door().Door
