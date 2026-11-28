@@ -2100,14 +2100,16 @@ class DispatchTest(unittest.TestCase):
         self.assertNotIn("--continue", second, "a question has no branch to carry on")
         self.assertIn("Summary from part 0.", second[-1])
 
-    def test_a_run_that_keeps_pausing_is_given_up_after_a_few_parts(self):
-        os.environ["FAKE_PAUSES"] = "100"
+    def test_a_run_that_keeps_pausing_is_carried_on_for_as_many_parts_as_it_takes(self):
+        # A long job has no cap on parts: it is carried on, part after part, until it ends.
+        os.environ["FAKE_PAUSES"] = "9"
         self.note("inbox", "task.md", "Project: game\nModel: official\nBuild:\n")
         self.d.once()
-        self.assertEqual(len(self.calls_made()), dispatch.MAX_PARTS)
+        self.assertEqual(len(self.calls_made()), 10)
         note = self.read("output", "task.md")
-        self.assertIn(f"stopped carrying this on after {dispatch.MAX_PARTS} parts", note)
-        self.assertIn("> **PAUSED", note)
+        self.assertIn("in 10 parts", note)
+        self.assertNotIn("stopped carrying this on", note)
+        self.assertNotIn("> **PAUSED", note, "the last part finished, so the note says it did")
 
     def test_a_part_paused_before_the_model_answered_is_not_carried_on_again(self):
         # Re-reading a long conversation can outlast a part; the next would do the same.

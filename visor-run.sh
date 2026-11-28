@@ -807,20 +807,16 @@ WATCHERS="$!"
 
 # Guard: an agent that is stuck repeats itself. One made the same call 1,203
 # times over six hours. The model door counts how often in a row the agent has
-# made the very same tool call; past the limit, the run ends. The cap on calls
-# is the backstop for a loop that varies, and the time limit the backstop for
-# that. Neither is meant to end a run that is getting somewhere: the owner
-# would rather wait a day for a good result.
+# made the very same tool call; past the limit, the run ends. That is the only
+# guard of its kind: there is no cap on calls, parts or time, for the owner runs
+# jobs that take days and a run that is getting somewhere must not be ended. (A
+# loop that varies its calls is therefore not caught.)
 MAX_REPEATS="${VISOR_MAX_REPEATS:-8}"
-MAX_CALLS="${VISOR_MAX_CALLS:-1000}"
 (
   while sleep 20 && kill -0 "$AGENT_PID" 2>/dev/null; do
     repeats="$(tail -1 "$CALLS" | jq -r '.repeats // 0')"
-    calls="$(answered | wc -l)"
     if [ "${repeats:-0}" -ge "$MAX_REPEATS" ]; then
       echo "the agent made the same tool call $repeats times in a row" > "$OUT/stopped-as-stuck.txt"
-    elif [ "$calls" -ge "$MAX_CALLS" ]; then
-      echo "the agent made $calls calls to the model, the most a run is allowed" > "$OUT/stopped-as-stuck.txt"
     else
       continue
     fi
@@ -859,34 +855,10 @@ fi
 ) &
 WATCHERS="$WATCHERS $!"
 
-# Rest: the model server's memory grows through a long run, one step at every
-# summary, until the machine thrashes. A fresh model starts clean. So a run that
-# has gone on this long is paused rather than failed: its work is committed and
-# pushed, the model is unloaded, and the dispatcher carries on from the branch.
-REST_AFTER="${VISOR_REST_AFTER:-4h}"   # 0 = never
-case "$REST_AFTER" in
-  0) REST_SECONDS=0 ;;
-  *h) REST_SECONDS=$(( ${REST_AFTER%h} * 3600 )) ;;
-  *m) REST_SECONDS=$(( ${REST_AFTER%m} * 60 )) ;;
-  *) REST_SECONDS="$REST_AFTER" ;;
-esac
-if [ "$REST_SECONDS" -gt 0 ]; then
-  (
-    # A part that carries on a conversation first re-reads all of it, which can take
-    # an hour. Its time starts at the model's first answer, so that every part works.
-    until [ "$(answered | wc -l)" -gt 0 ] || ! kill -0 "$AGENT_PID" 2>/dev/null; do sleep 10; done
-    sleep "$REST_SECONDS"
-    if kill -0 "$AGENT_PID" 2>/dev/null; then
-      echo "it had run for $REST_AFTER after the model's first answer" > "$OUT/paused.txt"
-      kill "$AGENT_PID"
-    fi
-  ) &
-  WATCHERS="$WATCHERS $!"
-fi
-
 # Memory watch: one line a minute, so a run can be read afterwards as memory
 # against context size. A machine that swaps hard for three minutes running is
-# no longer doing useful work, and the run is paused, as above.
+# no longer doing useful work, and the run is paused: its work is committed and pushed, the model is unloaded,
+# and the dispatcher carries on from the branch with a fresh one. Besides the tools' send-back, below, it is the only pause: no clock puts one in.
 SWAP_LIMIT="${VISOR_SWAP_LIMIT:-50}"   # MB per second, in and out together
 (
   swapped() { awk -v kb="$(( $(getconf PAGESIZE) / 1024 ))" '/^pswp(in|out) /{n += $2} END{print n * kb}' /proc/vmstat; }
@@ -935,7 +907,6 @@ if [ "$(answered | wc -l)" = 0 ] && [ "$AGENT" = 0 ]; then
   echo "the model never answered a single request" > "$OUT/no-answer.txt"
 fi
 PAUSED=""
-[ -f "$OUT/paused.txt" ] && PAUSED="$(cat "$OUT/paused.txt")"
 [ -f "$OUT/stopped-by-memory.txt" ] && PAUSED="the machine was short of memory: $(cat "$OUT/stopped-by-memory.txt")"
 # Done, by the agent's account, while a tool's check still finds something in what it made: the round carries on,
 # in the same conversation and folder, told what was found (tools.py recheck), up to VISOR_TOOL_TRIES times more.

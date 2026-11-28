@@ -2,7 +2,8 @@
 # MODEL, ROUND and OUT.
 #
 # Settings: pi/settings.json and pi/models.json, which the wall puts where the
-# harness looks. pi has no limit on time of its own, so it runs under `timeout`.
+# harness looks. pi has no limit on time of its own, and visor puts none on it: a run goes on for as long as
+# it is getting somewhere.
 
 # The only tools the agent may be offered. visor-run.sh checks the first request
 # against this list. pi has no plan mode: a round that changes nothing gets
@@ -32,8 +33,7 @@ harness_command() {
   # Everything pi would otherwise discover for itself is switched off: extensions,
   # skills, prompt templates, themes, the project's own instruction files (they are
   # already in the system prompt) and anything in the project's .pi folder.
-  COMMAND=(timeout --kill-after=30 "${VISOR_MAX_TIME:-24h}"
-    pi --mode json --provider ollama --model "$MODEL" --thinking "${THINKING:-off}"
+  COMMAND=(pi --mode json --provider ollama --model "$MODEL" --thinking "${THINKING:-off}"
     --system-prompt "$(cat "$OUT/system-prompt.txt")"
     --tools "$(jq -r 'join(",")' <<< "$HARNESS_TOOLS")"
     --no-extensions --no-skills --no-prompt-templates --no-themes

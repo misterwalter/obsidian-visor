@@ -74,7 +74,7 @@ from dispatcher.notes import (  # noqa: E402
                               MAX_NAME, note_body, parse_header, REPLY_HEADING, SCHEDULED, slug,
                               split_note, SUMMARY_HINT, unflagged, write_file)
 from dispatcher.repeats import FOLDER_REPEATS, Repeats  # noqa: E402
-from dispatcher.rounds import MAX_PARTS, Rounds  # noqa: E402
+from dispatcher.rounds import Rounds  # noqa: E402
 from dispatcher.server import RUNNABLE, Server  # noqa: E402
 from dispatcher.status import Status  # noqa: E402
 from dispatcher.subjobs import READING_PAUSE, Subjobs  # noqa: E402

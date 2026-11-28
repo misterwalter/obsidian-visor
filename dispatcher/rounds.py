@@ -64,7 +64,6 @@ def _as_note(source, name):
     while fence in text:
         fence += "`"
     return f"{fence}{language}\n{text.rstrip()}\n{fence}\n"
-MAX_PARTS = 6
 # What a note's Canon only: line may say. Left out, it is yes.
 CANON_ONLY = {"yes": True, "on": True, "true": True, "no": False, "off": False, "false": False}
 
@@ -352,8 +351,8 @@ class Rounds:
 
     def _run_in_parts(self, path, name, state, round_, model, project, task_file, rest, fix, continue_build, asked):
         """One try of a round: a part after another, each a run of visor-run.sh carrying on the one
-        before (its conversation, or a note on where it got to), until one ends, is stopped, or
-        MAX_PARTS is reached. asked: (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback, tools) as
+        before (its conversation, or a note on where it got to), until one ends or is stopped: as
+        many parts as the work takes. asked: (thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback, tools) as
         the note has them. Returns (run_name, exit_code, result, parts, log, continue_build) of the last part."""
         thinking, web, chan, branch, canon, reading, own, chan_as, lan, loopback, given_tools = asked
         settings_ = self.project_settings(project)
@@ -455,12 +454,6 @@ class Rounds:
                                         "the note back to `inbox/`." if memory else
                                         "The conversation it carried on may be too long to re-read within a part.")
                                      + f"\n\n{result['message']}")
-                break
-            if len(parts) >= MAX_PARTS:
-                left = ("The last part's branch holds the work so far." if round_ == "build" else
-                        "Below is what the last part had said when it was paused.")
-                result["message"] = (f"Visor stopped carrying this on after {MAX_PARTS} parts. {left}\n\n"
-                                     f"{result['message']}")
                 break
             # The next part starts with a fresh model, carrying on the same conversation; when
             # the part saved none, this note is all it will know of the one before, besides the files.

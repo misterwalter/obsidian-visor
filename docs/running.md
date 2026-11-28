@@ -126,23 +126,23 @@ Environment variables:
 
 - `VISOR_MAX_REPEATS` how many times in a row the agent may make the very same
   tool call before the run is stopped as stuck (default 8).
-- `VISOR_MAX_CALLS` cap on calls to the model in one run (default 1000).
-- `VISOR_MAX_TIME` cap on wall-clock time (default `24h`). A backstop: the guards
-  below end a run that is stuck long before this does.
 - `VISOR_TEST_TIME` cap on one test run the agent asks for (default `15m`).
 - `VISOR_SWAP_LIMIT` swapping, in MB per second, that stops a run when it lasts
   three minutes (default 50). A machine with no swap never trips it; the watch
   on major page faults (weights read back from disk) still does its job there.
 - `VISOR_LIVE_LOG_EVERY` seconds between updates of the live log (default 60).
-- `VISOR_REST_AFTER` how long a run goes, from the model's first answer, before
-  it is paused so the model can be restarted (default `4h`; `0` for never). A paused run commits and pushes
-  its work but opens no pull request, and exits with status 75. Swapping past
-  the limit above pauses a run the same way. The dispatcher carries a paused
-  run on by itself, with the same conversation where the harness saved one
-  (pi), and otherwise with a note on where it got to; by hand, use `--fork`
-  and `--continue`. The first call of a carried-on part re-reads the whole
-  conversation, which at 40K tokens takes most of an hour. A part paused before
-  the model answered once is not carried on again.
+
+A run has no cap on calls, parts or time: a job goes on for as long as it is
+getting somewhere, days if need be. What ends one is the agent finishing, the
+owner taking its note out of `working/`, the same tool call made `VISOR_MAX_REPEATS`
+times in a row, or the machine running out of memory. That last one pauses the run
+instead of failing it: it commits and pushes its work but opens no pull request, and
+exits with status 75, and the dispatcher carries it on by itself, as many parts as it
+takes, with the same conversation where the harness saved one (pi), and otherwise with a
+note on where it got to; by hand, use `--fork` and `--continue`. The first call of a
+carried-on part re-reads the whole conversation, which at 40K tokens takes most of an
+hour. A part paused before the model answered once is not carried on again. A loop that
+varies its calls is not caught, and nothing ends a model server that stops answering.
 
 The run refuses to start if the project has no `main` branch or if the sandbox
 fails its self-check.

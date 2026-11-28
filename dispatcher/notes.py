@@ -260,8 +260,8 @@ SUMMARY_HINT = ("*(Say here what this world is, in a paragraph or a page. Every 
 # The agent loop: pi (harness/pi.sh), which can think, stream its events and carry on a conversation.
 HARNESS = "pi"
 # A run that pauses so the model can be restarted exits with this; the dispatcher
-# carries it on. At most this many parts per round, so that a run
-# which pauses at once, every time, cannot go on for ever.
+# carries it on, part after part: a long job takes as many as it takes. A part paused before the model answered
+# once is not carried on again (_run_in_parts).
 PAUSED_EXIT = 75
 # What a note's Thinking: line may say, and the level the harness is asked for.
 THINKING = {"no": None, "off": None, "yes": "medium", "on": "medium", "low": "low", "medium": "medium", "high": "high"}

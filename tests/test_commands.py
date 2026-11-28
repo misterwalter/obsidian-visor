@@ -41,17 +41,18 @@ class CommandsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out")
             os.makedirs(out)
-            with open(os.path.join(tmp, "chart.svg"), "w") as f:
-                f.write("<svg/>")
+            with open(os.path.join(tmp, "chart.bin"), "wb") as f:
+                f.write(b"MZ\x00\x01")   # not text: other text (a script) is taken, up to 1 MB
             # inside/show writes to /run/show: here, a copy of it pointed at a folder of the test's own.
             with open(os.path.join(HERE, "inside", "show")) as f:
                 script = f.read().replace("OUT=/run/show", f"OUT={out}")
             with open(os.path.join(tmp, "show"), "w") as f:
                 f.write(script)
-            done = run(os.path.join(tmp, "show"), "chart.svg", cwd=tmp)
+            done = run(os.path.join(tmp, "show"), "chart.bin", cwd=tmp)
             self.assertEqual(done.returncode, 1)
             self.assertIn("png, jpg, jpeg, gif, webp, mp4, webm, mov, mp3, wav, ogg, m4a, flac, pdf, md, txt, csv, "
-                          "json, log. Save it as one of those first.", done.stderr)
+                          "json, log, or other text up to 1 MB (a script). Save it as one of those first.",
+                          done.stderr)
 
 
 if __name__ == "__main__":
